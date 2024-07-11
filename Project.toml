@@ -1,0 +1,13 @@
+name = "IsoME"
+uuid = "5affe8ad-4ea4-4a13-a3c7-a7034cd8af9a"
+authors = ["Christoph Heil <christoph.heil@tugraz.at>", "Eva Kogler", "Dominik Spath"]
+version = "1.0.0"
+
+[compat]
+julia = "1.10"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]

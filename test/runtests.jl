@@ -1,6 +1,9 @@
 using IsoME
 using Test
 
+
 @testset "IsoME.jl" begin
-    #@test IsoME.IsoME_FindTc
+    testArg = arguments(a2f_file = "")
 end
+
+

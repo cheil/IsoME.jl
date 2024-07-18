@@ -12,7 +12,267 @@
 
 """
 
+#=
+struct iso
+    # Parameters
+    muc = muc
+    temps = temps
+    omega_c = omega_c
 
+    # mode
+    cDOS_flag::Int64 = cDOS_flag    # boolean?
+    TcSearchMode_flag::Int64 = TcSearchMode_flag
+    mu_flag::Int64 = mu_flag
+
+    # a2f input file
+    ind_smear::Int64    = ind_smear
+    nsmear::Int64       = nsmear
+    nheader_a2f::Int64  = nheader_a2f
+    nfooter_a2f::Int64  = nfooter_a2f
+    a2f_unit::Int64     = a2f_unit
+
+    # dos input file
+    nheader_dos::Int64  = nheader_dos 
+    nfooter_dos::Int64  = nfooter_dos 
+    dos_unit::Int64     = dos_unit 
+    spinDos::Int64      = spinDos 
+    colFermi_dos::Int64 = colFermi_dos 
+    nheader_dosW::Int64 = nheader_dosW 
+    nfooter_dosW::Int64 = nfooter_dosW 
+    dosW_unit::Int64    = dosW_unit 
+    spinDosW::Int64     = spinDosW 
+    colFermi_dosW::Int64 = colFermi_dosW 
+
+    # Weep input file, auto extraction if nothing
+    nheader_Weep::Int64 = nheader_Weep 
+    nfooter_Weep::Int64 = nfooter_Weep 
+    Weep_unit::Int64 = Weep_unit 
+    include_Weep::Int64 = include_Weep
+
+    # Output
+    outdir::string = outdir
+    flag_log::Int64 = flag_log
+    flag_figure::Int64 = flag_figure 
+    flag_outfile::Int64 = flag_outfile 
+
+    # Restrict Weep, REMOVE BEFORE MERGE !!!
+    Nrestrict::Int64 = Nrestrict 
+    wndRestrict::Vector{Float64} = wndRestrict 
+
+
+end
+=#
+
+"""
+    InputParser()
+
+Include the file specified via path.
+
+# Examples
+"""
+function InputParser(path)
+    include(path)
+        
+    ### Defining some defaults ###s
+    # Parameters
+    (@isdefined muc) || (muc = 0.1)
+    (@isdefined temps) || (temps = collect(5.0:5.0:200.0))
+    (@isdefined omega_c) || (omega_c = 20.0 * a2f_omega_raw[end])
+
+    # mode
+    (@isdefined cDOS_flag) || (cDOS_flag = 0)
+    (@isdefined TcSearchMode_flag) || (TcSearchMode_flag = 0)
+    (@isdefined mu_flag) || (mu_flag = 1)
+
+    # a2f input file, auto extraction if nothing
+    (@isdefined ind_smear) || (ind_smear = 1)
+    (@isdefined nsmear) || (nsmear = nothing)
+    (@isdefined nheader_a2f) || (nheader_a2f = nothing)
+    (@isdefined nfooter_a2f) || (nfooter_a2f = nothing)
+    (@isdefined a2f_unit) || (a2f_unit = nothing)
+
+    # dos input file, auto extraction if nothing
+    (@isdefined nheader_dos) || (nheader_dos = nothing)
+    (@isdefined nfooter_dos) || (nfooter_dos = nothing)
+    (@isdefined dos_unit) || (dos_unit = nothing)
+    (@isdefined spinDos) || (spinDos = 2)
+    (@isdefined colFermi_dos) || (colFermi_dos = 1)
+    (@isdefined nheader_dosW) || (nheader_dosW = nothing)
+    (@isdefined nfooter_dosW) || (nfooter_dosW = nothing)
+    (@isdefined dosW_unit) || (dosW_unit = nothing)
+    (@isdefined spinDosW) || (spinDosW = 1)
+    (@isdefined colFermi_dosW) || (colFermi_dosW = 0)
+
+    # Weep input file, auto extraction if nothing
+    (@isdefined nheader_Weep) || (nheader_Weep = nothing)
+    (@isdefined nfooter_Weep) || (nfooter_Weep = nothing)
+    (@isdefined Weep_unit) || (Weep_unit = nothing)
+    (@isdefined include_Weep) || (include_Weep = 1)
+
+    # Output
+    (@isdefined outdir) || (outdir = "./output/" )
+    (@isdefined flag_log) || (flag_log = 1)
+    (@isdefined flag_figure) || (flag_figure = 1)
+    (@isdefined flag_outfile) || (flag_outfile = 1)
+
+    # Restrict Weep, REMOVE BEFORE MERGE !!!
+    (@isdefined Nrestrict) || (Nrestrict = nothing)
+    (@isdefined wndRestrict) || (wndRestrict = nothing)
+
+
+    ### Check if input files exist ###
+    cDOS_flag, include_Weep = checkInputFiles(cDOS_flag, include_Weep)
+
+
+    ### Init table size ###
+    console = Dict()
+    if include_Weep == 1 && cDOS_flag == 0
+        # header table
+        console["header"] = ["it", "phic", "phiph", "znormi", "shifti", "ef-mu", "deltai", "err_delta"]
+        # width table
+        console["width"] = [8, 10, 10, 10, 10, 10, 10, 12]
+        # precision data
+        console["precision"] = [0, 2, 2, 2, 2, 2, 2, 5]
+
+    elseif include_Weep == 1 && cDOS_flag == 1
+        # header table
+        console["header"] = ["it", "phic", "phiph", "znormi", "deltai", "err_delta"]
+        #width table
+        console["width"] = [8, 10, 10, 10, 10, 12]
+        # precision data
+        console["precision"] = [0, 2, 2, 2, 2, 5]
+
+    elseif include_Weep == 0 && cDOS_flag == 0
+        # header table
+        console["header"] = ["it", "znormi", "shifti", "ef-mu", "deltai", "err_delta"]
+        #width table
+        console["width"] = [8, 10, 10, 10, 10, 12]
+        # precision data
+        console["precision"] = [0, 2, 2, 2, 2, 5]
+
+    elseif include_Weep == 0 && cDOS_flag == 1
+        # header table
+        console["header"] = ["it", "znormi", "deltai", "err_delta"]
+        #width table
+        console["width"] = [8, 14, 14, 14]
+        # precision data
+        console["precision"] = [0, 4, 4, 5]
+
+    else
+        @error "Unkwon mode! Check if the cDOS_flag and include_Weep flag are set correctly!"
+    end
+    console = formatTableHeader(console)
+
+    console = printStartMessage(console)
+
+
+    ### Write input to struct/dictionary ###
+    # rewrite s.t. @isdefined is checked in struct?
+    # Use substructures, e.g. struct a2f, ...
+    # remove types in definition ::Type
+    
+
+
+    ########## READ-IN ##########
+    ##### a2f file #####
+    a2f_omega_fine, a2f_fine = readIn_a2f(a2f_file, ind_smear, a2f_unit, nheader_a2f, nfooter_a2f, nsmear)
+
+    # determine superconducting properties from Allen-Dynes McMillan equation based on interpolated a2F
+    AD_data = calc_AD_Tc(a2f_omega_fine, a2f_fine, muc)
+    ML_Tc = AD_data[1] / kb;    # ML-Tc in K
+    AD_Tc = AD_data[2] / kb;    # AD-Tc in K
+    BCS_gap = AD_data[3];       # BCS gap value in meV
+    lambda = AD_data[4];        # total lambda
+    omega_log = AD_data[5];     # omega_log in meV
+
+    # convert muc for Migdal-Eliashberg
+    global muc_ME = muc / (1 + muc*log(200/omega_c))    
+    # CHANGE 200 to e.g. maximum(a2f_omega_fine[a2f_fine .> 0.1])
+
+    # print Allen-Dynes
+    printADtable(console)
+
+
+    ########## read-in and process Dos and Weep ##########
+    ### Weep ###
+    if include_Weep == 1
+        Weep, unitWeepFile = readIn_Weep(Weep_file, Weep_unit, nheader_Weep, nfooter_Weep)
+
+        # Include full weep at iteration:
+        nItFullWeep = 5
+        # if greater than 10 adapt termination criterion for min iterations !!
+    end
+
+
+    ### Dos ###
+    if @isdefined(dosW_file) && @isdefined(dos_file) && include_Weep == 1
+        # QE/Abinit/... dos
+        dos_en, dos, ef, unitDosFile = readIn_Dos(dos_file, colFermi_dos, spinDos, dos_unit, nheader_dos, nfooter_dos)
+        # W dos
+        dosW_en, dosW, ef, unitDosWFile = readIn_Dos(dosW_file, colFermi_dosW, spinDosW, dosW_unit, nheader_dosW, nfooter_dosW)
+
+        # overlap of energies
+        en_interval = [dosW_en[findfirst(dosW_en .> dos_en[1])]; dosW_en[findlast(dosW_en .< dos_en[end])]]
+        # number of points overlapping
+        idxOverlap = [findfirst(dosW_en .> dos_en[1]), findlast(dosW_en .< dos_en[end])]
+        Nitp = idxOverlap[2] - idxOverlap[1] + 1
+        
+        # restrict Weep
+        Weep = Weep[idxOverlap[1]:idxOverlap[2], idxOverlap[1]:idxOverlap[2]]
+        
+        # Interpolation Dos
+        dos_en, dos = interpolateDos(dos_en, dos, en_interval, Nitp)
+
+    elseif @isdefined(dos_file)
+        # QE/Abinit/... dos
+        dos_en, dos, ef, unitDosFile = readIn_Dos(dos_file, colFermi_dos, spinDos, dos_unit, nheader_dos, nfooter_dos)
+
+    elseif @isdefined(dosW_file) 
+        # W dos
+        dos_en, dos, ef, unitDosFile = readIn_Dos(dosW_file, colFermi_dosW, spinDosW, dosW_unit, nheader_dosW, nfooter_dosW)
+    
+    end
+
+
+    ### REMOVE - START ###
+    # restrict Dos/Weep to a subset of grid points
+    # ONLY RELEVANT TO TEST THE SCALING OF THE CODE
+    if ~isnothing(Nrestrict)
+        if include_Weep == 1
+            # call restrict function
+            Weep, dos, dos_en = restrictInput(Nrestrict, wndRestrict, ef, dos, dos_en, Weep)
+        else
+            # call restrict function
+            dos, dos_en = restrictInput(Nrestrict, wndRestrict, ef, dos, dos_en)
+        end
+    end
+    ### REMOVE - END ###
+
+
+    ### remove zeros at begining/end of dos ###
+    if include_Weep == 1 
+        dos, dos_en, Weep = neglectZeros(dos, dos_en, Weep)
+    else
+        dos, dos_en = neglectZeros(dos, dos_en)
+    end
+
+
+    ### length energy vector ###
+    ndos = size(dos_en, 1)
+
+    ### index of fermi energy ###
+    idx_ef = findmin(abs.(dos_en .- ef)) # find value closest to ef
+    idx_ef = idx_ef[2] # index of closest value
+
+    ### dos at ef ###
+    dosef = dos[idx_ef]
+
+
+    ###### Print to console #####
+    # Flags
+    printFlagsAsText()
+
+end
 
 """
     checkInputFiles()

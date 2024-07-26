@@ -18,10 +18,11 @@
 module IsoME
 
 # ToDo:
-# Transfer ReadMe to github
 # Annotate type of global variables, e.g. x::Float64 = 1.0
-# Default values struct
 # Remove revise before making module public
+# print elapsed time 
+# error handle
+
 
 export EliashbergSolver, arguments
 
@@ -50,11 +51,25 @@ const conv_thr = 1e-4;    # convergence threshold for Delta0 for solving the Eli
 
 
 ### Define input struct ###
-@kwdef struct arguments
+# Group into sub structs?
+#= 
+i.e. @kwdef struct a2f
+    file::String = ""
+    nheader::Number = nothing
+end
+
+@kwdef struct arguments 
+    a2f::a2f = a2f(nheader = nothing)
+end 
+=#
+@kwdef mutable struct arguments
     # Parameters
-    temps::Vector{Float64}
-    muc::Float64 = 0.16
-    omega_c::Float64 = 15000
+    temps::Vector{Number} = [-1]        # change to type number?
+    muc::Float64 = 0.14
+    omega_c::Float64 = 15000.0
+    muc_ME::Float64 = muc / (1 + muc*log(200/omega_c))  
+    mixing_beta::Number = -1
+    nItFullCoul = 5             # if greater than 20 adapt termination criterion for min iterations !!
 
     # mode
     cDOS_flag::Int64 = 1
@@ -64,45 +79,49 @@ const conv_thr = 1e-4;    # convergence threshold for Delta0 for solving the Eli
     # a2f input file
     a2f_file::String
     ind_smear::Int64 = 1
-    nsmear::Int64   = Int64
-    nheader_a2f::Int64 = Int64
-    nfooter_a2f::Int64 = Int64
-    a2f_unit::Int64    = Int64
+    nsmear::Number   = -1
+    nheader_a2f::Number = -1
+    nfooter_a2f::Number = -1
+    a2f_unit::String    = ""
 
     # dos input file
     dos_file::String = ""
-    nheader_dos::Int64 = Int64 
-    nfooter_dos::Int64 = Int64 
-    dos_unit::Int64   = Int64
+    nheader_dos::Number = -1
+    nfooter_dos::Number = -1
+    dos_unit::String   = ""
     spinDos::Int64   = 2
     colFermi_dos::Int64 = 1
-    nheader_dosW::Int64 = Int64 
-    nfooter_dosW::Int64 = Int64
-    dosW_unit::Int64   = Int64
-    spinDosW::Int64     = 1
+    nheader_dosW::Number = -1 
+    nfooter_dosW::Number = -1
+    dosW_unit::String   = ""
+    spinDosW::Number     = 1
     colFermi_dosW::Int64 = 0
     dosW_file::String = ""
 
-    # Weep input file, auto extraction if nothing
+    # Weep input file, auto extraction if -1
     Weep_file::String = ""
-    nheader_Weep::Int64 = Int64
-    nfooter_Weep::Int64 = Int64
-    Weep_unit::Int64 = Int64
+    nheader_Weep::Number = -1
+    nfooter_Weep::Number = -1
+    Weep_unit::String = ""
     include_Weep::Int64 = 0
 
     # Output
-    outdir::String = "./output/"
+    outdir::String = "./output/"    # pwd() ??
     flag_log::Int64 = 1
     flag_figure::Int64 = 1
-    flag_outfile::Int64 = 1 
+    flag_outfile::Int64 = 1
+    log_file::Any = ""
+    material::String = "Material"
 
     # Restrict Weep, REMOVE BEFORE MERGE !!!
-    Nrestrict::Int64 = Int64
-    wndRestrict::Vector{Float64} = Vector{Int64}()
+    Nrestrict::Number = -1
+    wndRestrict::Vector{Number} = [-1]
 end
+
 
 ### include files ###
 # only include files which are called directly here?
+include("TcSearch.jl")
 include("ReadIn.jl")
 include("Interpolation.jl")
 include("Mixing.jl")
@@ -110,14 +129,11 @@ include("AllenDynes.jl")
 include("MuUpdate.jl")
 include("FormatConsoleOutput.jl")
 include("EliashbergEq.jl")
-include("TcSearch.jl")
+
 
 
 #=
-### open log_file ###
-#if flag_log == 1
-#    log_file = open(outdir * "/log.txt", "w")
-#end
+
 
 ### Start program ###
 #try

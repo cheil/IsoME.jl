@@ -1,26 +1,10 @@
+"""
+    calc_AD_Tc(omega, a2f, mu_star)
+
+Calculate superconducting properties from Allen-Dynes McMillan formula using the energy in meV, 
+the Eliashberg spectral funciton in 1/meV and the Anderson pseudopotential
+"""
 function calc_AD_Tc(omega, a2f, mu_star)
-    """
-    Calculate superconducting properties from Allen-Dynes McMillan formula
-
-    --------------------------------------------------------------------
-    Input:
-        omega:      energy in meV
-        a2f:        Eliashberg spectral function (1/meV)
-        mu_star:    Morel-Anderson pseudopotential parameters
-
-    --------------------------------------------------------------------
-    Output:
-        data:       4x1 array containing:
-                     - 1st column: Tc in K
-                     - 2nd column: BCS gap value in meV based on Tc
-                     - 3rd column: total el-ph coupling parameter lambda
-                     - 4th column: log. averaged phonon frequency
-
-    --------------------------------------------------------------------
-    Comments:
-
-    --------------------------------------------------------------------
-    """
 
     a2f_eps = 1e-2
     a2f   = a2f[omega .> a2f_eps]
@@ -51,7 +35,7 @@ function calc_AD_Tc(omega, a2f, mu_star)
     fmu = 1.00 + 6.86 .* exp(-lambda./mu_star) ./ (1.0/lambda - mu_star - omega_log./omega_2)
     Tc_ML = fom*fmu*Tc; # Tc in meV
 
-    data = [Tc_ML,Tc_AD, gap0, lambda, omega_log]
+    data = [Tc_ML, Tc_AD, gap0, lambda, omega_log]
 
     return data
 end

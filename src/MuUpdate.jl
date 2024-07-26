@@ -41,38 +41,16 @@ function fermiFcn(epsilon, mu, T)
 end
 
 
+"""
+    calc_Ne_Sc(mu, Ne_nsc, itemp, wsi, M, dos_en, dos, znormip, deltaip, shiftip)
+
+Calculate the number of electrons in the sc state for a given chemical
+potential minus the number of electrons in the normal state
+According to Lucrezi, Communication Physics, (2024) 7:33, eq. (16)
+or Lee, Computational Materials (2023) 9:156, eq. (32) 
+(See also Overleaf/Matsubara_sums)
+"""
 function calc_Ne_Sc(mu, Ne_nsc, itemp, wsi, M, dos_en, dos, znormip, deltaip, shiftip)
-    """
-    Calculate the number of electrons in the sc state for a given chemical
-    potential minus the number of electrons in the normal state
-    According to Lucrezi, Communication Physics, (2024) 7:33, eq. (16)
-    or Lee, Computational Materials (2023) 9:156, eq. (32) 
-    (See also Overleaf/Matsubara_sums)
-
-    --------------------------------------------------------------------
-    Input:
-        mu:         chemical potential
-        Ne_nsc:     Number of electrons in normal state
-        itemp:      Temperature 
-        wsi:        vector containing matsubara frequencies
-        M:          number of highest matsubara frequency
-        dos_en:     energy grid points
-        dos:        density of states
-        znormip:    Z of previous iteration
-        deltaip:    Gap of previous iteration
-        shiftip:    shift of previous iteration
-
-    --------------------------------------------------------------------
-    Output:
-        Ne:         Number of electrons in sc state
-
-    --------------------------------------------------------------------
-    Comments:
-        -
-        
-    -------------------------------------------------------------------- 
-    """
-
     # eq (9) & (11) overleaf
     delta = dos_en .- mu
     theta = (wsi' .* znormip') .^ 2 .+ (delta .+ shiftip') .^ 2 .+ (znormip' .* deltaip) .^ 2
@@ -90,43 +68,15 @@ function calc_Ne_Sc(mu, Ne_nsc, itemp, wsi, M, dos_en, dos, znormip, deltaip, sh
 end
 
 
+"""
+    update_mu_own(itemp, wsi, M, ef, dos_en, dos, znormip, deltaip, shiftip)
 
-function update_mu_own(itemp, wsi, M, muintr, dos_en, dos, znormip, deltaip, shiftip)
-    """
-    Routine to update chemical potential (own version not relying on nel)
-    Newton - Raphson, doesn't work here, it diverges after a few iterations
-    I'm using the secant method that seems to work very well
+Routine to update chemical potential s.t. the number of electrons stays fixed
 
-    --------------------------------------------------------------------
-    Input:
-        itemp:      Temperature 
-        wsi:        vector containing matsubara frequencies
-        M:          number of highest matsubara frequency
-        muintr:
-        ndos:       number of energy grid points
-        dos_en:     energy grid points
-        dos:        density of states
-        znormip:    Z of previous iteration
-        deltaip:    Gap of previous iteration
-        shiftip:    shift of previous iteration
-
-    --------------------------------------------------------------------
-    Output:
-        mu:         updated chemical potential
-
-    --------------------------------------------------------------------
-    Comments:
-        -
-        
-    -------------------------------------------------------------------- 
-    """
-
-
-
-    ### Intialize
-    # max iterations
-    Nit = 5000
-
+The routine uses the bisection method to find a value for the chemical potential
+where the amount of electrons in the SC state is equal to the normal state
+"""
+function update_mu_own(itemp, wsi, M, ef, dos_en, dos, znormip, deltaip, shiftip)
     # length energies
     ndos = size(dos_en, 1)
 
@@ -141,7 +91,7 @@ function update_mu_own(itemp, wsi, M, muintr, dos_en, dos, znormip, deltaip, shi
     Ne_nsc = trapz(dos_en, 2 .* fermiFcn(dos_en, ef, itemp) .* dos)
 
     # delta as row vector, needed if no weep
-    if include_Weep == 0
+    if size(deltaip,2) == 1
         deltaip = deltaip'
     end
 

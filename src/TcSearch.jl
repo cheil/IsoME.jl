@@ -16,25 +16,15 @@
 
 export EliashbergSolver
 
-# Solve Eliashberg for one temperature
-function solve_eliashberg(itemp, gap0, console)
-    """
-    Solve eliashberg self-consistently
+"""
+    solve_eliashberg(itemp, inp, console, val)
 
-    -------------------------------------------------------------------
-    Input:
-        itemp:      Temperature
-
-    --------------------------------------------------------------------
-    Output:
-        data:       Converged self energy on imaginary axis
-
-    --------------------------------------------------------------------
-    Comments:
-        - 
-    --------------------------------------------------------------------
-    """
-
+Solve the eliashberg eq. self-consistently for a fixed temperature
+"""
+function solve_eliashberg(itemp, inp, console, val)
+    # destruct inputs
+    (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, ef, dosef, idx_ef, ndos, BCS_gap) = val
+    (; cDOS_flag, include_Weep, flag_log, omega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag) = inp
 
     ### Matsubara frequencies ###
     beta = 1 / (kb * itemp)
@@ -45,32 +35,32 @@ function solve_eliashberg(itemp, gap0, console)
     ### sparse sampling, consider only subset of mat frequencies up to M
     # only reasonable if T < 1 K
     if itemp < 1
-        global sparse_sampling_flag = 1
+        sparse_sampling_flag = 1
         ind_mat_freq = initSparseSampling(beta, omega_c, M)
 
         # write to console
-        printTextCentered("T = "*string(itemp)*" K ", console["partingLine"] , true)
+        printTextCentered(inp, "T = "*string(itemp)*" K ", console["partingLine"] , true)
         printstyled("\n - Number of Matsubara Frequencies = ", length(ind_mat_freq), " / ", nsiw)
         println("\n")
 
         # write to log file
         if flag_log == 1
-            printstyled(log_file, "\n - Number of Matsubara Frequencies = ", length(ind_mat_freq), " / ", nsiw)
-            println(log_file, "\n")
+            printstyled(inp.log_file, "\n - Number of Matsubara Frequencies = ", length(ind_mat_freq), " / ", nsiw)
+            println(inp.log_file, "\n")
         end
     else
-        global sparse_sampling_flag = 0
+        sparse_sampling_flag = 0
         ind_mat_freq = collect(1:M+1)
 
         # write to console
-        printTextCentered("T = "*string(itemp)*" K ", console["partingLine"] , true)
+        printTextCentered(inp, "T = "*string(itemp)*" K ", console["partingLine"] , true)
         printstyled("\n - Number of Matsubara Frequencies = ", nsiw)
         println("\n")
 
         # write to log file
         if flag_log == 1
-            printstyled(log_file, "\n - Number of Matsubara Frequencies = ", nsiw)
-            println(log_file, "\n")
+            printstyled(inp.log_file, "\n - Number of Matsubara Frequencies = ", nsiw)
+            println(inp.log_file, "\n")
         end
     end
 
@@ -83,27 +73,27 @@ function solve_eliashberg(itemp, gap0, console)
     if include_Weep == 1
         if cDOS_flag == 0
             ### Initialize
-            deltai = ones(ndos, nsiw) .* gap0
+            deltai = ones(ndos, nsiw) .* BCS_gap
             znormi = ones(nsiw)
             shifti = -zeros(nsiw)
-            phiphi = ones(nsiw) .* gap0
+            phiphi = ones(nsiw) .* BCS_gap
             phici = -zeros(ndos)
             muintr = ef
 
             ### Print to console & log file
             console["InitValues"] = [0 phici[idx_ef] phiphi[1] znormi[1] shifti[1] ef - muintr deltai[idx_ef, 1] nothing]
-            console = printTableHeader(console)
+            console = printTableHeader(inp, console)
 
         elseif cDOS_flag == 1
             ### Initialize
-            deltai = ones(ndos, nsiw) .* gap0
+            deltai = ones(ndos, nsiw) .* BCS_gap
             znormi = ones(nsiw)
-            phiphi = ones(nsiw) .* gap0
+            phiphi = ones(nsiw) .* BCS_gap
             phici = zeros(ndos)
 
             ### Print to console & log file
             console["InitValues"] = [0 phici[idx_ef] phiphi[1] znormi[1] deltai[idx_ef, 1] nothing]
-            console = printTableHeader(console)
+            console = printTableHeader(inp, console)
 
         end
 
@@ -111,24 +101,23 @@ function solve_eliashberg(itemp, gap0, console)
 
         if cDOS_flag == 0
             ### Initialize 
-            deltai = ones(nsiw) .* gap0
+            deltai = ones(nsiw) .* BCS_gap
             znormi = ones(nsiw)
             shifti = zeros(nsiw)
             muintr = ef
 
             ### Print to console & log file
             console["InitValues"] = [0 znormi[1] shifti[1] ef - muintr deltai[1] nothing]
-            console = printTableHeader(console)
+            console = printTableHeader(inp, console)
 
         elseif cDOS_flag == 1
             ### Initialize 
-            deltai = ones(nsiw) .* gap0
+            deltai = ones(nsiw) .* BCS_gap
             znormi = ones(nsiw)
 
             ### Print to console & log file
             console["InitValues"] = [0 znormi[1] deltai[1] nothing]
-            console = printTableHeader(console)
-
+            console = printTableHeader(inp, console)
         end
 
     else
@@ -167,26 +156,29 @@ function solve_eliashberg(itemp, gap0, console)
 
 
         # mixing beta
-        broyden_beta = (1.0 - i_it / N_it)
-        broyden_beta = maximum([0.5, 1.0 - 0.05*(i_it-1)])  
+        if mixing_beta == -1
+            broyden_beta = maximum([0.5, 1.0 - 0.05*(i_it-1)]) 
+        else
+            broyden_beta = mixing_beta
+        end 
+
+        # weight coulomb interaction
+        wgCoulomb = minimum([1, i_it / nItFullCoul])
 
         if include_Weep == 1
-            # weight weep
-            wgWeep = minimum([1, i_it / nItFullWeep])
-
             ### Variable DoS ###
             if cDOS_flag == 0
                 ### mu update 
                 if mu_flag == 1
-                    muintr = update_mu_own(itemp, wsi, M, muintr, dos_en, dos, znormip, deltaip, shiftip)
+                    muintr = update_mu_own(itemp, wsi, M, ef, dos_en, dos, znormip, deltaip, shiftip)
                 end
 
-                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, lambdai, dosef, ndos, dos_en, dos, znormip, phiphip, phicip, shiftip, wgWeep, muintr)
+                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb, muintr)
                 shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[4]
 
                 ### Constant DoS ###
             elseif cDOS_flag == 1
-                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, lambdai, ndos, dos_en, dos, znormip, phiphip, phicip, wgWeep)
+                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, idx_ef, wgCoulomb)
             end
 
             # linear mixing
@@ -224,14 +216,14 @@ function solve_eliashberg(itemp, gap0, console)
             if cDOS_flag == 0
                 ### mu update
                 if mu_flag == 1
-                    muintr = update_mu_own(itemp, wsi, M, muintr, dos_en, dos, znormip, deltaip, shiftip)
+                    muintr = update_mu_own(itemp, wsi, M, ef, dos_en, dos, znormip, deltaip, shiftip)
                 end
 
-                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, muintr)
+                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, muintr, wgCoulomb)
                 shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[3]
 
             elseif cDOS_flag == 1
-                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, lambdai, deltaip, muc_ME)
+                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, deltaip, muc_ME, wgCoulomb)
             end
 
             znormi = (1.0 - abs(broyden_beta)) .* znormi .+ abs(broyden_beta) .* new_data[1]
@@ -271,7 +263,7 @@ function solve_eliashberg(itemp, gap0, console)
         ### print to log file ###
         if flag_log == 1
             for i in axes(strConsole, 1)
-                Printf.format(log_file, Printf.Format(strConsole[i]), format[i, 1], " ", format[i, 2], format[i, 3], outputVec[i], format[i, 4], " ")
+                Printf.format(inp.log_file, Printf.Format(strConsole[i]), format[i, 1], " ", format[i, 2], format[i, 3], outputVec[i], format[i, 4], " ")
             end
         end
 
@@ -282,8 +274,8 @@ function solve_eliashberg(itemp, gap0, console)
             printstyled("\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=true)
 
             if flag_log == 1
-                println(log_file, replace(console["Hline"], "." => " "))
-                printstyled(log_file, "\nConvergence achieved for T = " * string(itemp) * " K\n\n"; bold=true)
+                println(inp.log_file, replace(console["Hline"], "." => " "))
+                printstyled(inp.log_file, "\nConvergence achieved for T = " * string(itemp) * " K\n\n"; bold=true)
             end
 
             return data
@@ -305,9 +297,9 @@ function solve_eliashberg(itemp, gap0, console)
             println("\n")
 
             if flag_log == 1
-                println(log_file, replace(console["Hline"], "." => " "))
-                printstyled(log_file, "\nConvergence not achieved within " * string(N_it) * " iterations\n"; bold=true)
-                println(log_file, "\n")
+                println(inp.log_file, replace(console["Hline"], "." => " "))
+                printstyled(inp.log_file, "\nConvergence not achieved within " * string(N_it) * " iterations\n"; bold=true)
+                println(inp.log_file, "\n")
     
             end
 
@@ -322,27 +314,26 @@ end
 
 
 # For each temperature solve eliashberg equations
-function findTc(temps, console)
-    temps = sort(temps)
-    nT = size(temps, 1)
+function findTc(inp, console, val, ML_Tc)
+    inp.temps = sort(inp.temps)
+    nT = size(inp.temps, 1)
     Delta0 = Vector{Float64}()
     Shift0 = Vector{Float64}()
     Znorm0 = Vector{Float64}()
     EfMu = Vector{Float64}()
-    gap0 = BCS_gap
 
-    if TcSearchMode_flag == 0
+    if inp.TcSearchMode_flag == 0
         for iT in 1:nT
-            itemp = temps[iT]
+            itemp = inp.temps[iT]
 
             # solve Eliashberg equations
-            data = solve_eliashberg(itemp, gap0, console)
-            if cDOS_flag == 0
+            data = solve_eliashberg(itemp, inp, console, val)
+            if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
                 Shift0 = push!(Shift0, data[3])
                 EfMu = push!(EfMu, data[4])
-            elseif cDOS_flag == 1
+            elseif inp.cDOS_flag == 1
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
             end
@@ -353,37 +344,30 @@ function findTc(temps, console)
             end
         end
 
-    elseif TcSearchMode_flag == 1
+    elseif inp.TcSearchMode_flag == 1
 
-        # initial guess
-        # rewrite s.t. user can specify array of temps which are all used for fitting
-        if isempty(temps) || nT > 1
-            itemp = round(AD_Tc)
-        else
-            if typeof(temps) == Array{Float64,1}
-                itemp = temps[1]
-            else
-                itemp = temps
-            end
-        end
+        # initial guess, Machine learning Tc           
+        itemp = round(ML_Tc)
+        # rewrite s.t. user can specify array of temps which are all used for fitting ?
 
         # Init
+
         # expansion of a + b*log(c-x) at x = 0, use other function instead??
         m(x, p) = p[1] + log(p[3]) .- p[2] * x ./ p[3] .- p[2] * x .^ 2 / (2 * p[3]^2) .- p[2] * x .^ 3 / (3 * p[3]^3) .- p[2] * x .^ 4 / (4 * p[3]^4) .- p[2] * x .^ 5 / (5 * p[3]^5)
-        temps = Vector{Float64}()
+        inp.temps = Vector{Float64}()
         fitFlag = true
         while true
             # save iterations
-            temps = push!(temps, itemp)
+            inp.temps = push!(inp.temps, itemp)
 
             # solve Eliashberg equations
-            data = solve_eliashberg(itemp, gap0, console)
-            if cDOS_flag == 0
+            data = solve_eliashberg(itemp, inp, console, val)
+            if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
                 Shift0 = push!(Shift0, data[3])
                 EfMu = push!(EfMu, data[4])
-            elseif cDOS_flag == 1
+            elseif inp.cDOS_flag == 1
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
             end
@@ -401,7 +385,7 @@ function findTc(temps, console)
                     itemp = floor(itemp + maximum([itemp / 2, 2]))
                 end
 
-            elseif abs(temps[end] - temps[end-1]) <= 1 && ((isnan(Delta0[end]) && ~isnan(Delta0[end-1])) || (~isnan(Delta0[end]) && isnan(Delta0[end-1])))
+            elseif abs(inp.temps[end] - inp.temps[end-1]) <= 1 && ((isnan(Delta0[end]) && ~isnan(Delta0[end-1])) || (~isnan(Delta0[end]) && isnan(Delta0[end-1])))
                 # converged
                 break
 
@@ -412,7 +396,7 @@ function findTc(temps, console)
                 # fit gap values
                 nnanDelta = .~isnan.(Delta0)
                 p0 = convert(Vector{Float64}, [maximum(Delta0[nnanDelta]), 1, minimum(Delta0[nnanDelta])])
-                fit = curve_fit(m, temps[nnanDelta], Delta0[nnanDelta], p0)
+                fit = curve_fit(m, inp.temps[nnanDelta], Delta0[nnanDelta], p0)
                 par = fit.param
 
                 # find root
@@ -422,7 +406,7 @@ function findTc(temps, console)
                 # check if T < 0, happens when gap increases with T 
                 # ideally a increasing gap should not happen at all
                 if itemp < 0
-                    itemp = maximum(temps[nnanDelta]) + sum(temps[nnanDelta]) / 2
+                    itemp = maximum(inp.temps[nnanDelta]) + sum(inp.temps[nnanDelta]) / 2
                 end
 
             else
@@ -437,16 +421,16 @@ function findTc(temps, console)
 
             # Escape
             if itemp < 1
-                if flag_log == 1
-                    print(log_file, "\nTemperature already below 1 K. Material is most likely not a superconductor!\n")
+                if inp.flag_log == 1
+                    print(inp.log_file, "\nTemperature already below 1 K. Material is most likely not a superconductor!\n")
                 end
 
                 print("\nTemperature already below 1 K. Material is most likely not a superconductor!\n")
 
                 break
-            elseif length(temps) > 500
-                if flag_log == 1
-                    print(log_file, "Couldn't find a Tc! \n")
+            elseif length(inp.temps) > 500
+                if inp.flag_log == 1
+                    print(inp.log_file, "Couldn't find a Tc! \n")
                 end
 
                 print("Couldn't find a Tc! \n")
@@ -459,119 +443,128 @@ function findTc(temps, console)
         error("Unknown Tc search mode! Please change the TcSearchMode_flag to an valid value!")
     end
 
-    printTextCentered("Stopping now!", console["partingLine"], true)
+    printTextCentered(inp, "Stopping now!", console["partingLine"], true)
 
-    return temps, Znorm0, Delta0, Shift0, EfMu
+    return inp.temps, Znorm0, Delta0, Shift0, EfMu
 
 end
 
 """
-    EliashbergSolver(path)
+    EliashbergSolver(arguments)
 
 Main function. User has to pass the input arguments and it returns the Tc.
 """
-function EliashbergSolver(path)
-    iso, console = InputParser(path)
-    # Idea: write all inputs into inp (better name)
-
-    ########### start loop over temperatures ##########
-    temps, Znorm0, Delta0, Shift0, EfMu = findTc(temps, console)
-
-    # write Tc to console
-    printSummary()
-
-    # write output-file
-    if flag_outfile == 1
-        out_var = zeros(nT, 5)
-        out_var[:, 1] = temps
-        out_var[:, 2] = Delta0
-        if cDOS_flag == 0
-            out_var[:, 3] = Znorm0
-            out_var[:, 4] = Shift0
-            out_var[:, 5] = EfMu
-        elseif cDOS_flag == 1
-            out_var[:, 3] = Znorm0
+function EliashbergSolver(inp::arguments)
+    dt = @elapsed begin
+        ### open log_file ###
+        if inp.flag_log == 1
+            inp.log_file = open(inp.outdir * "/log.txt", "w")
         end
+        inp, console, val, ML_Tc = InputParser(inp)
 
-        if mu_flag == 0
-            writedlm(outdir * "/Delta0_constmu_sm" * string(ind_smear) * ".txt", out_var)
-        elseif mu_flag == 1
-            writedlm(outdir * "/Delta0_varmu_sm" * string(ind_smear) * ".txt", out_var)
-        end
-    end
+        ########### start loop over temperatures ##########
+        temps, Znorm0, Delta0, Shift0, EfMu = findTc(inp, console, val, ML_Tc)
 
-    # print a2F vs. energy
-    if flag_figure == 1
-        plot_font = "Computer Modern"
-        default(
-            fontfamily=plot_font,
-            linewidth=2,
-            framestyle=:box,
-            label=nothing,
-            grid=false
-        )
+        # write Tc to console
+        printSummary(inp, temps, Delta0)
 
-        xlim_max = round(maximum(a2f_omega_fine) / 10 * 1.01, RoundUp) * 10
-        xtick_val = 0:10:xlim_max
-        ylim_max = round(maximum(a2f_fine), RoundUp)
-
-        plot(a2f_omega_fine, a2f_fine)
-        xlims!(0, xlim_max)
-        ylims!(0, ylim_max)
-        title!(material)
-        xlabel!(L"\omega ~ \mathrm{(meV)}")
-        ylabel!(L"\alpha^2F ~ \mathrm{(1/meV)}")
-        savefig(outdir * "/a2F_sm" * string(ind_smear) * ".pdf")
-    end
-
-    # print gap vs. temperature
-    if flag_figure == 1
-        nan_ind = Delta0 .== Delta0
-        Delta0 = Delta0[nan_ind]
-        temps = temps[nan_ind]
-
-        plot_font = "Computer Modern"
-        default(
-            fontfamily=plot_font,
-            linewidth=2,
-            framestyle=:box,
-            label=nothing,
-            grid=false
-        )
-
-        if maximum(temps) < 10
-            xlim_max = round(maximum(temps) * 1.1, RoundUp)
-            xtick_val = 0:1:xlim_max
-        else
-            xlim_max = round(maximum(temps) / 10 * 1.01, RoundUp) * 10
-            xtick_val = 0:10:xlim_max
-        end
-
-        if maximum(Delta0) < 10
-            ylim_max = round(maximum(Delta0), RoundUp)
-        else
-            ylim_max = round(maximum(Delta0) / 10, RoundUp) * 10
-        end
-
-        plot(temps, Delta0, marker=:circle)
-        plot!(xticks=xtick_val)
-        xlims!(0, xlim_max)
-        ylims!(0, ylim_max)
-        title!(material)
-        xlabel!(L"T ~ \mathrm{(K)}")
-        ylabel!(L"\Delta_0 ~ \mathrm{(meV)}")
-
-        if cDOS_flag == 0
-            if mu_flag == 0
-                savefig(outdir * "/Delta0_constmu_mu" * string(muc) * "_sm" * string(ind_smear) * ".pdf")
-            elseif mu_flag == 1
-                savefig(outdir * "/Delta0_varmu_mu" * string(muc) * "_sm" * string(ind_smear) * ".pdf")
+        # write output-file
+        if inp.flag_outfile == 1
+            out_var = zeros(size(Delta0, 1), 5)
+            out_var[:, 1] = temps[1:size(Delta0, 1)]
+            out_var[:, 2] = Delta0
+            if inp.cDOS_flag == 0
+                out_var[:, 3] = Znorm0
+                out_var[:, 4] = Shift0
+                out_var[:, 5] = EfMu
+            elseif inp.cDOS_flag == 1
+                out_var[:, 3] = Znorm0
             end
-        else
-            savefig(outdir * "/Delta0_conDOS_mu" * string(muc) * "_sm" * string(ind_smear) * ".pdf")
+
+            if inp.mu_flag == 0
+                writedlm(inp.outdir * "/Delta0_constmu_sm" * string(inp.ind_smear) * ".txt", out_var)
+            elseif inp.mu_flag == 1
+                writedlm(inp.outdir * "/Delta0_varmu_sm" * string(inp.ind_smear) * ".txt", out_var)
+            end
+        end
+
+        # print a2F vs. energy
+        a2f_omega_fine, a2f_fine = val
+        plot_font = "Computer Modern"
+        default(
+            fontfamily=plot_font,
+            linewidth=2,
+            framestyle=:box,
+            label=nothing,
+            grid=false
+        )
+        if inp.flag_figure == 1
+            if all(isnan.(Delta0))
+                print(@blue "Info: ")
+                println("No superconducting gap found - skipping plots\n")
+            else
+                xlim_max = round(maximum(a2f_omega_fine) / 10 * 1.01, RoundUp) * 10
+                xtick_val = 0:10:xlim_max
+                ylim_max = round(maximum(a2f_fine), RoundUp)
+
+                plot(a2f_omega_fine, a2f_fine)
+                xlims!(0, xlim_max)
+                ylims!(0, ylim_max)
+                title!(inp.material)
+                xlabel!(L"\omega ~ \mathrm{(meV)}")
+                ylabel!(L"\alpha^2F ~ \mathrm{(1/meV)}")
+                savefig(inp.outdir * "/a2F_sm" * string(inp.ind_smear) * ".pdf")
+
+                # print gap vs. temperature
+                nan_ind = .~isnan.(Delta0)
+                Delta0 = Delta0[nan_ind]
+                temps = temps[nan_ind]
+
+                plot_font = "Computer Modern"
+
+                if maximum(temps) < 10
+                    xlim_max = round(maximum(temps) * 1.1, RoundUp)
+                    xtick_val = 0:1:xlim_max
+                else
+                    xlim_max = round(maximum(temps) / 10 * 1.01, RoundUp) * 10
+                    xtick_val = 0:10:xlim_max
+                end
+
+                if maximum(Delta0) < 10
+                    ylim_max = round(maximum(Delta0), RoundUp)
+                else
+                    ylim_max = round(maximum(Delta0) / 10, RoundUp) * 10
+                end
+
+                plot(temps, Delta0, marker=:circle)
+                plot!(xticks=xtick_val)
+                xlims!(0, xlim_max)
+                ylims!(0, ylim_max)
+                title!(inp.material)
+                xlabel!(L"T ~ \mathrm{(K)}")
+                ylabel!(L"\Delta_0 ~ \mathrm{(meV)}")
+
+                if inp.cDOS_flag == 0
+                    if inp.mu_flag == 0
+                        savefig(inp.outdir * "/Delta0_constmu_mu" * string(inp.muc) * "_sm" * string(iinp.nd_smear) * ".pdf")
+                    elseif inp.mu_flag == 1
+                        savefig(inp.outdir * "/Delta0_varmu_mu" * string(inp.muc) * "_sm" * string(inp.ind_smear) * ".pdf")
+                    end
+                else
+                    savefig(inp.outdir * "/Delta0_conDOS_mu" * string(inp.muc) * "_sm" * string(inp.ind_smear) * ".pdf")
+                end
+            end
         end
     end
 
+    # print time elapsed
+    print("Total Runtime: ", dt, " seconds\n")
+    if inp.flag_log == 1
+        print(inp.log_file, "Total Runtime: ", dt, " seconds\n")
+   
+        # close & save
+        close(inp.log_file)
+    end
 end
 
 

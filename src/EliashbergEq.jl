@@ -55,10 +55,10 @@ end
 
 
 ##### Eliashberg equations - Variable Dos - Weep #####
-function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_mat_freq::Vector{Int64}, 
-                        lambdai::Vector{Float64}, dosef::Float64, ndos::Int64, dos_en::Vector{Float64}, 
-                        dos::Vector{Float64}, znormip::Vector{Float64}, phiphip::Vector{Float64}, 
-                        phicip::Vector{Float64}, shiftip::Vector{Float64}, wgWeep::Float64, muintr::Float64)
+function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_mat_freq::Vector{Int64},
+                        sparse_sampling_flag::Int64, lambdai::Vector{Float64}, dosef::Float64, ndos::Int64, 
+                        dos_en::Vector{Float64}, dos::Vector{Float64}, Weep::Matrix{Float64}, znormip::Vector{Float64}, 
+                        phiphip::Vector{Float64}, phicip::Vector{Float64}, shiftip::Vector{Float64}, wgCoulomb::Float64, muintr::Float64)
     """
     Evaluate the Isotropic Eliashberg equations for
         - variable Dos
@@ -79,7 +79,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
         phiphip:        phi phonon of previous iteration
         phicip:         phi coloumb of previous iteration
         shiftip:        shift of previous iteration 
-        wgWeep:         weighting of Weep 
+        wgCoulomb:         weighting of Weep 
         muintr:         updated chemical potential [optional]
 
     --------------------------------------------------------------------
@@ -110,7 +110,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     ckernel = sum(theta_inv .* (phiphip' .+ phicip), dims=2) - sum(phicip ./ (wsi' .^ 2 .+ dos_en .^ 2 .+ phicip .^ 2), dims=2)
 
     # add analytic part, NxN
-    ckernel = dos' .* wgWeep .* Weep .* (2 * kb * itemp .* ckernel' .+ 1 / 2 .* phicip' .* tanh.(1 / (2 * kb * itemp) .* sqrt.(dos_en' .^ 2 .+ phicip' .^ 2)) ./ (sqrt.(dos_en' .^ 2 .+ phicip' .^ 2)))
+    ckernel = dos' .* wgCoulomb .* Weep .* (2 * kb * itemp .* ckernel' .+ 1 / 2 .* phicip' .* tanh.(1 / (2 * kb * itemp) .* sqrt.(dos_en' .^ 2 .+ phicip' .^ 2)) ./ (sqrt.(dos_en' .^ 2 .+ phicip' .^ 2)))
 
     # integrate phic, Nx1    
     phici = -trapz(dos_en, ckernel)
@@ -167,8 +167,9 @@ end
 
 ##### Eliashberg equations - Constant Dos - Weep #####
 function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_mat_freq::Vector{Int64}, 
-                        lambdai::Vector{Float64}, ndos::Int64, dos_en::Vector{Float64}, dos::Vector{Float64}, 
-                        znormip::Vector{Float64}, phiphip::Vector{Float64}, phicip::Vector{Float64}, wgWeep::Float64)
+                        sparse_sampling_flag::Int64, lambdai::Vector{Float64}, ndos::Int64, 
+                        dos_en::Vector{Float64}, dos::Vector{Float64}, Weep::Matrix{Float64}, znormip::Vector{Float64}, 
+                        phiphip::Vector{Float64}, phicip::Vector{Float64}, idx_ef::Int64, wgCoulomb::Float64)
     """
     Evaluate the Isotropic Eliashberg equations for
         - Constant Dos
@@ -189,7 +190,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
         znormip:        Z of previous iteration
         phiphip:        phi phonon of previous iteration
         phicip:         phi coloumb of previous iteration
-        wgWeep:         weighting of Weep 
+        wgCoulomb:         weighting of Weep 
 
     --------------------------------------------------------------------
     Output:
@@ -226,7 +227,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     ckernel = sum(theta_inv .* (phiphip' .+ phicip) .- (phicip ./ (wsi' .^ 2 .+ dos_en .^ 2 .+ phicip .^ 2)), dims=2)
 
     # add analytic part and multiply with Weep, NxN
-    ckernel = dos' .* wgWeep .* Weep .* (2 * kb * itemp .* ckernel' .+ 1 / 2 .* phicip' .* tanh.(1 / (2 * kb * itemp) .* sqrt.(dos_en' .^ 2 .+ phicip' .^ 2)) ./ (sqrt.(dos_en' .^ 2 .+ phicip' .^ 2)))
+    ckernel = dos' .* wgCoulomb .* Weep .* (2 * kb * itemp .* ckernel' .+ 1 / 2 .* phicip' .* tanh.(1 / (2 * kb * itemp) .* sqrt.(dos_en' .^ 2 .+ phicip' .^ 2)) ./ (sqrt.(dos_en' .^ 2 .+ phicip' .^ 2)))
 
     # integrate phi_c
     phici = -trapz(dos_en, ckernel)
@@ -264,9 +265,9 @@ end
 
 ##### Eliashberg equations - Variable Dos - mu* #####
 function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_mat_freq::Vector{Int64}, 
-                        lambdai::Vector{Float64}, dos_en::Vector{Float64}, dos::Vector{Float64},
-                        dosef::Float64, znormip::Vector{Float64}, deltaip::Vector{Float64}, 
-                        shiftip::Vector{Float64}, muc::Float64, muintr::Float64)
+                        sparse_sampling_flag::Int64, lambdai::Vector{Float64}, dos_en::Vector{Float64}, 
+                        dos::Vector{Float64}, dosef::Float64, znormip::Vector{Float64}, 
+                        deltaip::Vector{Float64}, shiftip::Vector{Float64}, muc::Float64, muintr::Float64, wgCoulomb)
     """
     Evaluate the Isotropic Eliashberg equations for
         - Variable Dos
@@ -325,7 +326,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
         # using lambdam and lambdap the sum over |wp| < wscut 
         # is rewritten as a sum over iwp = 1, nsiw(itemp)
         znormi[iw] = znormi[iw] + dot(ziwp, lambdam)
-        deltai[iw] = deltai[iw] + dot(deiwp, lambdap .- 2 * muc)
+        deltai[iw] = deltai[iw] + dot(deiwp, lambdap .- 2 * wgCoulomb * muc)
         shifti[iw] = shifti[iw] + dot(shiwp, lambdap)
     end # iw = 1:M+1
 
@@ -356,8 +357,9 @@ end
 
 
 ##### Eliashberg equations - Constant Dos - mu* #####
-function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_mat_freq::Vector{Int64}, 
-                        lambdai::Vector{Float64}, deltaip::Vector{Float64}, muc::Float64)
+function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_mat_freq::Vector{Int64},
+                        sparse_sampling_flag::Int64, lambdai::Vector{Float64}, deltaip::Vector{Float64}, 
+                        muc::Float64, wgCoulomb)
     """
     Evaluate the Isotropic Eliashberg equations for
         - Constant Dos
@@ -408,7 +410,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
         # using lambdam and lambdap the sum over |wp| < wscut 
         # is rewritten as a sum over iwp = 1, nsiw(itemp)
         znormi[iw] = znormi[iw] + dot(ziwp, lambdam)
-        deltai[iw] = deltai[iw] + dot(deiwp, lambdap .- 2 * muc)
+        deltai[iw] = deltai[iw] + dot(deiwp, lambdap .- 2 * wgCoulomb * muc)
     end # iw = 1:M+1
 
 

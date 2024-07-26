@@ -11,25 +11,12 @@ Comments:
 
 """
 
+"""
+    printStartMessage(console)
 
-function printStartMessage(console)
-    """
-    Start message
-
-    -------------------------------------------------------------------
-    Input:
-        -
-
-    --------------------------------------------------------------------
-    Output:
-        -
-
-    --------------------------------------------------------------------
-    Comments:
-        - 
-
-    --------------------------------------------------------------------
-    """
+Start message
+"""
+function printStartMessage(inp, console)
 
     strIsoMe = "\n\n"
     strIsoMe = strIsoMe*"   _                 __  __   ______ \n"
@@ -39,25 +26,25 @@ function printStartMessage(console)
     strIsoMe = strIsoMe*"  | | \\__ \\ | (_) | | |  | | | |____ \n"
     strIsoMe = strIsoMe*"  |_| |___/  \\___/  |_|  |_| |______|\n\n"
 
-    #println("\nAuthors: ")
-    #println("  - Christoph Heil")
-    #println("  - Eva Kogler")
-    #println("  - Dominik Spath\n")
-    #println("Version: 1.0")
-
     strLine = "-"^(sum(console["width"])+length(console["width"])+1)
+
+    strAuthors = "Authors: Christoph Heil, Eva Kogler, Dominik Spath\n\n"
+
     strEliash = "Eliashberg Solver started"
 
     print(strIsoMe)
+    #printTextCentered(inp, "Version 1.0", strLine, false)
+    print(strAuthors)
     print(strLine)
-    if flag_log == 1
-        print(log_file, strIsoMe)
-        print(log_file, strLine)
+    if inp.flag_log == 1
+        print(inp.log_file, strIsoMe)
+        print(inp.log_file, strAuthors)
+        print(inp.log_file, strLine)
     end
-    printTextCentered(strEliash, strLine, true)
+    printTextCentered(inp, strEliash, strLine, true)
     print(strLine*"\n\n\n")
-    if flag_log == 1
-        print(log_file, strLine*"\n\n\n")
+    if inp.flag_log == 1
+        print(inp.log_file, strLine*"\n\n\n")
     end
 
     console["partingLine"] = strLine
@@ -66,25 +53,13 @@ function printStartMessage(console)
                                     
 end
 
-### 
-function printADtable(console)
-    """
-    Start message
 
-    -------------------------------------------------------------------
-    Input:
-        - partingLineCons: horizontal line console
+"""
+    printADtable(console)
 
-    --------------------------------------------------------------------
-    Output:
-        -
-
-    --------------------------------------------------------------------
-    Comments:
-        - 
-
-    --------------------------------------------------------------------
-    """
+Print the Allen-Dynes results to the console.
+"""
+function printADtable(inp, console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log)
 
     # hline in rest of console
     partingLineCons = console["partingLine"]
@@ -164,129 +139,81 @@ function printADtable(console)
     logText = logText*"|\n"*" "^blanksAD*replace(Hline, "." => " ")*"\n\n"
     print("|\n"*" "^blanksAD*replace(Hline, "." => " ")*"\n\n")
 
-    # write everything to log_file
-    if flag_log == 1
-        print(log_file, logText*"\n")
+    # write everything to inp.log_file
+    if inp.flag_log == 1
+        print(inp.log_file, logText*"\n")
     end
 end
 
 
-### Summary of complete calculation ###
-function printSummary()
-    """
-    Start message
+"""
+    printSummary()
 
-    -------------------------------------------------------------------
-    Input:
-        -
-
-    --------------------------------------------------------------------
-    Output:
-        -
-
-    --------------------------------------------------------------------
-    Comments:
-        - 
-
-    --------------------------------------------------------------------
-    """
-
+Summarize Tc calculation and print it to the console
+"""
+function printSummary(inp, temps, Delta0)
 
     text = ""
     if all(isnan.(Delta0))
         if minimum(temps) <= 1
-            text = text*"\n - " * material * " is not a superconductor"
+            text = text*"\n - " * inp.material * " is not a superconductor"
         else
             text = text*"\n - Couldn't find a superconducting gap in the specified area"
             text = text*"\n - Consider searching below T = " * string(minimum(temps)) * " K"
         end
     else
-        if TcSearchMode_flag == 0 && ~isnan(last(Delta0))
-            text = text*"\n - " * material * " is a superconductor"
+        if inp.TcSearchMode_flag == 0 && ~isnan(last(Delta0))
+            text = text*"\n - " * inp.material * " is a superconductor"
             text = text*"\n - Highest given temperature reached"
-            text = text*"\n - Tc > " * string(temps[findlast(.~isnan.(Delta0))]) * " K"
+            text = text*"\n - Tc > " * string(maximum(temps[.~isnan.(Delta0)])) * " K"
         else
-            text = text*"\n - " * material * " is a superconductor"
-            text = text*"\n - Tc = " * string(temps[findlast(.~isnan.(Delta0))]) * " K!"
+            text = text*"\n - " * inp.material * " is a superconductor"
+            text = text*"\n - Tc = " * string(maximum(temps[.~isnan.(Delta0)])) * " K!"
         end
     end
     printstyled("\nSummary:", bold=true)
     println(text*"\n")
 
-    if flag_log == 1
-        print(log_file, "\nSummary:"*text*"\n\n")
+    if inp.flag_log == 1
+        print(inp.log_file, "\nSummary:"*text*"\n\n")
     end
 
 end
 
-### Print a text centered within parting line ###
-function printTextCentered(text, hline, boldFlag = false, blanks=3, del = "-")
-    """
-    print a text centered within a parting line
 
-    -------------------------------------------------------------------
-    Input:
-        - text:     text
-        - hline:    horizontal line 
-        - boldFlag: text should be bold
-        - blanks:   blanks between hline and text
-        - del:      delimiter that should be used to fill up the space
+"""
+    printTextCentered(text, hline[, boldFlag, blanks, delimiter])
 
-    --------------------------------------------------------------------
-    Output:
-        - 
-
-    --------------------------------------------------------------------
-    Comments:
-        - 
-
-    --------------------------------------------------------------------
-    """
-
+print a text centered within a line consisting of delimiters
+"""
+function printTextCentered(inp, text, hline, boldFlag = false, blanks=3, delimiter = "-")
 
     lenLeft = Int(ceil((length(hline) - length(text))/2) - blanks)
     lenRight = Int(floor((length(hline) - length(text))/2) - blanks)
 
-    print("\n"*del^lenLeft*" "^blanks)
+    print("\n"*delimiter^lenLeft*" "^blanks)
     if boldFlag
         print(@bold text)
     else
         print(text)
     end
-    print(" "^blanks * del^lenRight*"\n")
+    print(" "^blanks * delimiter^lenRight*"\n")
 
-    if flag_log == 1
-        print(log_file, "\n"*"-"^lenLeft*" "^blanks)
-        print(log_file, text)
-        print(log_file, " "^blanks * "-"^lenRight*"\n")
+    if inp.flag_log == 1
+        print(inp.log_file, "\n"*"-"^lenLeft*" "^blanks)
+        print(inp.log_file, text)
+        print(inp.log_file, " "^blanks * "-"^lenRight*"\n")
     end
 
 end
 
 
-### print header of table to console ###
-function printTableHeader(console)
-    """
-    Initialize the Table header for the console output and print it
-    Return it for log file 
+"""
+    printTableHeader(console)
 
-    -------------------------------------------------------------------
-    Input:
-        - header:       raw header                          | string
-        - initValues:   values of initial iteration         | vector
-        - width:  width of each column in the header  | vector
-
-    --------------------------------------------------------------------
-    Output:
-        - str:      formated table header       | string
-
-    --------------------------------------------------------------------
-    Comments:
-        -
-
-    --------------------------------------------------------------------
-    """
-
+Initialize the Table header and print it to the console
+"""
+function printTableHeader(inp, console)
 
     width = console["width"]
     header = console["header"]
@@ -330,14 +257,14 @@ function printTableHeader(console)
     end
 
     # write everything to log_file
-    if flag_log == 1
-        print(log_file,tableHeader*"\n")
+    if inp.flag_log == 1
+        print(inp.log_file,tableHeader*"\n")
         for i in axes(strFormat, 1)
             # print
             if isnothing(initValues[i])
-                print(log_file, strFormat[i])
+                print(inp.log_file, strFormat[i])
             else
-                Printf.format(log_file, Printf.Format(strFormat[i]), format[i, 1], " ", format[i, 2], format[i, 3], initValues[i], format[i, 4], " ")
+                Printf.format(inp.log_file, Printf.Format(strFormat[i]), format[i, 1], " ", format[i, 2], format[i, 3], initValues[i], format[i, 4], " ")
             end
         end
     end
@@ -350,28 +277,13 @@ function printTableHeader(console)
 end
 
 
-### Format header of console output ###
+"""
+    formatTableHeader(console)
+
+Format the header of the console output s.t. each column has the 
+specified length
+"""
 function formatTableHeader(console::Dict)
-    """
-    Format the header of the table s.t. each column has the specified
-    length
-
-    -------------------------------------------------------------------
-    Input:
-        - header:    raw header                          | string
-        - width:     width of each column in the header  | vector
-
-    --------------------------------------------------------------------
-    Output:
-        - str:      formated table header       | string
-
-    --------------------------------------------------------------------
-    Comments:
-        -
-
-    --------------------------------------------------------------------
-    """
-
     header = console["header"]
     width = console["width"]
 
@@ -387,25 +299,6 @@ function formatTableHeader(console::Dict)
 end
 
 function formatTableHeader(header, width)
-    """
-    Format the header of the table s.t. each column has the specified
-    length
-
-    -------------------------------------------------------------------
-    Input:
-        - header:    raw header                          | string
-        - width:     width of each column in the header  | vector
-
-    --------------------------------------------------------------------
-    Output:
-        - str:      formated table header       | string
-
-    --------------------------------------------------------------------
-    Comments:
-        -
-
-    --------------------------------------------------------------------
-    """
 
     for k in eachindex(header)
         blanks = (width[k]-length(header[k]))/2
@@ -496,24 +389,12 @@ function formatTableRow(vec, widthCol, prec=5)
 end
 
 
+"""
+    numDigits(x)
+
+Gives the number of digits before and after the comma
+"""
 function numDigits(x)
-    """
-    Gives the number of digits before and after the comma
-
-    -------------------------------------------------------------------
-    Input:
-        x:      vector
-
-    --------------------------------------------------------------------
-    Output:
-        digits:  digits before/after comma for each element in x
-
-    --------------------------------------------------------------------
-    Comments:
-        - 
-    --------------------------------------------------------------------
-    """
-
     digits = zeros(length(x), 2)
     for k in eachindex(x)
         str = split(string(x[k]), ".")
@@ -524,51 +405,46 @@ function numDigits(x)
 end
 
 
-# Format flags to text for console
-function printFlagsAsText()
-    """
-    Print the flag values as text to the console
+"""
+    printFlagsAsText()
 
-    -------------------------------------------------------------------
-    Input:
-
-    --------------------------------------------------------------------
-    Output:
-        text:  console output
-
-    --------------------------------------------------------------------
-    Comments:
-        - 
-    --------------------------------------------------------------------
-    """
-
-    text =  " - Material: "*material*" \n"
+Print the flag values as text to the console
+"""
+function printFlagsAsText(inp)
+    text = ""
+    if inp.material != "Material"
+        text *=  " - Material: "*inp.material*" \n"
+    end
     # search mode
-    if TcSearchMode_flag == 0
-        text *= " - Tc search area: "*string(minimum(temps))*" - "*string(maximum(temps))*" K\n"
-    elseif TcSearchMode_flag == 1
-        text *= " - Tc auto search\n"
+    if inp.TcSearchMode_flag == 0
+        if length(inp.temps) == 1
+            text *= " - Tc search area: "*string(inp.temps[1])*" K\n"
+        else
+            text *= " - Tc search area: "*string(minimum(inp.temps))*" - "*string(maximum(inp.temps))*" K\n"
+        end
+    elseif inp.TcSearchMode_flag == 1
+        text *= " - Tc search mode activated\n"
     end
     
     # cut off
-    text *= " - Matsubara cutoff: "*string(omega_c)*" meV\n"
+    text *= " - Matsubara cutoff: "*string(inp.omega_c)*" meV\n"
     
     # cDos
-    if cDOS_flag == 0
-        if mu_flag == 1
+    if inp.cDOS_flag == 0
+        if inp.mu_flag == 1
             text *= " - Variable DoS with μ-update\n"
         else
             text *= " - Variable DoS with constant μ = ϵ_F\n"
         end
-    elseif cDOS_flag == 1
+    elseif inp.cDOS_flag == 1
         text *= " - Constant DoS\n"
     end
 
     # Weep
-    if include_Weep == 1
-        text *= " - Full Coulomb interaction given in "*unitWeepFile*"\n"
-    elseif include_Weep == 0
-        text *= " - Anderson pseudopotential, μ* = "*string(muc)*" , μ*_ME = "*string(round(muc_ME, digits=2))*"\n"
+    if inp.include_Weep == 1
+        text *= " - Full Coulomb interaction given in "*inp.Weep_unit*"\n"
+    elseif inp.include_Weep == 0
+        text *= " - Anderson pseudopotential, μ* = "*string(inp.muc)*" , μ*_ME = "*string(round(inp.muc_ME, digits=2))*"\n"
     end
 
     # other DoS
@@ -581,8 +457,8 @@ function printFlagsAsText()
 
 
     print(text)
-    if flag_log == 1
-        print(log_file, text)
+    if inp.flag_log == 1
+        print(inp.log_file, text)
     end
 
 end

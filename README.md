@@ -16,6 +16,7 @@ julia main.jl
 
 
 # ToDo's
+- Remove user input units/...
 - convergence test for mu*_ME 
 - Write documentation / create package
     * When creating a package a certain structure has to be obeyed

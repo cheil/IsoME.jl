@@ -38,6 +38,7 @@ using SparseIR              # Intermediate basis
 using LsqFit                # Fitting 
 using Roots                 # Root finding
 using Term                  # styled text terminal
+using Revise    # REMOVE before publishing
 
 
 ### defining constants ###

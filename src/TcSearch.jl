@@ -271,11 +271,11 @@ function solve_eliashberg(itemp, inp, console, val)
         ##### check convergence & termination criterion #####
         if err_delta < conv_thr
             println(replace(console["Hline"], "." => " "))
-            printstyled("\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=true)
+            printstyled("\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 
             if flag_log == 1
                 println(inp.log_file, replace(console["Hline"], "." => " "))
-                printstyled(inp.log_file, "\nConvergence achieved for T = " * string(itemp) * " K\n\n"; bold=true)
+                printstyled(inp.log_file, "\nConvergence achieved for T = " * string(itemp) * " K\n\n"; bold=false)
             end
 
             return data
@@ -284,7 +284,12 @@ function solve_eliashberg(itemp, inp, console, val)
         # Gap too small
         if data[2] < 0.1 && i_it > 20
             println(replace(console["Hline"], "." => " "))
-            printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than 0.1 meV!\n\n"; bold=true)
+            printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than 0.1 meV!\n\n"; bold=false)
+
+            if flag_log == 1
+                println(inp.log_file, replace(console["Hline"], "." => " "))
+                printstyled(inp.log_file, "\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than 0.1 meV!\n\n"; bold=false)
+            end
 
             data[2] = NaN
             return data
@@ -454,7 +459,7 @@ end
 
 Main function. User has to pass the input arguments and it returns the Tc.
 """
-function EliashbergSolver(inp::arguments)
+function EliashbergSolver(inp::arguments, test = false)
     dt = @elapsed begin
         ### open log_file ###
         if inp.flag_log == 1
@@ -564,6 +569,10 @@ function EliashbergSolver(inp::arguments)
    
         # close & save
         close(inp.log_file)
+    end
+
+    if test
+        return round.(Delta0, digits=2)
     end
 end
 

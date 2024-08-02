@@ -19,7 +19,6 @@ julia main.jl
 - Remove user input units/...
 - convergence test for mu*_ME 
 - Write documentation / create package
-    * When creating a package a certain structure has to be obeyed
     * The documentation can be included to the package (.gitlab-ci.yml)
          + use "Documenter" packager 
            --> minimal example https://gitlab.com/gitlab-examples/julia

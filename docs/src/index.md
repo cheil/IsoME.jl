@@ -30,5 +30,11 @@ Pkg.add("isoME")
 - temps = Temperature range [optional]
 
 
+```@autodocs
+Modules = [IsoME]
+Order   = [:function, :type]
+```
+
+
  ## Outline ??
 

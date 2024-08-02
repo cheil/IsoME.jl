@@ -184,7 +184,7 @@ function solve_eliashberg(itemp, inp, console, val)
             # linear mixing
             znormi = (1.0 - abs(broyden_beta)) .* znormi .+ abs(broyden_beta) .* new_data[1]
             phiphi = (1.0 - abs(broyden_beta)) .* phiphi .+ abs(broyden_beta) .* new_data[2]
-            phici = (1.0 - abs(broyden_beta)) .* phici .+ abs(broyden_beta) .* new_data[3]
+            phici  = (1.0 - abs(broyden_beta)) .* phici  .+ abs(broyden_beta) .* new_data[3]
             deltai = (phiphi' .+ phici) ./ znormi'
 
             rel_delta = sum(abs.(deltai[idx_ef, :] .- deltaip[idx_ef, :]))
@@ -459,7 +459,7 @@ end
 
 Main function. User has to pass the input arguments and it returns the Tc.
 """
-function EliashbergSolver(inp::arguments, test = false)
+function EliashbergSolver(inp::arguments, testFlag = false)
     dt = @elapsed begin
         ### open log_file ###
         if inp.flag_log == 1
@@ -571,7 +571,8 @@ function EliashbergSolver(inp::arguments, test = false)
         close(inp.log_file)
     end
 
-    if test
+    ### !!! Better solution for runtest !!!
+    if testFlag
         return round.(Delta0, digits=2)
     end
 end

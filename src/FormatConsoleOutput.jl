@@ -28,7 +28,7 @@ function printStartMessage(inp, console)
 
     strLine = "-"^(sum(console["width"])+length(console["width"])+1)
 
-    strAuthors = "Authors: Christoph Heil, Eva Kogler, Dominik Spath\n\n"
+    strAuthors = "  Authors: Christoph Heil, Eva Kogler, Dominik Spath\n\n"
 
     strEliash = "Eliashberg Solver started"
 

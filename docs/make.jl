@@ -1,9 +1,9 @@
-using Documenter, DocumenterCitations, isoME   
+using Documenter, DocumenterCitations, IsoME   
 
 DocMeta.setdocmeta!(
-    isoME,
+    IsoME,
     :DocTestSetup,
-    :(using isoME),
+    :(using IsoME),
     recursive = true,
 )
 
@@ -14,19 +14,20 @@ bib = CitationBibliography(
 
 makedocs(
     sitename = "IsoME.jl",
-    modules = [isoME],
+    modules = [IsoME],
     format = Documenter.HTML(
         prettyurls = get(ENV, "CI", nothing)=="true",
     ),
     pages = [
-        "Home" => "home.md",
+        "Home" => "index.md",
     ],
     warnonly = false,
     doctest = true,
     plugins = [bib],
+    checkdocs=:exports,
 )
 
 deploydocs(
-    repo = "https://gitlab.tugraz.at/computational-materials-group/codes/isotropic-me",
+    repo = "https://github.com/cheil/IsoME.jl",
     push_preview = true,
 )

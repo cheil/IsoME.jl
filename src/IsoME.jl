@@ -92,12 +92,6 @@ end
     dos_unit::String   = ""
     spinDos::Int64   = 2
     colFermi_dos::Int64 = 1
-    nheader_dosW::Number = -1 
-    nfooter_dosW::Number = -1
-    dosW_unit::String   = ""
-    spinDosW::Number     = 1
-    colFermi_dosW::Int64 = 0
-    dosW_file::String = ""
 
     # Weep input file, auto extraction if -1
     Weep_file::String = ""
@@ -105,9 +99,13 @@ end
     nfooter_Weep::Number = -1
     Weep_unit::String = ""
     include_Weep::Int64 = 0
+    Wen_file::String = ""
+    nheader_Wen::Number = -1 
+    nfooter_Wen::Number = -1
+    Wen_unit::String   = ""
 
     # Output
-    outdir::String = "./output/"    # pwd() ??
+    outdir::String = pwd()*"/output/" 
     flag_log::Int64 = 1
     flag_figure::Int64 = 1
     flag_outfile::Int64 = 1
@@ -121,7 +119,6 @@ end
 
 
 ### include files ###
-# only include files which are called directly here?
 include("TcSearch.jl")
 include("ReadIn.jl")
 include("Interpolation.jl")
@@ -130,39 +127,6 @@ include("AllenDynes.jl")
 include("MuUpdate.jl")
 include("FormatConsoleOutput.jl")
 include("EliashbergEq.jl")
-
-
-
-#=
-
-
-### Start program ###
-#try
-#    dt = @elapsed include("IsoME_FindTc.jl")
-
-#    print("Total Runtime: ", dt, " seconds\n")
-#    if flag_log == 1
-#        print(log_file, "Total Runtime: ", dt, " seconds\n")
-    
-#        # close & save
-#        close(log_file)
-#    end
-
-#catch ex 
-
-#    # write error to log file
-#    showerror(log_file, ex, catch_backtrace())   
-#    # close & save
-#    close(log_file)
-
-    # write error to console
-#    showerror(stdout, ex, catch_backtrace())
-
-
-#end
-
-
-=#
 
 
 end

@@ -129,8 +129,11 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
 
     for iw in ind_mat_freq # loop over omega
         # Eq. (4.4) in Picket, PRB 26, 1186 (1982)
-        lambdam = lambdai[abs.(iw .- nsiw_vec).+1] .- lambdai[iw.+nsiw_vec]
-        lambdap = lambdai[abs.(iw .- nsiw_vec).+1] .+ lambdai[iw.+nsiw_vec]
+        tmp1 = lambdai[abs.(iw .- nsiw_vec).+1] 
+        tmp2 = lambdai[iw.+nsiw_vec]
+        lambdam = tmp1 .- tmp2
+        lambdap = tmp1 .+ tmp2
+
         # Eqs. (4.1-4.3) in Picket, PRB 26, 1186 (1982) for FBW
         # using lambdam and lambdap the sum over |wp| < wscut 
         # is rewritten as a sum over iwp = 1, nsiw(itemp)
@@ -166,6 +169,12 @@ end
 
 
 ##### Eliashberg equations - Constant Dos - Weep #####
+"""
+    eliashberg_eqn( itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, ndos, dos_en, 
+                    dos, Weep, znormip, phiphip, phicip, idx_ef, wgCoulomb)
+
+Evaluate the isotropic Eliashberg equations, constant dos, Weep
+"""
 function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_mat_freq::Vector{Int64}, 
                         sparse_sampling_flag::Int64, lambdai::Vector{Float64}, ndos::Int64, 
                         dos_en::Vector{Float64}, dos::Vector{Float64}, Weep::Matrix{Float64}, znormip::Vector{Float64}, 
@@ -234,8 +243,10 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
 
     for iw in ind_mat_freq # loop over omega
         # Eq. (4.4) in Picket, PRB 26, 1186 (1982)
-        lambdam = lambdai[abs.(iw .- nsiw_vec).+1] .- lambdai[iw.+nsiw_vec]
-        lambdap = lambdai[abs.(iw .- nsiw_vec).+1] .+ lambdai[iw.+nsiw_vec]
+        tmp1 = lambdai[abs.(iw .- nsiw_vec).+1] 
+        tmp2 = lambdai[iw.+nsiw_vec]
+        lambdam = tmp1 .- tmp2
+        lambdap = tmp1 .+ tmp2
 
         znormi[iw] = znormi[iw] + dot(ziwp, lambdam)
         phiphi[iw] = phiphi[iw] + dot(phiwp, lambdap)
@@ -264,6 +275,12 @@ end
 
 
 ##### Eliashberg equations - Variable Dos - mu* #####
+"""
+    eliashberg_eqn( itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, 
+                    dos, dosef, znormip, deltaip, shiftip, muc, muintr, wgCoulomb)
+
+Evaluate the isotropic Eliashberg equations, variable dos, mu*
+"""
 function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_mat_freq::Vector{Int64}, 
                         sparse_sampling_flag::Int64, lambdai::Vector{Float64}, dos_en::Vector{Float64}, 
                         dos::Vector{Float64}, dosef::Float64, znormip::Vector{Float64}, 
@@ -320,8 +337,10 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     shiwp = trapz(dos_en, shkernel') / dosef
 
     for iw in ind_mat_freq # loop over omega
-        lambdam = lambdai[abs.(iw .- nsiw_vec).+1] .- lambdai[iw.+nsiw_vec]
-        lambdap = lambdai[abs.(iw .- nsiw_vec).+1] .+ lambdai[iw.+nsiw_vec]
+        tmp1 = lambdai[abs.(iw .- nsiw_vec).+1] 
+        tmp2 = lambdai[iw.+nsiw_vec]
+        lambdam = tmp1 .- tmp2
+        lambdap = tmp1 .+ tmp2
         # Eqs. (4.1-4.3) in Picket, PRB 26, 1186 (1982) for FBW
         # using lambdam and lambdap the sum over |wp| < wscut 
         # is rewritten as a sum over iwp = 1, nsiw(itemp)
@@ -404,8 +423,10 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     deiwp = normzph .* deltaip
 
     for iw in ind_mat_freq # loop over omega
-        lambdam = lambdai[abs.(iw .- nsiw_vec).+1] .- lambdai[iw.+nsiw_vec]
-        lambdap = lambdai[abs.(iw .- nsiw_vec).+1] .+ lambdai[iw.+nsiw_vec]
+        tmp1 = lambdai[abs.(iw .- nsiw_vec).+1] 
+        tmp2 = lambdai[iw.+nsiw_vec]
+        lambdam = tmp1 .- tmp2
+        lambdap = tmp1 .+ tmp2
         # Eqs. (4.1-4.3) in Picket, PRB 26, 1186 (1982) for FBW
         # using lambdam and lambdap the sum over |wp| < wscut 
         # is rewritten as a sum over iwp = 1, nsiw(itemp)

@@ -87,40 +87,31 @@ function InputParser(inp::arguments)
 
 
     ########## read-in and process Dos and Weep ##########
-    ### Weep ###
-    if inp.include_Weep == 1
-        Weep, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep)
-    else 
-        Weep = nothing
-    end
+    if ~isempty(inp.dos_file) 
+         # read dos
+         dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.cDOS_flag, inp.colFermi_dos, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos)
+            
+        if inp.include_Weep == 1
+            # read Weep + energy grid points
+            Weep, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep)
+            W_en = readIn_Wen(inp.Wen_file, inp.Wen_unit, inp.nheader_Wen, inp.nfooter_Wen)
 
-
-    ### Dos ###
-    if ~isempty(inp.dosW_file) && ~isempty(inp.dos_file) && inp.include_Weep == 1
-        # QE/Abinit/... dos
-        dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.cDOS_flag, inp.colFermi_dos, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos)
-        # W dos
-        dosW_en, dosW, ef, inp.dosW_unit = readIn_Dos(inp.dosW_file, inp.cDOS_flag, inp.colFermi_dosW, inp.spinDosW, inp.dosW_unit, inp.nheader_dosW, inp.nfooter_dosW)
-
-        # overlap of energies
-        en_interval = [dosW_en[findfirst(dosW_en .> dos_en[1])]; dosW_en[findlast(dosW_en .< dos_en[end])]]
-        # number of points overlapping
-        idxOverlap = [findfirst(dosW_en .> dos_en[1]), findlast(dosW_en .< dos_en[end])]
-        Nitp = idxOverlap[2] - idxOverlap[1] + 1
-        
-        # restrict Weep
-        Weep = Weep[idxOverlap[1]:idxOverlap[2], idxOverlap[1]:idxOverlap[2]]
-        
-        # Interpolation Dos
-        dos_en, dos = interpolateDos(dos_en, dos, en_interval, Nitp)
-
-    elseif ~isempty(inp.dos_file)
-        # QE/Abinit/... dos
-        dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.cDOS_flag, inp.colFermi_dos, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos)
-
-    elseif ~isempty(inp.dosW_file) 
-        # W dos
-        dos_en, dos, ef, inp.dosW_unit = readIn_Dos(inp.dosW_file, inp.cDOS_flag, inp.colFermi_dosW, inp.spinDosW, inp.dosW_unit, inp.nheader_dosW, inp.nfooter_dosW)
+            # overlap of energies
+            en_interval = [W_en[findfirst(W_en .> dos_en[1])]; W_en[findlast(W_en .< dos_en[end])]]
+            # number of points overlapping
+            idxOverlap = [findfirst(W_en .> dos_en[1]), findlast(W_en .< dos_en[end])]
+            Nitp = idxOverlap[2] - idxOverlap[1] + 1
+            
+            # restrict Weep
+            Weep = Weep[idxOverlap[1]:idxOverlap[2], idxOverlap[1]:idxOverlap[2]]
+            
+            # Interpolation Dos
+            dos_en, dos = interpolateDos(dos_en, dos, en_interval, Nitp)
+        else
+            # no Weep
+            Weep = nothing
+            W_en = nothing
+        end
     else
         dos = []
         dos_en = []
@@ -372,7 +363,7 @@ function readIn_Weep(Weep_file, unit=nothing, nheader=nothing, nfooter=nothing)
     header = join(Weep_data[1:nheader,:], " ")
     Weep = Float64.(Weep_data[nheader+1:end-nfooter, 3])
     
-    ### reshape to matrixs
+    ### reshape to matrix
     Weep = transpose(reshape(Weep, (Int(sqrt(size(Weep, 1))), Int(sqrt(size(Weep, 1))))))
 
     ### remove outliers from Weep ###
@@ -398,6 +389,39 @@ function readIn_Weep(Weep_file, unit=nothing, nheader=nothing, nfooter=nothing)
     return Weep, unit
 
 end
+
+"""
+    readIn_Weep(Weep_file[, unit, nheader, nfooter])
+
+Read in Weep file containing the sreened coulomb interaction.
+Weep data must be in column 3
+"""
+function readIn_Wen(Wen_file, unit=nothing, nheader=nothing, nfooter=nothing)
+    ### Read in Weep file ###
+    Wen_data = readdlm(Wen_file);
+
+    ### Default values ###
+    (nheader != -1) || (nheader = findfirst(isa.(Wen_data[:,1], Number))-1)
+    (nfooter != -1) || (nfooter = size(Wen_data,1) - findlast(isa.(Wen_data[:,1], Number)))
+
+    ### Remove header & footer
+    header = join(Wen_data[1:nheader,:], " ")
+    W_en = Float64.(Wen_data[nheader+1:end-nfooter, 1])
+
+    ### Convert ###
+    (~isempty(unit)) || (unit = getUnit(header, "Wen"))
+    if "meV" == unit    # meV
+        W_en = W_en
+    elseif  "eV" == unit     # eV
+        W_en = W_en.*1000
+    else
+        error("Invalid Unit! Please checkt the header of the Weep-file and try again!")
+    end
+
+    return W_en
+
+end
+
 
 # Convert units
 function getUnit(header, file=nothing)
@@ -524,4 +548,20 @@ function restrictInput(n::Int, enWndw::Any, ef::Float64, Dos::Vector{Float64}, e
 
     return Dos, energies
 
+end
+
+
+# Format as table / analog to console output !!!
+function Base.getproperty(a::arguments, v::Symbol)
+    if v == :all
+        input = Vector{String}()
+        for name in fieldnames(arguments)
+            text = string(name)*": "*string(getfield(a, name))
+            input = push!(input, text)
+        end
+
+        return input
+    else
+        return getfield(a, v)
+    end
 end

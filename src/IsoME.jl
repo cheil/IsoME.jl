@@ -74,12 +74,12 @@ end
 
     # mode
     cDOS_flag::Int64 = 1
-    TcSearchMode_flag::Int64 = 0
+    TcSearchMode_flag::Int64 = 1
     mu_flag::Int64 = 1
 
     # a2f input file
     a2f_file::String
-    ind_smear::Int64 = 1
+    ind_smear::Int64 = -1
     nsmear::Number   = -1
     nheader_a2f::Number = -1
     nfooter_a2f::Number = -1

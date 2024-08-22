@@ -74,7 +74,7 @@ function solve_eliashberg(itemp, inp, console, val)
         if cDOS_flag == 0
             ### Initialize
             deltai = ones(ndos, nsiw) .* BCS_gap
-            znormi = ones(nsiw)
+            znormi = ones(nsiw) #.* 2 ./(1 .+ exp.(wsi .- round(nsiw/4))) .+1  # sigmoid function
             shifti = -zeros(nsiw)
             phiphi = ones(nsiw) .* BCS_gap
             phici = -zeros(ndos)
@@ -87,7 +87,7 @@ function solve_eliashberg(itemp, inp, console, val)
         elseif cDOS_flag == 1
             ### Initialize
             deltai = ones(ndos, nsiw) .* BCS_gap
-            znormi = ones(nsiw)
+            znormi = ones(nsiw) #.* 2 ./(1 .+ exp.(wsi .- round(nsiw/4))) .+1  # sigmoid function
             phiphi = ones(nsiw) .* BCS_gap
             phici = zeros(ndos)
 
@@ -102,7 +102,7 @@ function solve_eliashberg(itemp, inp, console, val)
         if cDOS_flag == 0
             ### Initialize 
             deltai = ones(nsiw) .* BCS_gap
-            znormi = ones(nsiw)
+            znormi = ones(nsiw) #.* 2 ./(1 .+ exp.(wsi .- round(nsiw/4))) .+1  # sigmoid function
             shifti = zeros(nsiw)
             muintr = ef
 
@@ -113,7 +113,7 @@ function solve_eliashberg(itemp, inp, console, val)
         elseif cDOS_flag == 1
             ### Initialize 
             deltai = ones(nsiw) .* BCS_gap
-            znormi = ones(nsiw)
+            znormi = ones(nsiw) #.* 2 ./(1 .+ exp.(wsi .- round(nsiw/4))) .+1  # sigmoid function
 
             ### Print to console & log file
             console["InitValues"] = [0 znormi[1] deltai[1] nothing]
@@ -282,7 +282,7 @@ function solve_eliashberg(itemp, inp, console, val)
             break
         end
         # Gap too small
-        if data[2] < 0.1 && i_it > 20
+        if data[2] < 0.1 && i_it > maximum([20, inp.nItFullCoul])
             println(replace(console["Hline"], "." => " "))
             printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than 0.1 meV!\n\n"; bold=false)
 
@@ -355,8 +355,6 @@ function findTc(inp, console, val, ML_Tc)
         itemp = round(ML_Tc)
         # rewrite s.t. user can specify array of temps which are all used for fitting ?
 
-        # Init
-
         # expansion of a + b*log(c-x) at x = 0, use other function instead??
         m(x, p) = p[1] + log(p[3]) .- p[2] * x ./ p[3] .- p[2] * x .^ 2 / (2 * p[3]^2) .- p[2] * x .^ 3 / (3 * p[3]^3) .- p[2] * x .^ 4 / (4 * p[3]^4) .- p[2] * x .^ 5 / (5 * p[3]^5)
         inp.temps = Vector{Float64}()
@@ -417,7 +415,7 @@ function findTc(inp, console, val, ML_Tc)
             else
                 # search around fit value
                 if isnan(Delta0[end]) 
-                    itemp -= 1
+                    itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + inp.temps[end])/2)
                 else
                     itemp += 1
                 end
@@ -450,7 +448,7 @@ function findTc(inp, console, val, ML_Tc)
 
     printTextCentered(inp, "Stopping now!", console["partingLine"], true)
 
-    return inp.temps, Znorm0, Delta0, Shift0, EfMu
+    return inp.temps[1:length(Delta0)], Znorm0, Delta0, Shift0, EfMu
 
 end
 
@@ -461,6 +459,13 @@ Main function. User has to pass the input arguments and it returns the Tc.
 """
 function EliashbergSolver(inp::arguments, testFlag = false)
     dt = @elapsed begin
+        ### error handle ###
+        # is outdir writable, c-function
+        #access(path, mode) = ccall(:access, Cint, (Cstring, Cint), path, mode) == 0;
+        #if ~access(inp.outdir, 1) 
+        #    error(inp.outdir*" is not a writable directory! The output directory can be set via the outdir keyword")
+        #end
+
         ### open log_file ###
         if inp.flag_log == 1
             inp.log_file = open(inp.outdir * "/log.txt", "w")
@@ -573,7 +578,7 @@ function EliashbergSolver(inp::arguments, testFlag = false)
 
     ### !!! Better solution for runtest !!!
     if testFlag
-        return round.(Delta0, digits=2)
+        return maximum(temps[.~isnan.(Delta0)])
     end
 end
 

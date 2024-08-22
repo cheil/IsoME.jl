@@ -138,9 +138,17 @@ function update_mu_own(itemp, wsi, M, ef, dos_en, dos, znormip, deltaip, shiftip
         end
     end
 
-    ### calc new mu using the bisection method    
+    ### calc new mu using the bisection method
+    mu_error = range(mu0 , mu1, 100)
+    Ne_error = zeros(size(mu_error))
+    for k in eachindex(mu_error)
+        Ne_error[k] = fmu(mu_error[k])
+    end
+
+    p = plot(mu_error, Ne_error, label="Ne_nsc - Ne_sc", title="Ne in normal state minus sc state")
+    savefig("mu.png")
+
     mu = bisection(fmu, mu0, mu1)
-    #mu = RegulaFalsi(fmu, mu0, mu1)
     #mu3 = find_zero(fmu, [mu0, mu1])
 
     #println(mu)

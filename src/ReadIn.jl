@@ -222,6 +222,7 @@ function readIn_a2f(a2f_file, indSmear, unit=nothing, nheader=nothing, nfooter=n
     (nheader != -1) || (nheader = findfirst(isa.(a2f_data[:,1], Number))-1)
     (nfooter != -1) || (nfooter = size(a2f_data, 1) - findlast(isa.(a2f_data[:,1], Number)))
     (nsmear != -1) || (nsmear = length(a2f_data[nheader, isa.(a2f_data[nheader,:], Number)])-1)
+    (indSmear != -1) || (indSmear = ceil(nsmear/2))
 
     ### Remove header & footer
     header = join(a2f_data[1:nheader,:], " ")
@@ -558,6 +559,13 @@ function Base.getproperty(a::arguments, v::Symbol)
         for name in fieldnames(arguments)
             text = string(name)*": "*string(getfield(a, name))
             input = push!(input, text)
+        end
+
+        return input
+    elseif v == :args
+        input = Vector{String}()
+        for name in fieldnames(arguments)
+            input = push!(input, string(name))
         end
 
         return input

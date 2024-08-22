@@ -55,6 +55,13 @@ end
 
 
 ##### Eliashberg equations - Variable Dos - Weep #####
+"""
+    eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, 
+                   znormip, phiphip, phicip, shiftip, wgCoulomb, muintr)
+
+Evaluate the isotropic Eliashberg equations, vDOS & Weep
+
+"""
 function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_mat_freq::Vector{Int64},
                         sparse_sampling_flag::Int64, lambdai::Vector{Float64}, dosef::Float64, ndos::Int64, 
                         dos_en::Vector{Float64}, dos::Vector{Float64}, Weep::Matrix{Float64}, znormip::Vector{Float64}, 
@@ -173,7 +180,7 @@ end
     eliashberg_eqn( itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, ndos, dos_en, 
                     dos, Weep, znormip, phiphip, phicip, idx_ef, wgCoulomb)
 
-Evaluate the isotropic Eliashberg equations, constant dos, Weep
+Evaluate the isotropic Eliashberg equations, cDOS & Weep
 """
 function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_mat_freq::Vector{Int64}, 
                         sparse_sampling_flag::Int64, lambdai::Vector{Float64}, ndos::Int64, 

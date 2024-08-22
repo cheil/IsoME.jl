@@ -16,15 +16,13 @@ julia main.jl
 
 
 # ToDo's
-- Remove user input units/...
-- convergence test for mu*_ME 
-- Write documentation / create package
-    * The documentation can be included to the package (.gitlab-ci.yml)
-         + use "Documenter" packager 
-           --> minimal example https://gitlab.com/gitlab-examples/julia
-           --> documentation https://documenter.juliadocs.org/stable/man/guide/#Package-Guide
-    * Adapt docu of functions https://docs.julialang.org/en/v1/manual/documentation/
-    * add .toml file to documentation
+- check in beginning if outdir exists/is writable
+- runtest: 
+    * Test Tc in each mode (cDos/vDos mu*/Weep) for one/several materials
+- Remove user input units/...?
+- convergence test for mu*_ME
+    * Change 200 in definition of mu*_ME
+- Enable Documentation: Christoph --> repo --> settings --> enable
 - convergence threshold??
 - Improve Mixing
 - Error when starting from terminal??
@@ -35,6 +33,7 @@ julia main.jl
 - Gap increases sometimes when other dos is used
     * Change Tc search mode s.t. if gap increases manual mode is used
     * Occurs if fsthick is too small (~ < 30 eV)
+- !! Remove **Revise** package before publication !!
 
 
 --- Discarded / On hold ---

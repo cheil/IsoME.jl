@@ -103,8 +103,8 @@ function printADtable(inp, console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log)
     println(delimiter)
    
     # Hline
-    logText = logText*" "^blanksAD*replace(Hline, "." => ":")*"\n"
-    println(" "^blanksAD*replace(Hline, "." => ":"))
+    logText = logText*" "^blanksAD*replace(Hline, "." => "|")*"\n"
+    println(" "^blanksAD*replace(Hline, "." => "|"))
 
     # Define table header 
     logText = logText*" "^blanksAD*delimiter
@@ -444,7 +444,7 @@ function printFlagsAsText(inp)
     if inp.include_Weep == 1
         text *= " - Full Coulomb interaction given in "*inp.Weep_unit*"\n"
     elseif inp.include_Weep == 0
-        text *= " - Anderson pseudopotential, μ* = "*string(inp.muc)*" , μ*_ME = "*string(round(inp.muc_ME, digits=2))*"\n"
+        text *= " - Anderson pseudopotential, μ*_AD = "*string(round(inp.muc_AD, digits=3))*" , μ*_ME = "*string(round(inp.muc_ME, digits=3))*"\n"
     end
 
     # other DoS

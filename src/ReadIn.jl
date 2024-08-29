@@ -67,23 +67,16 @@ function InputParser(inp::arguments)
   
 
     ########## READ-IN ##########
-    ##### a2f file #####
+    ####### a2f file #######
     a2f_omega_fine, a2f_fine = readIn_a2f(inp.a2f_file, inp.ind_smear, inp.a2f_unit, inp.nheader_a2f, inp.nfooter_a2f, inp.nsmear)
 
     # determine superconducting properties from Allen-Dynes McMillan equation based on interpolated a2F
-    AD_data = calc_AD_Tc(a2f_omega_fine, a2f_fine, inp.muc)
+    AD_data = calc_AD_Tc(a2f_omega_fine, a2f_fine, inp.muc_AD)
     ML_Tc = AD_data[1] / kb;    # ML-Tc in K
     AD_Tc = AD_data[2] / kb;    # AD-Tc in K
     BCS_gap = AD_data[3];       # BCS gap value in meV
     lambda = AD_data[4];        # total lambda
     omega_log = AD_data[5];     # omega_log in meV
-
-    # convert muc for Migdal-Eliashberg
-    inp.muc_ME = inp.muc / (1 + inp.muc*log(200/inp.omega_c))    
-    # CHANGE 200 to e.g. maximum(a2f_omega_fine[a2f_fine .> 0.1])
-
-    # print Allen-Dynes
-    printADtable(inp, console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log)
 
 
     ########## read-in and process Dos and Weep ##########
@@ -93,7 +86,7 @@ function InputParser(inp::arguments)
             
         if inp.include_Weep == 1
             # read Weep + energy grid points
-            Weep, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep)
+            Weep, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Weep_col, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep)
             W_en = readIn_Wen(inp.Wen_file, inp.Wen_unit, inp.nheader_Wen, inp.nfooter_Wen)
 
             # overlap of energies
@@ -117,6 +110,56 @@ function InputParser(inp::arguments)
         dos_en = []
         ef = nothing
     end
+
+    # user specified ef
+    if inp.ef != -1
+        ef = inp.ef 
+    end
+
+    ### calc mu*'s
+    if inp.mu != -1
+        if isnothing(ef)
+            print(@yellow "WARNING: ")
+            print("Unable to calculate μ* from μ without the fermi-energy! Either provide a dos-file or set the fermi-energy directly in the input structure.\n\n")
+        
+            if inp.flag_log == 1
+                print(inp.log_file, "WARNING: Unable to calculate μ* from μ without the fermi-energy! Either provide a dos-file or set the fermi-energy directly in the input structure.\n\n")
+            end
+        else
+            # ensure μ*_ME < 4*μ --> reasonable ??
+            if inp.omega_c > ef*exp(3/(4*inp.mu))
+                inp.omega_c = ef*exp(3/(4*inp.mu))
+
+                print(@yellow "WARNING: ")
+                print("Matsubara cutoff would lead to μ*_ME > 4*μ. omega_c has been set to a smaller value.\n\n")
+        
+                if inp.flag_log == 1
+                    print(inp.log_file, "WARNING: Matsubara cutoff would lead to μ*_ME > 4*μ. omega_c has been set to a smaller value.\n\n")
+                end
+            end
+
+            inp.muc_AD = inp.mu / (1 + inp.mu*log(ef/maximum(a2f_omega_fine[a2f_fine .> 0.01])))
+            inp.muc_ME = inp.mu / (1 + inp.mu*log(ef/inp.omega_c))
+        end
+    end
+
+    if inp.muc_ME == -1
+        inp.muc_ME = inp.muc_AD / (1 + inp.muc_AD*log(maximum(a2f_omega_fine[a2f_fine .> 0.01])/inp.omega_c))
+
+        if inp.muc_ME < 0 || inp.muc_ME > 4*inp.muc_AD
+            inp.muc_ME = 2*inp.muc_AD
+
+            print(@yellow "WARNING: ")
+            print("Couldn't find a reasonable μ*_ME from μ*_AD. Using μ*_ME = 2*μ*_AD instead. Consider setting it manually! \n\n")
+        
+            if inp.flag_log == 1
+                print(inp.log_file, "WARNING: Couldn't find a reasonable μ*_ME from μ*_AD. Using μ*_ME = 2*μ*_AD instead. Consider setting it manually!\n\n")
+            end
+        end
+    end
+
+    # print Allen-Dynes
+    printADtable(inp, console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log)
 
 
     ### REMOVE - START ###
@@ -158,13 +201,10 @@ function InputParser(inp::arguments)
         dosef = dos[idx_ef]
     end
 
-    ### Print to console ###
-    printFlagsAsText(inp)
+    # material specific values
+    matval = (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, ef, dosef, idx_ef, ndos, BCS_gap)
 
-
-    val = (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, ef, dosef, idx_ef, ndos, BCS_gap)
-
-    return inp, console, val, ML_Tc
+    return inp, console, matval, ML_Tc
 end
 
 """
@@ -214,7 +254,7 @@ Read in a2f file to solve the isotropic Migdal-Eliashberg equations
 
 The first column must contain the energies, the second column onwards a2F values for different smearings
 """
-function readIn_a2f(a2f_file, indSmear, unit=nothing, nheader=nothing, nfooter=nothing, nsmear=nothing)   
+function readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsmear=-1)   
     ### Read in a2f file ###
     a2f_data = readdlm(a2f_file);
 
@@ -222,7 +262,7 @@ function readIn_a2f(a2f_file, indSmear, unit=nothing, nheader=nothing, nfooter=n
     (nheader != -1) || (nheader = findfirst(isa.(a2f_data[:,1], Number))-1)
     (nfooter != -1) || (nfooter = size(a2f_data, 1) - findlast(isa.(a2f_data[:,1], Number)))
     (nsmear != -1) || (nsmear = length(a2f_data[nheader, isa.(a2f_data[nheader,:], Number)])-1)
-    (indSmear != -1) || (indSmear = ceil(nsmear/2))
+    (indSmear != -1) || (indSmear = Int64(ceil(nsmear/2)))
 
     ### Remove header & footer
     header = join(a2f_data[1:nheader,:], " ")
@@ -257,7 +297,7 @@ end
 
 
 # Read in DOS
-function readIn_Dos(dos_file, cDOS_flag, colFermi=0, spin=1, unit=nothing, nheader=nothing, nfooter=nothing)
+function readIn_Dos(dos_file, cDOS_flag, colFermi=1, spin=2, unit="", nheader=-1, nfooter=-1)
     """
     Read in DoS file to solve the isotropic Migdal-Eliashberg equations
     All quantities are converted to meV
@@ -351,7 +391,7 @@ end
 Read in Weep file containing the sreened coulomb interaction.
 Weep data must be in column 3
 """
-function readIn_Weep(Weep_file, unit=nothing, nheader=nothing, nfooter=nothing)
+function readIn_Weep(Weep_file, Weep_col, unit=nothing, nheader=nothing, nfooter=nothing)
 
     ### Read in Weep file ###
     Weep_data = readdlm(Weep_file);
@@ -362,7 +402,7 @@ function readIn_Weep(Weep_file, unit=nothing, nheader=nothing, nfooter=nothing)
 
     ### Remove header & footer
     header = join(Weep_data[1:nheader,:], " ")
-    Weep = Float64.(Weep_data[nheader+1:end-nfooter, 3])
+    Weep = Float64.(Weep_data[nheader+1:end-nfooter, Weep_col])
     
     ### reshape to matrix
     Weep = transpose(reshape(Weep, (Int(sqrt(size(Weep, 1))), Int(sqrt(size(Weep, 1))))))

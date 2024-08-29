@@ -17,13 +17,13 @@
 export EliashbergSolver
 
 """
-    solve_eliashberg(itemp, inp, console, val)
+    solve_eliashberg(itemp, inp, console, matval)
 
 Solve the eliashberg eq. self-consistently for a fixed temperature
 """
-function solve_eliashberg(itemp, inp, console, val)
+function solve_eliashberg(itemp, inp, console, matval)
     # destruct inputs
-    (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, ef, dosef, idx_ef, ndos, BCS_gap) = val
+    (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, ef, dosef, idx_ef, ndos, BCS_gap) = matval
     (; cDOS_flag, include_Weep, flag_log, omega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag) = inp
 
     ### Matsubara frequencies ###
@@ -34,7 +34,7 @@ function solve_eliashberg(itemp, inp, console, val)
 
     ### sparse sampling, consider only subset of mat frequencies up to M
     # only reasonable if T < 1 K
-    if itemp < 1
+    if itemp <= 5
         sparse_sampling_flag = 1
         ind_mat_freq = initSparseSampling(beta, omega_c, M)
 
@@ -319,7 +319,7 @@ end
 
 
 # For each temperature solve eliashberg equations
-function findTc(inp, console, val, ML_Tc)
+function findTc(inp, console, matval, ML_Tc)
     inp.temps = sort(inp.temps)
     nT = size(inp.temps, 1)
     Delta0 = Vector{Float64}()
@@ -332,7 +332,7 @@ function findTc(inp, console, val, ML_Tc)
             itemp = inp.temps[iT]
 
             # solve Eliashberg equations
-            data = solve_eliashberg(itemp, inp, console, val)
+            data = solve_eliashberg(itemp, inp, console, matval)
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
@@ -343,8 +343,9 @@ function findTc(inp, console, val, ML_Tc)
                 Delta0 = push!(Delta0, data[2])
             end
 
-            if isnan(Delta0[end]) # this occurs if Delta0 < 0.1meV or max. number of iterations was exceeded
+            if isnan(Delta0[end]) 
                 # escape
+                inp.temps = inp.temps[1:length(Delta0)]
                 break
             end
         end
@@ -364,7 +365,7 @@ function findTc(inp, console, val, ML_Tc)
             inp.temps = push!(inp.temps, itemp)
 
             # solve Eliashberg equations
-            data = solve_eliashberg(itemp, inp, console, val)
+            data = solve_eliashberg(itemp, inp, console, matval)
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
@@ -448,7 +449,7 @@ function findTc(inp, console, val, ML_Tc)
 
     printTextCentered(inp, "Stopping now!", console["partingLine"], true)
 
-    return inp.temps[1:length(Delta0)], Znorm0, Delta0, Shift0, EfMu
+    return inp.temps, Znorm0, Delta0, Shift0, EfMu
 
 end
 
@@ -470,20 +471,36 @@ function EliashbergSolver(inp::arguments, testFlag = false)
         if inp.flag_log == 1
             inp.log_file = open(inp.outdir * "/log.txt", "w")
         end
-        inp, console, val, ML_Tc = InputParser(inp)
+        inp, console, matval, ML_Tc = InputParser(inp)
+        
+        ### Print to console ###
+        printFlagsAsText(inp)
 
         ########### start loop over temperatures ##########
-        temps, Znorm0, Delta0, Shift0, EfMu = findTc(inp, console, val, ML_Tc)
+        temps, Znorm0, Delta0, Shift0, EfMu = findTc(inp, console, matval, ML_Tc)
 
         # write Tc to console
         printSummary(inp, temps, Delta0)
 
         # write output-file
         if inp.flag_outfile == 1
+            # write to output file
+            name = "/"
+            if inp.material != "Material"
+                name = name*inp.material*"_"
+            end
+            name = name*"Summary.txt"
+            outfile = open(inp.outdir*name)
+
+            header = ["T", "Δ(0)", "Z(0)"]
+            units = [" K", " meV", ""]
+
             out_var = zeros(size(Delta0, 1), 5)
-            out_var[:, 1] = temps[1:size(Delta0, 1)]
+            out_var[:, 1] = temps
             out_var[:, 2] = Delta0
             if inp.cDOS_flag == 0
+                header = push!(header, "χ(0)", "ϵ_F - μ")
+                units = push!(units, "", "")
                 out_var[:, 3] = Znorm0
                 out_var[:, 4] = Shift0
                 out_var[:, 5] = EfMu
@@ -491,6 +508,35 @@ function EliashbergSolver(inp::arguments, testFlag = false)
                 out_var[:, 3] = Znorm0
             end
 
+            ### calc width of each column
+            width = Vector{Int}(zeros(length(header)))
+            for k in eachindex(header)
+                width[k] = maximum([length(header[k])+2, length(string(ADvalues[k])) + length(units[k]) + 2])
+            end
+            header = formatTableHeader(header, width)
+
+            ### Define boundary ###
+            tableHline = ""
+            for w in width
+                tableHline = tableHline*"."*"-"^w
+            end
+            tableHline = tableHline*"."
+
+            ### Define table header ###
+            delimiter = "|"
+            out = delimiter*tableHline*"\n"*delimiter
+            for k in eachindex(header)
+                value = header[k]
+  
+                # save for log file
+                out = out*string(value)*delimiter
+            end
+
+            ### parting line ###
+            out = out*"\n"*replace(tableHline, "." => "|")*"\n"
+
+
+            print(outfile, out)
             if inp.mu_flag == 0
                 writedlm(inp.outdir * "/Delta0_constmu_sm" * string(inp.ind_smear) * ".txt", out_var)
             elseif inp.mu_flag == 1
@@ -498,8 +544,13 @@ function EliashbergSolver(inp::arguments, testFlag = false)
             end
         end
 
-        # print a2F vs. energy
-        a2f_omega_fine, a2f_fine = val
+        # save Z, Delta, chi, phi
+        if inp.flag_writeSelfEnergy == 1
+
+        end
+
+        ### figures
+        a2f_omega_fine, a2f_fine = matval
         plot_font = "Computer Modern"
         default(
             fontfamily=plot_font,
@@ -513,6 +564,7 @@ function EliashbergSolver(inp::arguments, testFlag = false)
                 print(@blue "Info: ")
                 println("No superconducting gap found - skipping plots\n")
             else
+                # print a2F vs. energy
                 xlim_max = round(maximum(a2f_omega_fine) / 10 * 1.01, RoundUp) * 10
                 xtick_val = 0:10:xlim_max
                 ylim_max = round(maximum(a2f_fine), RoundUp)
@@ -556,12 +608,12 @@ function EliashbergSolver(inp::arguments, testFlag = false)
 
                 if inp.cDOS_flag == 0
                     if inp.mu_flag == 0
-                        savefig(inp.outdir * "/Delta0_constmu_mu" * string(inp.muc) * "_sm" * string(iinp.nd_smear) * ".pdf")
+                        savefig(inp.outdir * "/Delta0_constmu_mu" * string(inp.muc_AD) * "_sm" * string(iinp.nd_smear) * ".pdf")
                     elseif inp.mu_flag == 1
-                        savefig(inp.outdir * "/Delta0_varmu_mu" * string(inp.muc) * "_sm" * string(inp.ind_smear) * ".pdf")
+                        savefig(inp.outdir * "/Delta0_varmu_mu" * string(inp.muc_AD) * "_sm" * string(inp.ind_smear) * ".pdf")
                     end
                 else
-                    savefig(inp.outdir * "/Delta0_conDOS_mu" * string(inp.muc) * "_sm" * string(inp.ind_smear) * ".pdf")
+                    savefig(inp.outdir * "/Delta0_conDOS_mu" * string(inp.muc_AD) * "_sm" * string(inp.ind_smear) * ".pdf")
                 end
             end
         end

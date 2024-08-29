@@ -52,28 +52,20 @@ const conv_thr = 1e-4;    # convergence threshold for Delta0 for solving the Eli
 
 
 ### Define input struct ###
-# Group into sub structs?
-#= 
-i.e. @kwdef struct a2f
-    file::String = ""
-    nheader::Number = nothing
-end
-
-@kwdef struct arguments 
-    a2f::a2f = a2f(nheader = nothing)
-end 
-=#
 @kwdef mutable struct arguments
     # Parameters
     temps::Vector{Number} = [-1]        # change to type number?
-    muc::Float64 = 0.14
+    muc_AD::Float64 = 0.14
     omega_c::Float64 = 15000.0
-    muc_ME::Float64 = muc / (1 + muc*log(200/omega_c))  
+    muc_ME::Float64 = -1
+    mu::Float64 = -1  
+    ef::Float64 = -1
     mixing_beta::Number = -1
-    nItFullCoul = 5             # if greater than 20 adapt termination criterion for min iterations !!
+    nItFullCoul::Number = 5             
 
     # mode
     cDOS_flag::Int64 = 1
+    include_Weep::Int64 = 0
     TcSearchMode_flag::Int64 = 1
     mu_flag::Int64 = 1
 
@@ -98,7 +90,7 @@ end
     nheader_Weep::Number = -1
     nfooter_Weep::Number = -1
     Weep_unit::String = ""
-    include_Weep::Int64 = 0
+    Weep_col::Number = 3
     Wen_file::String = ""
     nheader_Wen::Number = -1 
     nfooter_Wen::Number = -1
@@ -109,6 +101,7 @@ end
     flag_log::Int64 = 1
     flag_figure::Int64 = 1
     flag_outfile::Int64 = 1
+    flag_writeSelfEnergy::Int64 = 0
     log_file::Any = ""
     material::String = "Material"
 

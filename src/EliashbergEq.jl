@@ -358,9 +358,9 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
 
     # gives different result? (e.g. 1 K difference in Tc for LaBeH8, especially shift is different)
     if sparse_sampling_flag == 1
-        znormi_sparse = filter(!iszero, znormi2)
-        deltai_sparse = filter(!iszero, deltai2)
-        shifti_sparse = filter(!iszero, shifti2)
+        znormi_sparse = filter(!iszero, znormi)
+        deltai_sparse = filter(!iszero, deltai)
+        shifti_sparse = filter(!iszero, shifti)
 
         znormi_itp = linear_interpolation(wsi[ind_mat_freq], znormi_sparse, extrapolation_bc=Line())
         deltai_itp = linear_interpolation(wsi[ind_mat_freq], deltai_sparse, extrapolation_bc=Line())

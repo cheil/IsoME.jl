@@ -5,7 +5,7 @@ using Test
 @testset "IsoME.jl" begin
     ### Nb ###
     inp = arguments(
-                    temps = [17, 18, 19],
+                    temps = [16, 17, 18, 19],
                     cDOS_flag = 1,
                     include_Weep = 0,
                     a2f_file = "test/Nb/a2f_k48.dat",
@@ -14,11 +14,12 @@ using Test
                     Wen_file = "test/Nb/Wenergies.dat",
                     flag_log = 0,
                     flag_figure = 0,
-                    flag_outfile = 0
+                    flag_outfile = 0,
+                    TcSearchMode_flag = 0
                     )
 
     Tc = EliashbergSolver(inp, true)
-    @test Tc == 18
+    @test Tc == 17
        
     ### USE CORRECT Tc VALUES !!! ###
     inp.cDOS_flag = 0

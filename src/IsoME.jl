@@ -18,9 +18,7 @@
 module IsoME
 
 # ToDo:
-# Annotate type of global variables, e.g. x::Float64 = 1.0
 # Remove revise before making module public
-# print elapsed time 
 # error handle
 
 
@@ -46,22 +44,19 @@ const Ry2meV = 13605.662285137
 const THz2meV = 4.13566553853599;
 const kb = 0.08617333262; # meV/K
 
-### defining convergence parameters for Eliashberg solver ###
-const N_it = 5000;        # max. number of iterations for the Eliashberg solver
-const conv_thr = 1e-4;    # convergence threshold for Delta0 for solving the Eliashberg equations
-
-
 ### Define input struct ###
 @kwdef mutable struct arguments
     # Parameters
     temps::Vector{Number} = [-1]        # change to type number?
     muc_AD::Float64 = 0.14
-    omega_c::Float64 = 15000.0
+    omega_c::Float64 = 10000.0
     muc_ME::Float64 = -1
     mu::Float64 = -1  
     ef::Float64 = -1
     mixing_beta::Number = -1
-    nItFullCoul::Number = 5             
+    nItFullCoul::Number = 10
+    conv_thr::Float64 = 1e-4
+    N_it::Int64 = 5000             
 
     # mode
     cDOS_flag::Int64 = 1
@@ -105,7 +100,7 @@ const conv_thr = 1e-4;    # convergence threshold for Delta0 for solving the Eli
     log_file::Any = ""
     material::String = "Material"
 
-    # Restrict Weep, REMOVE BEFORE MERGE !!!
+    # Restrict Weep
     Nrestrict::Number = -1
     wndRestrict::Vector{Number} = [-1]
 end
@@ -118,7 +113,7 @@ include("Interpolation.jl")
 include("Mixing.jl")
 include("AllenDynes.jl")
 include("MuUpdate.jl")
-include("FormatConsoleOutput.jl")
+include("WriteOutput.jl")
 include("EliashbergEq.jl")
 
 

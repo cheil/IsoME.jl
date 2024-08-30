@@ -24,6 +24,11 @@ function InputParser(inp::arguments)
 
     inp = checkInput!(inp)
 
+    ### open log_file ###
+    if inp.flag_log == 1
+        inp.log_file = open(inp.outdir * "log.txt", "w")
+    end
+
     ### Init table size ###
     console = Dict()
     if inp.include_Weep == 1 && inp.cDOS_flag == 0
@@ -162,9 +167,7 @@ function InputParser(inp::arguments)
     printADtable(inp, console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log)
 
 
-    ### REMOVE - START ###
     # restrict Dos/Weep to a subset of grid points
-    # ONLY RELEVANT TO TEST THE SCALING OF THE CODE
     if inp.Nrestrict != -1
         if inp.include_Weep == 1
             # call restrict function
@@ -174,7 +177,7 @@ function InputParser(inp::arguments)
             dos, dos_en = restrictInput(inp.Nrestrict, inp.wndRestrict, ef, dos, dos_en)
         end
     end
-    ### REMOVE - END ###
+
 
     ### remove zeros at begining/end of dos ###
     if inp.include_Weep == 1 
@@ -183,21 +186,21 @@ function InputParser(inp::arguments)
         dos, dos_en = neglectZeros(dos, dos_en)
     end
 
-    # Improve !!!
+
     if inp.include_Weep == 0 && inp.cDOS_flag == 1
         # default values in case no dos-file is given
         ndos = 0
         idx_ef = 0
         dosef = 0
     else
-        ### length energy vector ###
+        # length energy vector
         ndos = size(dos_en, 1)
 
-        ### index of fermi energy ###
+        # index of fermi energy
         idx_ef = findmin(abs.(dos_en .- ef))
         idx_ef = idx_ef[2]
 
-        ### dos at ef ###
+        # dos at ef
         dosef = dos[idx_ef]
     end
 
@@ -206,6 +209,7 @@ function InputParser(inp::arguments)
 
     return inp, console, matval, ML_Tc
 end
+
 
 """
     checkInput!()
@@ -217,7 +221,7 @@ function checkInput!(inp::arguments)
     if ~isfile(inp.a2f_file)
         error("Invalid path to a2f-file!")
         
-    elseif ~isfile(inp.dos_file) && ~isfile(inp.dosW_file) && (inp.cDOS_flag == 0 || inp.include_Weep == 1)
+    elseif ~isfile(inp.dos_file) && (inp.cDOS_flag == 0 || inp.include_Weep == 1)
         inp.cDOS_flag = 1 
         inp.include_Weep = 0
         print(@yellow "WARNING: ")
@@ -227,10 +231,10 @@ function checkInput!(inp::arguments)
             print(inp.log_file, "WARNING: No valid Dos-file specified! Calculating Tc within constant Dos approximation using Anderson-pseudopotential instead\n\n")
         end
     
-    elseif (~(isfile(inp.Weep_file) || ~isfile(inp.dosW_file))) && inp.include_Weep == 1
+    elseif (~(isfile(inp.Weep_file) || ~isfile(inp.Wen_file))) && inp.include_Weep == 1
         inp.include_Weep = 0
         print(@yellow "WARNING: ")
-        print("No valid Weep/DosWeep-file specified! Calculating Tc using Anderson-pseudopotential instead\n\n")
+        print("No valid Weep/Energies-file specified! Calculating Tc using Anderson-pseudopotential instead\n\n")
     
         if inp.flag_log == 1
             print(inp.log_file, "WARNING: No valid Weep/DosWeep-file specified! Calculating Tc using Anderson-pseudopotential instead\n\n")
@@ -241,6 +245,26 @@ function checkInput!(inp::arguments)
     # Tc search mode
     if inp.temps == [-1]
         inp.TcSearchMode_flag = 1
+        print(@yellow "WARNING: ")
+        print("No temperatures specified - Activating automatic Tc search mode instead!\n\n")
+    
+        if inp.flag_log == 1
+            print(inp.log_file, "WARNING: No temperatures specified - Activating automatic Tc search mode instead!\n\n")
+        end
+    end
+
+
+    # create output directory
+    if ~(inp.outdir[end] == '/' || inp.outdir[end] == '\\')
+        inp.outdir = inp.outdir*"/"
+    end
+
+    if ~isdir(inp.outdir)
+        try
+            mkdir(inp.outdir)
+        catch
+            error("Couldn't write into "*inp.outdir*"! Path in outdir may not be writable or invalid.")
+        end
     end
 
     return inp
@@ -391,7 +415,7 @@ end
 Read in Weep file containing the sreened coulomb interaction.
 Weep data must be in column 3
 """
-function readIn_Weep(Weep_file, Weep_col, unit=nothing, nheader=nothing, nfooter=nothing)
+function readIn_Weep(Weep_file, Weep_col=3, unit="", nheader=-1, nfooter=-1)
 
     ### Read in Weep file ###
     Weep_data = readdlm(Weep_file);
@@ -437,7 +461,7 @@ end
 Read in Weep file containing the sreened coulomb interaction.
 Weep data must be in column 3
 """
-function readIn_Wen(Wen_file, unit=nothing, nheader=nothing, nfooter=nothing)
+function readIn_Wen(Wen_file, unit="", nheader=-1, nfooter=-1)
     ### Read in Weep file ###
     Wen_data = readdlm(Wen_file);
 
@@ -592,24 +616,3 @@ function restrictInput(n::Int, enWndw::Any, ef::Float64, Dos::Vector{Float64}, e
 end
 
 
-# Format as table / analog to console output !!!
-function Base.getproperty(a::arguments, v::Symbol)
-    if v == :all
-        input = Vector{String}()
-        for name in fieldnames(arguments)
-            text = string(name)*": "*string(getfield(a, name))
-            input = push!(input, text)
-        end
-
-        return input
-    elseif v == :args
-        input = Vector{String}()
-        for name in fieldnames(arguments)
-            input = push!(input, string(name))
-        end
-
-        return input
-    else
-        return getfield(a, v)
-    end
-end

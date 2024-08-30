@@ -147,7 +147,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
         znormi[iw] = znormi[iw] + dot(ziwp, lambdam)
         phiphi[iw] = phiphi[iw] + dot(phiwp, lambdap)
         shifti[iw] = shifti[iw] + dot(shiwp, lambdap)
-    end # iw = ind_mat_freq
+    end 
 
     ### Interpolate remaining mat freg if sparse sampling ###
     if sparse_sampling_flag == 1
@@ -500,8 +500,8 @@ function initSparseSampling(beta, omega_c, M)
 
     ind_mat_freq = ir_indices[ir_indices.<M+2] #+2
 
-    if ind_mat_freq[end] != M+1 # last mat freq needed for interpolation; +1 added
-        ind_mat_freq = [ind_mat_freq; M+1] #+1
+    if ind_mat_freq[end] != M+1 # last mat freq needed for interpolation; 
+        ind_mat_freq = [ind_mat_freq; M+1] 
     end
 
     return ind_mat_freq

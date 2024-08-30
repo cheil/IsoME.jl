@@ -1,7 +1,8 @@
 """
-Format the console output nicely
-    - Start message
-    - Iteration output
+Format and write the output into 
+    - log-file
+    - Summary-file
+    - Self Energy-file
 
 Julia Packages:
     - 
@@ -356,7 +357,7 @@ function formatTableRow(vec, widthCol, prec=5)
         value = vec[k]
         width = widthCol[k]
 
-        if isnothing(value)
+        if isnothing(value) || isnan(value)
             numDig = [0,0]
             spacing = (width - (sum(numDig) + 1)) / 2
             format[k, :] = [floor(spacing), numDig[1], numDig[2], ceil(spacing)]
@@ -447,15 +448,6 @@ function printFlagsAsText(inp)
         text *= " - Anderson pseudopotential, μ*_AD = "*string(round(inp.muc_AD, digits=3))*" , μ*_ME = "*string(round(inp.muc_ME, digits=3))*"\n"
     end
 
-    # other DoS
-    #if other_dos_flag == 1
-    #    text *= " - Other Dos given in "*unitScfDosFile*"\n"
-    #else
-    #    text *= " - Dos given in "*unitDosFile*"\n"
-    #end
-    #text = text*"\n"
-
-
     print(text)
     if inp.flag_log == 1
         print(inp.log_file, text)
@@ -463,3 +455,148 @@ function printFlagsAsText(inp)
 
 end
 
+
+function writeToOutFile(inp, out_vars, header)
+    # write to output file
+    name = ""
+    if inp.material != "Material"
+        name = name*inp.material*"_"
+    end
+    name = name*"Summary.txt"
+    outfile = open(inp.outdir*name, "w")
+    out = ""
+
+    ### calc width of each column
+    width = minimum([length.(header) .+ 2])
+    width[width .< 12] .= 12
+    header = formatTableHeader(header, width)
+
+    ### Define boundary ###
+    tableHline = ""
+    for w in width
+        tableHline = tableHline*"."*"-"^w
+    end
+    tableHline = tableHline*"."
+
+    ### Define table header ###
+    delimiter = "|"
+    out = out*tableHline*"\n"*delimiter
+    for k in eachindex(header)
+        value = header[k]
+
+        out = out*string(value)*delimiter
+    end
+
+    ### parting line ###
+    out = out*"\n"*replace(tableHline, "." => "|")*"\n"
+
+    ### write to outfile ###
+    print(outfile, out)
+
+    ### write values to out file ###
+    for i in axes(out_vars, 1)
+        var = out_vars[i,:]
+        var, strFormat, format = formatTableRow(var, width, 2)
+        for j in eachindex(var)
+            # print
+            if isnan(var[j])
+                print(outfile, strFormat[j])
+            else
+                Printf.format(outfile, Printf.Format(strFormat[j]), format[j, 1], " ", format[j, 2], format[j, 3], var[j], format[j, 4], " ")
+            end
+        end
+    end
+
+    print(outfile, replace(tableHline, "." => " ")*"\n")
+
+    ### Input parameters ###
+    print(outfile, "\n\n"*join(inp.all, "\n"))
+
+    close(outfile)
+end
+
+
+"""
+     Base.getproperty(a::arguments, v::Symbol)
+
+return all arguments in input structure arguments
+"""
+function Base.getproperty(a::arguments, v::Symbol)
+    if v == :all
+        input = Vector{String}()
+        for name in fieldnames(arguments)
+            text = string(name)*": "*string(getfield(a, name))
+            input = push!(input, text)
+        end
+
+        return input
+    elseif v == :args
+        input = Vector{String}()
+        for name in fieldnames(arguments)
+            input = push!(input, string(name))
+        end
+
+        return input
+    else
+        return getfield(a, v)
+    end
+end
+
+
+"""
+    saveSelfEnergyComponents(inp, iwn, Delta, Z; epsilon=nothing,  chi=nothing, phiph=nothing, phic=nothing)
+
+Save the self-energy components into separate files
+"""
+function saveSelfEnergyComponents(itemp, inp, iwn, Delta, Z; epsilon=nothing,  chi=nothing, phiph=nothing, phic=nothing)
+
+    folder = inp.outdir*"SelfEnergy/"
+
+    if ~isdir(folder)
+        mkdir(folder)
+    end
+
+    # Z
+    open(folder*"Z_"*string(itemp)*"K.dat", "w") do io
+        write(io, "#  iωₙ  Z(iωₙ) \n")
+        writedlm(io, [iwn Z])
+    end
+
+    # Delta 
+    if inp.include_Weep == 1
+        open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
+            write(io, "# Δ(ϵ, iωₙ) \n")
+            writedlm(io, Delta)
+        end
+    elseif inp.include_Weep == 0
+        open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
+            write(io, "#  iωₙ  Δ(iωₙ) \n")
+            writedlm(io, [iwn Delta])
+        end
+     end
+
+    # Chi
+    if ~isnothing(chi)
+        open(folder*"Chi_"*string(itemp)*"K.dat", "w") do io
+            write(io, "#  iωₙ  Χ(iωₙ) \n")
+            writedlm(io, [iwn chi])
+        end
+    end
+
+    # Phiph
+    if ~isnothing(phiph)
+        open(folder*"Phiph_"*string(itemp)*"K.dat", "w") do io
+            write(io, "#  iωₙ  Φp(iωₙ) \n")
+            writedlm(io, [iwn phiph])
+        end
+    end
+
+    # Phic
+    if ~isnothing(phic)
+        open(folder*"Phic_"*string(itemp)*"K.dat", "w") do io
+            write(io, "#  ϵ  Φc(ϵ) \n")
+            writedlm(io, [epsilon phic])
+        end
+    end
+
+end

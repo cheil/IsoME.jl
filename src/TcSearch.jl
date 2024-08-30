@@ -34,9 +34,17 @@ function solve_eliashberg(itemp, inp, console, matval)
 
     ### sparse sampling, consider only subset of mat frequencies up to M
     # only reasonable if T < 1 K
-    if itemp <= 5
+    if itemp < 5
         sparse_sampling_flag = 1
-        ind_mat_freq = initSparseSampling(beta, omega_c, M)
+        #ind_mat_freq = initSparseSampling(beta, omega_c, M)
+
+        # sparse sampling, roman fbw paper
+        fsparse = 1.0
+        ind_mat_freq = cumsum(Int64.(round.(exp.(collect(1:nsiw)./(nsiw*fsparse)))))
+        ind_mat_freq = ind_mat_freq[ind_mat_freq .<= nsiw]
+        if ind_mat_freq[end] != nsiw
+            ind_mat_freq = push!(ind_mat_freq, nsiw)
+        end
 
         # write to console
         printTextCentered(inp, "T = "*string(itemp)*" K ", console["partingLine"] , true)
@@ -118,6 +126,7 @@ function solve_eliashberg(itemp, inp, console, matval)
             ### Print to console & log file
             console["InitValues"] = [0 znormi[1] deltai[1] nothing]
             console = printTableHeader(inp, console)
+
         end
 
     else
@@ -129,7 +138,7 @@ function solve_eliashberg(itemp, inp, console, matval)
 
     ##### Start iterations #####
     err_delta = 0
-    for i_it in 1:N_it
+    for i_it in 1:inp.N_it
         if include_Weep == 1
             if cDOS_flag == 0
                 deltaip = copy(deltai)
@@ -269,7 +278,7 @@ function solve_eliashberg(itemp, inp, console, matval)
 
 
         ##### check convergence & termination criterion #####
-        if err_delta < conv_thr
+        if err_delta < inp.conv_thr && i_it > maximum([15, inp.nItFullCoul+1])
             println(replace(console["Hline"], "." => " "))
             printstyled("\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 
@@ -278,11 +287,29 @@ function solve_eliashberg(itemp, inp, console, matval)
                 printstyled(inp.log_file, "\nConvergence achieved for T = " * string(itemp) * " K\n\n"; bold=false)
             end
 
+            # save Z, Delta, chi, phi
+            if inp.flag_writeSelfEnergy == 1
+                if include_Weep == 1
+                    if inp.cDOS_flag == 0
+                        saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi, epsilon=dos_en, chi=shifti, phiph=phiphi, phic=phici)
+                    elseif inp.cDOS_flag == 1
+                        saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi, epsilon=dos_en, phiph=phiphi, phic=phici)
+                    end
+                elseif inp.include_Weep == 0
+                    if inp.cDOS_flag == 0
+                        saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi, chi=shifti)                           
+                    elseif inp.cDOS_flag == 1
+                        saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi)                
+                    end
+                end
+            end
+
             return data
             break
         end
+
         # Gap too small
-        if data[2] < 0.1 && i_it > maximum([20, inp.nItFullCoul])
+        if data[2] < 0.1 && i_it > maximum([15, inp.nItFullCoul+1])
             println(replace(console["Hline"], "." => " "))
             printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than 0.1 meV!\n\n"; bold=false)
 
@@ -295,15 +322,16 @@ function solve_eliashberg(itemp, inp, console, matval)
             return data
             break
         end
+
         # max number iterations reached
-        if i_it == N_it
+        if i_it == inp.N_it
             println(replace(console["Hline"], "." => " "))
-            printstyled("\nConvergence not achieved within " * string(N_it) * " iterations\n"; bold=true)
+            printstyled("\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"; bold=true)
             println("\n")
 
             if flag_log == 1
                 println(inp.log_file, replace(console["Hline"], "." => " "))
-                printstyled(inp.log_file, "\nConvergence not achieved within " * string(N_it) * " iterations\n"; bold=true)
+                printstyled(inp.log_file, "\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"; bold=true)
                 println(inp.log_file, "\n")
     
             end
@@ -460,17 +488,7 @@ Main function. User has to pass the input arguments and it returns the Tc.
 """
 function EliashbergSolver(inp::arguments, testFlag = false)
     dt = @elapsed begin
-        ### error handle ###
-        # is outdir writable, c-function
-        #access(path, mode) = ccall(:access, Cint, (Cstring, Cint), path, mode) == 0;
-        #if ~access(inp.outdir, 1) 
-        #    error(inp.outdir*" is not a writable directory! The output directory can be set via the outdir keyword")
-        #end
-
-        ### open log_file ###
-        if inp.flag_log == 1
-            inp.log_file = open(inp.outdir * "/log.txt", "w")
-        end
+        # inputs
         inp, console, matval, ML_Tc = InputParser(inp)
         
         ### Print to console ###
@@ -484,70 +502,22 @@ function EliashbergSolver(inp::arguments, testFlag = false)
 
         # write output-file
         if inp.flag_outfile == 1
-            # write to output file
-            name = "/"
-            if inp.material != "Material"
-                name = name*inp.material*"_"
-            end
-            name = name*"Summary.txt"
-            outfile = open(inp.outdir*name)
+            ### Data ###
+            header = ["T / K", "Δ(0) / meV", "Z(0) / 1"]
 
-            header = ["T", "Δ(0)", "Z(0)"]
-            units = [" K", " meV", ""]
-
-            out_var = zeros(size(Delta0, 1), 5)
-            out_var[:, 1] = temps
-            out_var[:, 2] = Delta0
+            out_vars = zeros(size(Delta0, 1), 3)
+            out_vars[:, 1] = temps
+            out_vars[:, 2] = Delta0
+            out_vars[:, 3] = Znorm0
             if inp.cDOS_flag == 0
-                header = push!(header, "χ(0)", "ϵ_F - μ")
-                units = push!(units, "", "")
-                out_var[:, 3] = Znorm0
-                out_var[:, 4] = Shift0
-                out_var[:, 5] = EfMu
-            elseif inp.cDOS_flag == 1
-                out_var[:, 3] = Znorm0
+                header = push!(header, "χ(0) / meV", "ϵ_F - μ / meV")
+                out_vars = hcat(out_vars, Shift0, EfMu)
             end
 
-            ### calc width of each column
-            width = Vector{Int}(zeros(length(header)))
-            for k in eachindex(header)
-                width[k] = maximum([length(header[k])+2, length(string(ADvalues[k])) + length(units[k]) + 2])
-            end
-            header = formatTableHeader(header, width)
+            writeToOutFile(inp, out_vars, header)
 
-            ### Define boundary ###
-            tableHline = ""
-            for w in width
-                tableHline = tableHline*"."*"-"^w
-            end
-            tableHline = tableHline*"."
-
-            ### Define table header ###
-            delimiter = "|"
-            out = delimiter*tableHline*"\n"*delimiter
-            for k in eachindex(header)
-                value = header[k]
-  
-                # save for log file
-                out = out*string(value)*delimiter
-            end
-
-            ### parting line ###
-            out = out*"\n"*replace(tableHline, "." => "|")*"\n"
-
-
-            print(outfile, out)
-            if inp.mu_flag == 0
-                writedlm(inp.outdir * "/Delta0_constmu_sm" * string(inp.ind_smear) * ".txt", out_var)
-            elseif inp.mu_flag == 1
-                writedlm(inp.outdir * "/Delta0_varmu_sm" * string(inp.ind_smear) * ".txt", out_var)
-            end
         end
 
-        # save Z, Delta, chi, phi
-        if inp.flag_writeSelfEnergy == 1
-
-        end
 
         ### figures
         a2f_omega_fine, a2f_fine = matval
@@ -560,45 +530,45 @@ function EliashbergSolver(inp::arguments, testFlag = false)
             grid=false
         )
         if inp.flag_figure == 1
+            # print a2F vs. energy
+            xlim_max = round(maximum(a2f_omega_fine) / 10 * 1.01, RoundUp) * 10
+            xtick_val = 0:10:xlim_max
+            ylim_max = round(maximum(a2f_fine), RoundUp)
+
+            plot(a2f_omega_fine, a2f_fine)
+            xlims!(0, xlim_max)
+            ylims!(0, ylim_max)
+            title!(inp.material)
+            xlabel!(L"\omega ~ \mathrm{(meV)}")
+            ylabel!(L"\alpha^2F ~ \mathrm{(1/meV)}")
+            savefig(inp.outdir * "/a2F_sm" * string(inp.ind_smear) * ".pdf")
+
             if all(isnan.(Delta0))
                 print(@blue "Info: ")
-                println("No superconducting gap found - skipping plots\n")
+                println("No superconducting gap found - skipping plot\n")
             else
-                # print a2F vs. energy
-                xlim_max = round(maximum(a2f_omega_fine) / 10 * 1.01, RoundUp) * 10
-                xtick_val = 0:10:xlim_max
-                ylim_max = round(maximum(a2f_fine), RoundUp)
-
-                plot(a2f_omega_fine, a2f_fine)
-                xlims!(0, xlim_max)
-                ylims!(0, ylim_max)
-                title!(inp.material)
-                xlabel!(L"\omega ~ \mathrm{(meV)}")
-                ylabel!(L"\alpha^2F ~ \mathrm{(1/meV)}")
-                savefig(inp.outdir * "/a2F_sm" * string(inp.ind_smear) * ".pdf")
-
                 # print gap vs. temperature
-                nan_ind = .~isnan.(Delta0)
-                Delta0 = Delta0[nan_ind]
-                temps = temps[nan_ind]
+                Delta0_plot = Delta0
+                Delta0_plot[isnan.(Delta0)] .= 0
+                temps_plot = temps
 
                 plot_font = "Computer Modern"
 
-                if maximum(temps) < 10
-                    xlim_max = round(maximum(temps) * 1.1, RoundUp)
+                if maximum(temps_plot) < 10
+                    xlim_max = round(maximum(temps_plot) * 1.1, RoundUp)
                     xtick_val = 0:1:xlim_max
                 else
-                    xlim_max = round(maximum(temps) / 10 * 1.01, RoundUp) * 10
+                    xlim_max = round(maximum(temps_plot) / 10 * 1.01, RoundUp) * 10
                     xtick_val = 0:10:xlim_max
                 end
 
-                if maximum(Delta0) < 10
-                    ylim_max = round(maximum(Delta0), RoundUp)
+                if maximum(Delta0_plot) < 10
+                    ylim_max = round(maximum(Delta0_plot), RoundUp)
                 else
-                    ylim_max = round(maximum(Delta0) / 10, RoundUp) * 10
+                    ylim_max = round(maximum(Delta0_plot) / 10, RoundUp) * 10
                 end
 
-                plot(temps, Delta0, marker=:circle)
+                plot(temps_plot, Delta0_plot, marker=:circle)
                 plot!(xticks=xtick_val)
                 xlims!(0, xlim_max)
                 ylims!(0, ylim_max)
@@ -606,15 +576,22 @@ function EliashbergSolver(inp::arguments, testFlag = false)
                 xlabel!(L"T ~ \mathrm{(K)}")
                 ylabel!(L"\Delta_0 ~ \mathrm{(meV)}")
 
-                if inp.cDOS_flag == 0
-                    if inp.mu_flag == 0
-                        savefig(inp.outdir * "/Delta0_constmu_mu" * string(inp.muc_AD) * "_sm" * string(iinp.nd_smear) * ".pdf")
-                    elseif inp.mu_flag == 1
-                        savefig(inp.outdir * "/Delta0_varmu_mu" * string(inp.muc_AD) * "_sm" * string(inp.ind_smear) * ".pdf")
-                    end
-                else
-                    savefig(inp.outdir * "/Delta0_conDOS_mu" * string(inp.muc_AD) * "_sm" * string(inp.ind_smear) * ".pdf")
+                namePlot = "Delta0"
+                if inp.material != "material"
+                    namePlot = namePlot*"_"*inp.material
                 end
+                if inp.cDOS_flag == 1
+                    namePlot = namePlot*"_"*"cDOS"
+                else
+                    namePlot = namePlot*"_"*"vDOS"
+                end
+                if inp.include_Weep== 1
+                    namePlot = namePlot*"_"*"W"
+                else
+                    namePlot = namePlot*"_"*"muc"
+                end
+                namePlot = namePlot*".pdf"
+                savefig(inp.outdir*namePlot)
             end
         end
     end
@@ -630,7 +607,12 @@ function EliashbergSolver(inp::arguments, testFlag = false)
 
     ### !!! Better solution for runtest !!!
     if testFlag
-        return maximum(temps[.~isnan.(Delta0)])
+        if all(isnan.(Delta0))
+            Tc = NaN
+        else
+            Tc = maximum(temps[.~isnan.(Delta0)])
+        end
+        return Tc
     end
 end
 

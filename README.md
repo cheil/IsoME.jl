@@ -16,7 +16,12 @@ julia main.jl
 
 
 # ToDo's
-- check in beginning if outdir exists/is writable
+- Sparse sampling Roman FBW
+- warning if only mu*_AD defined
+- Global error handle
+    * check in beginning if outdir exists/is writable
+- remove log_file from inp
+- adapt output file
 - runtest: 
     * Test Tc in each mode (cDos/vDos mu*/Weep) for one/several materials
 - Remove user input units/...?

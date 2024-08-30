@@ -151,11 +151,11 @@ function InputParser(inp::arguments)
     if inp.muc_ME == -1
         inp.muc_ME = inp.muc_AD / (1 + inp.muc_AD*log(maximum(a2f_omega_fine[a2f_fine .> 0.01])/inp.omega_c))
 
-        if inp.muc_ME < 0 || inp.muc_ME > 4*inp.muc_AD
-            inp.muc_ME = 2*inp.muc_AD
+        if inp.muc_ME < 0 || inp.muc_ME > 3*inp.muc_AD || inp.muc_ME > 0.8
+            inp.muc_ME = minimum([3*inp.muc_AD, 0.8])
 
             print(@yellow "WARNING: ")
-            print("Couldn't find a reasonable μ*_ME from μ*_AD. Using μ*_ME = 2*μ*_AD instead. Consider setting it manually! \n\n")
+            print("Couldn't calculate a reasonable μ*_ME from μ*_AD. Using μ*_ME = minimum(3*μ*_AD, 0.8) instead. Consider setting it manually! \n\n")
         
             if inp.flag_log == 1
                 print(inp.log_file, "WARNING: Couldn't find a reasonable μ*_ME from μ*_AD. Using μ*_ME = 2*μ*_AD instead. Consider setting it manually!\n\n")

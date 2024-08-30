@@ -38,6 +38,7 @@ function solve_eliashberg(itemp, inp, console, matval)
         sparse_sampling_flag = 1
         #ind_mat_freq = initSparseSampling(beta, omega_c, M)
 
+        
         # sparse sampling, roman fbw paper
         fsparse = 1.0
         ind_mat_freq = cumsum(Int64.(round.(exp.(collect(1:nsiw)./(nsiw*fsparse)))))
@@ -45,6 +46,7 @@ function solve_eliashberg(itemp, inp, console, matval)
         if ind_mat_freq[end] != nsiw
             ind_mat_freq = push!(ind_mat_freq, nsiw)
         end
+        
 
         # write to console
         printTextCentered(inp, "T = "*string(itemp)*" K ", console["partingLine"] , true)
@@ -278,7 +280,7 @@ function solve_eliashberg(itemp, inp, console, matval)
 
 
         ##### check convergence & termination criterion #####
-        if err_delta < inp.conv_thr && i_it > maximum([15, inp.nItFullCoul+1])
+        if err_delta < inp.conv_thr && i_it > maximum([10, inp.nItFullCoul+1])
             println(replace(console["Hline"], "." => " "))
             printstyled("\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 
@@ -309,7 +311,7 @@ function solve_eliashberg(itemp, inp, console, matval)
         end
 
         # Gap too small
-        if data[2] < 0.1 && i_it > maximum([15, inp.nItFullCoul+1])
+        if data[2] < 0.1 && i_it > maximum([10, inp.nItFullCoul+1])
             println(replace(console["Hline"], "." => " "))
             printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than 0.1 meV!\n\n"; bold=false)
 
@@ -404,41 +406,50 @@ function findTc(inp, console, matval, ML_Tc)
                 Delta0 = push!(Delta0, data[2])
             end
 
+            order = sortperm(inp.temps)
+            if length(Delta0) >= 2 && any(diff(inp.temps[order]) .<= 1 .& (.~isnan.(Delta0[order][1:end-1]) .& isnan.(Delta0[order][2:end])))
+                # converged
+                break
 
-            if all(isnan.(Delta0))
+            elseif all(isnan.(Delta0))
                 # temperature too high
                 itemp = floor(itemp / 2)
 
-            elseif sum(.~isnan.(Delta0)) == 1 #|| sum(.~isnan.(Delta0)) == 2
+            elseif sum(.~isnan.(Delta0)) == 1 
                 # get a second gap value
                 if isnan(Delta0[end])
-                    itemp = floor(itemp / 2)
+                    itemp = ceil(itemp / 2)
                 else
-                    itemp = floor(itemp + maximum([itemp / 2, 2]))
+                    itemp = ceil(itemp + maximum([itemp / 2, 2]))
                 end
-
-            elseif abs(inp.temps[end] - inp.temps[end-1]) <= 1 && ((isnan(Delta0[end]) && ~isnan(Delta0[end-1])) || (~isnan(Delta0[end]) && isnan(Delta0[end-1])))
-                # converged
-                break
 
             elseif sum(.~isnan.(Delta0)) == 2 && fitFlag
                 # fit only once
                 fitFlag = false
 
-                # fit gap values
-                nnanDelta = .~isnan.(Delta0)
-                p0 = convert(Vector{Float64}, [maximum(Delta0[nnanDelta]), 1, minimum(Delta0[nnanDelta])])
-                fit = curve_fit(m, inp.temps[nnanDelta], Delta0[nnanDelta], p0)
-                par = fit.param
+                try
+                    # fit gap values
+                    nnanDelta = .~isnan.(Delta0)
+                    p0 = convert(Vector{Float64}, [maximum(Delta0[nnanDelta]), 1, minimum(Delta0[nnanDelta])])
+                    fit = curve_fit(m, inp.temps[nnanDelta], Delta0[nnanDelta], p0)
+                    par = fit.param
 
-                # find root
-                m2(x) = m(x, par)
-                itemp = floor(find_zero(m2, par[2]))
+                    # find root
+                    m2(x) = m(x, par)
+                    itemp = floor(find_zero(m2, par[2]))
+                catch
+                    itemp = maximum(inp.temps[nnanDelta]) + sum(inp.temps[nnanDelta]) / 2
+                end
 
                 # check if T < 0, happens when gap increases with T 
                 # ideally a increasing gap should not happen at all
                 if itemp < 0
                     itemp = maximum(inp.temps[nnanDelta]) + sum(inp.temps[nnanDelta]) / 2
+                end
+
+                # fit result equals highest value
+                if itemp == maximum(inp.temps)
+                    itemp += 1
                 end
 
             else

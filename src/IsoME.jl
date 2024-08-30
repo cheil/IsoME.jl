@@ -54,7 +54,7 @@ const kb = 0.08617333262; # meV/K
     mu::Float64 = -1  
     ef::Float64 = -1
     mixing_beta::Number = -1
-    nItFullCoul::Number = 10
+    nItFullCoul::Number = 5
     conv_thr::Float64 = 1e-4
     N_it::Int64 = 5000             
 

@@ -12,7 +12,7 @@
 """
 
 ########### Interpolate Weep ###########
-function interpolateWeep(epsilon, Weep, interval, intFlag, Nint=nothing)
+function interpolateWeep(epsilon, Weep, interval, intFlag, Nint=1000)
     """
     !!! THIS FUNCTION IS NOT NEEDED ANYMORE !!!
     
@@ -102,7 +102,7 @@ end
 
 
 ########### Interpolate Dos ###########
-function interpolateDos(epsilon, dos, interval, Nint=nothing)
+function interpolateDos(epsilon, dos, interval, Nint=1000)
     """
     Read in Weep file to solve the isotropic Migdal-Eliashberg equations
 
@@ -129,10 +129,6 @@ function interpolateDos(epsilon, dos, interval, Nint=nothing)
         -
     --------------------------------------------------------------------
     """
-
-
-    ### Defaul Values ###
-    (~isnothing(Nint)) || (Nint = 1000)
     
     ### Interpolation ###
     # Interpolation Object DoS

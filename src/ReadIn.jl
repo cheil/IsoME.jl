@@ -26,6 +26,10 @@ function InputParser(inp::arguments)
 
     ### open log_file ###
     if inp.flag_log == 1
+        if isfile(inp.outdir * "log.txt")
+            rm(inp.outdir * "log.txt")
+        end
+
         inp.log_file = open(inp.outdir * "log.txt", "w")
     end
 
@@ -109,6 +113,9 @@ function InputParser(inp::arguments)
             # no Weep
             Weep = nothing
             W_en = nothing
+
+            # Interpolation Dos
+            #dos_en, dos = interpolateDos(dos_en, dos, [dos_en[1], dos_en[end]], 10*length(dos_en))
         end
     else
         dos = []
@@ -122,43 +129,43 @@ function InputParser(inp::arguments)
     end
 
     ### calc mu*'s
-    if inp.mu != -1
-        if isnothing(ef)
-            print(@yellow "WARNING: ")
-            print("Unable to calculate μ* from μ without the fermi-energy! Either provide a dos-file or set the fermi-energy directly in the input structure.\n\n")
-        
-            if inp.flag_log == 1
-                print(inp.log_file, "WARNING: Unable to calculate μ* from μ without the fermi-energy! Either provide a dos-file or set the fermi-energy directly in the input structure.\n\n")
+    if inp.include_Weep == 0
+        if inp.mu != -1
+            if isnothing(ef)
+                print(@yellow "WARNING: ")
+                print("Unable to calculate μ* from μ without the fermi-energy! Either provide a dos-file or set the fermi-energy directly in the input structure.\n\n")
+            
+                if inp.flag_log == 1
+                    print(inp.log_file, "WARNING: Unable to calculate μ* from μ without the fermi-energy! Either provide a dos-file or set the fermi-energy directly in the input structure.\n\n")
+                end
+            else
+                # ensure μ*_ME < 4*μ --> reasonable ??
+                if inp.omega_c > ef*exp(3/(4*inp.mu))
+                    inp.omega_c = ef*exp(3/(4*inp.mu))
+
+                    print(@yellow "WARNING: ")
+                    print("Matsubara cutoff would lead to μ*_ME > 4*μ. omega_c has been set to a smaller value.\n\n")
+            
+                    if inp.flag_log == 1
+                        print(inp.log_file, "WARNING: Matsubara cutoff would lead to μ*_ME > 4*μ. omega_c has been set to a smaller value.\n\n")
+                    end
+                end
+
+                inp.muc_AD = inp.mu / (1 + inp.mu*log(ef/maximum(a2f_omega_fine[a2f_fine .> 0.01])))
+                inp.muc_ME = inp.mu / (1 + inp.mu*log(ef/inp.omega_c))
             end
-        else
-            # ensure μ*_ME < 4*μ --> reasonable ??
-            if inp.omega_c > ef*exp(3/(4*inp.mu))
-                inp.omega_c = ef*exp(3/(4*inp.mu))
+        elseif inp.muc_ME == -1
+            inp.muc_ME = inp.muc_AD / (1 + inp.muc_AD*log(maximum(a2f_omega_fine[a2f_fine .> 0.01])/inp.omega_c))
+
+            if inp.muc_ME < 0 || inp.muc_ME > 3*inp.muc_AD || inp.muc_ME > 0.8
+                inp.muc_ME = minimum([3*inp.muc_AD, 0.8])
 
                 print(@yellow "WARNING: ")
-                print("Matsubara cutoff would lead to μ*_ME > 4*μ. omega_c has been set to a smaller value.\n\n")
-        
+                print("Couldn't calculate a reasonable μ*_ME from μ*_AD. Using μ*_ME = minimum(3*μ*_AD, 0.8) instead. Consider setting it manually! \n\n")
+            
                 if inp.flag_log == 1
-                    print(inp.log_file, "WARNING: Matsubara cutoff would lead to μ*_ME > 4*μ. omega_c has been set to a smaller value.\n\n")
+                    print(inp.log_file, "WARNING: Couldn't find a reasonable μ*_ME from μ*_AD. Using μ*_ME = minimum(3*μ*_AD, 0.8) instead. Consider setting it manually! \n\n")
                 end
-            end
-
-            inp.muc_AD = inp.mu / (1 + inp.mu*log(ef/maximum(a2f_omega_fine[a2f_fine .> 0.01])))
-            inp.muc_ME = inp.mu / (1 + inp.mu*log(ef/inp.omega_c))
-        end
-    end
-
-    if inp.muc_ME == -1
-        inp.muc_ME = inp.muc_AD / (1 + inp.muc_AD*log(maximum(a2f_omega_fine[a2f_fine .> 0.01])/inp.omega_c))
-
-        if inp.muc_ME < 0 || inp.muc_ME > 3*inp.muc_AD || inp.muc_ME > 0.8
-            inp.muc_ME = minimum([3*inp.muc_AD, 0.8])
-
-            print(@yellow "WARNING: ")
-            print("Couldn't calculate a reasonable μ*_ME from μ*_AD. Using μ*_ME = minimum(3*μ*_AD, 0.8) instead. Consider setting it manually! \n\n")
-        
-            if inp.flag_log == 1
-                print(inp.log_file, "WARNING: Couldn't find a reasonable μ*_ME from μ*_AD. Using μ*_ME = 2*μ*_AD instead. Consider setting it manually!\n\n")
             end
         end
     end

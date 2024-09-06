@@ -1,4 +1,5 @@
 # Input Parameters
+The input parameters are handed over collectively via a structure (arguments). We recommend to always initialzie a new instance of the struct when running the Eliashberg solver as some of the parameters may be overwritten during a run.
 All energies internally are assumed to be in meV.  
 If the input files differ from that, the units are extracted from the header and converted automatically. If this doesn't work for some reason, the user has to specify the units manually via the corresponding input parameters.  
 A comprehensive description of all the input paramters can be found below.
@@ -11,13 +12,13 @@ General input parameters are:
 | temps   | Vector{Number} | Temperatures| Only needed if TcSearchMode_flag = 0|
 | mu      | Float64        | Parameter for mu*, if specified muc_AD & muc_ME are calculated based on mu | |
 | ef      | Float64        | Fermi-energy, in case mu is specified but no dos-file |  |
-| muc_AD     | Float64        | Anderson-Pseudopotential Allen-Dynes [cite] | Default = 0.14|
-| muc_ME  | Float64        | Anderson-Pseudopotential Migdal-Eliashberg [cite] | Default = muc / (1 + muc*log(omega_ph/omega_c)) , ref paper? |
+| muc_AD     | Float64        | Morel-Anderson Pseudopotential Allen-Dynes [cite] | Default = 0.14|
+| muc_ME  | Float64        | Morel-Anderson Pseudopotential Migdal-Eliashberg [cite] | Default = muc / (1 + muc*log(omega_ph/omega_c)) , ref paper? |
 | omega_c | Float64        | Matsubara cutoff in meV | |
 | mixing_beta | Number     | Linear mixing factor | Default: Iteration dependent |
 | nItFullCoul | Number     | First iteration in which full coulomb interaction is used , dampens oscillations | Default = 5 |
 | cDOS_flag | Int64 | 0: constant dos , 1: variable dos  | Default = 1 |
-|  include_Weep | Int64 | 0: Anderson Pseudopotential , 1: W | Default = 0 |
+|  include_Weep | Int64 | 0: Morel-Anderson Pseudopotential , 1: W | Default = 0 |
 |TcSearchMode_flag | Int64 | 0: Manual mode (Loop over all values in temps) , 1: Automatic Tc search | Default = 1 |
 | mu_flag | Int64 | Only if cDOS_flag = 0 , 0: no mu-update , 1: mu-update (recommended) | Default = 1 |
 | outdir | String | path to the output directory | Default = pwd()*"/output/" |
@@ -186,7 +187,56 @@ The energy-file must obey the following structure:
 | nheader_Wen | Number | number of header lines in the W Energy-file | Default = Autoextraction |
 | nfooter_Wen | Number | number of footer lines in the W Energy-file | Default = Autoextraction |
 
+<details>
+<summary>Detailed description</summary>
+<br>
 
+>  **dos_file** :: STRING 
+> 
+> Path to the dos-file  
+> Only required for FBW calculations
+
+> **colFermi_dos** :: INTEGER | Default: 0
+>
+> The fermi-energy has to be part of the header in the dos file.  
+> Specify the column it is in where per convetion 0 denotes the last column, 1 the second to last column and so on.
+> 
+
+>  **spinDos** :: INTEGER | Default: 1
+>
+> Specify if dos is multiplied by 2 due to spin. 
+>
+> | Value | Description |
+> | ---   | ----------- |
+> | 1     | Spin is not considered in the dos |
+> | 2     | Double count of dos due to spin |
+
+>  **dos_unit** :: STRING    | Default: nothing
+>
+> Energy unit in the dos file
+>
+> | Value | Description |
+> | ---   | ----------- |
+> | nothing   | Auto-extraction from header |
+> | meV     | - |
+> | eV     | - |
+
+>  **nheader_dos** :: INTEGER | Default: nothing  
+> 
+> Number of header lines in the dos file
+>
+> | Value | Description |
+> | ---   | ----------- |
+> | nothing   | Auto-recognition |
+
+>  **nfooter_dos** :: INTEGER  | Default: nothing  
+>
+> Number of footer lines in the dos file
+>
+> | Value | Description |
+> | ---   | ----------- |
+> | nothing   | Auto-recognition |
+</details>
 
 # Examples
 

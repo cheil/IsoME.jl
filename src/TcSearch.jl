@@ -11,7 +11,7 @@
 #
 #
 # routine to solve the full-bandwidth isotropic Migdal-Eliashberg equations
-# adapted from the EPW implementation
+# inspired by the EPW implementation
 # 2023-10-17 - Christoph Heil
 
 export EliashbergSolver
@@ -24,7 +24,7 @@ Solve the eliashberg eq. self-consistently for a fixed temperature
 function solve_eliashberg(itemp, inp, console, matval)
     # destruct inputs
     (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, ef, dosef, idx_ef, ndos, BCS_gap) = matval
-    (; cDOS_flag, include_Weep, flag_log, omega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag) = inp
+    (; cDOS_flag, include_Weep, flag_log, omega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag, outdir) = inp
 
     ### Matsubara frequencies ###
     beta = 1 / (kb * itemp)
@@ -36,16 +36,18 @@ function solve_eliashberg(itemp, inp, console, matval)
     # only reasonable if T < 1 K
     if itemp < 5
         sparse_sampling_flag = 1
-        #ind_mat_freq = initSparseSampling(beta, omega_c, M)
+        ind_mat_freq = initSparseSampling(beta, omega_c, M)
 
         
         # sparse sampling, roman fbw paper
+        #=
         fsparse = 1.0
         ind_mat_freq = cumsum(Int64.(round.(exp.(collect(1:nsiw)./(nsiw*fsparse)))))
         ind_mat_freq = ind_mat_freq[ind_mat_freq .<= nsiw]
         if ind_mat_freq[end] != nsiw
             ind_mat_freq = push!(ind_mat_freq, nsiw)
         end
+        =#
         
 
         # write to console
@@ -181,7 +183,7 @@ function solve_eliashberg(itemp, inp, console, matval)
             if cDOS_flag == 0
                 ### mu update 
                 if mu_flag == 1
-                    muintr = update_mu_own(itemp, wsi, M, ef, dos_en, dos, znormip, deltaip, shiftip)
+                    muintr = update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip, outdir)
                 end
 
                 new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb, muintr)
@@ -227,7 +229,7 @@ function solve_eliashberg(itemp, inp, console, matval)
             if cDOS_flag == 0
                 ### mu update
                 if mu_flag == 1
-                    muintr = update_mu_own(itemp, wsi, M, ef, dos_en, dos, znormip, deltaip, shiftip)
+                    muintr = update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip, outdir)
                 end
 
                 new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, muintr, wgCoulomb)
@@ -280,7 +282,8 @@ function solve_eliashberg(itemp, inp, console, matval)
 
 
         ##### check convergence & termination criterion #####
-        if err_delta < inp.conv_thr && i_it > maximum([10, inp.nItFullCoul+1])
+        minIt = 15
+        if err_delta < inp.conv_thr && i_it > maximum([minIt, inp.nItFullCoul+1])
             println(replace(console["Hline"], "." => " "))
             printstyled("\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 
@@ -311,7 +314,7 @@ function solve_eliashberg(itemp, inp, console, matval)
         end
 
         # Gap too small
-        if data[2] < 0.1 && i_it > maximum([10, inp.nItFullCoul+1])
+        if data[2] < 0.1 && i_it > maximum([minIt, inp.nItFullCoul+1])
             println(replace(console["Hline"], "." => " "))
             printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than 0.1 meV!\n\n"; bold=false)
 
@@ -356,6 +359,7 @@ function findTc(inp, console, matval, ML_Tc)
     Shift0 = Vector{Float64}()
     Znorm0 = Vector{Float64}()
     EfMu = Vector{Float64}()
+    Tc = NaN
 
     if inp.TcSearchMode_flag == 0
         for iT in 1:nT
@@ -376,6 +380,7 @@ function findTc(inp, console, matval, ML_Tc)
             if isnan(Delta0[end]) 
                 # escape
                 inp.temps = inp.temps[1:length(Delta0)]
+                Tc = inp.temps[end]
                 break
             end
         end
@@ -409,6 +414,9 @@ function findTc(inp, console, matval, ML_Tc)
             order = sortperm(inp.temps)
             if length(Delta0) >= 2 && any(diff(inp.temps[order]) .<= 1 .& (.~isnan.(Delta0[order][1:end-1]) .& isnan.(Delta0[order][2:end])))
                 # converged
+                inp.temps = inp.temps[order]
+                Delta0 = Delta0[order]
+                Tc = maximum(inp.temps[.~isnan.(Delta0)])
                 break
 
             elseif all(isnan.(Delta0))
@@ -418,7 +426,7 @@ function findTc(inp, console, matval, ML_Tc)
             elseif sum(.~isnan.(Delta0)) == 1 
                 # get a second gap value
                 if isnan(Delta0[end])
-                    itemp = ceil(itemp / 2)
+                    itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
                 else
                     itemp = ceil(itemp + maximum([itemp / 2, 2]))
                 end
@@ -427,9 +435,9 @@ function findTc(inp, console, matval, ML_Tc)
                 # fit only once
                 fitFlag = false
 
+                nnanDelta = .~isnan.(Delta0)
                 try
                     # fit gap values
-                    nnanDelta = .~isnan.(Delta0)
                     p0 = convert(Vector{Float64}, [maximum(Delta0[nnanDelta]), 1, minimum(Delta0[nnanDelta])])
                     fit = curve_fit(m, inp.temps[nnanDelta], Delta0[nnanDelta], p0)
                     par = fit.param
@@ -480,6 +488,13 @@ function findTc(inp, console, matval, ML_Tc)
 
                 break
             end
+
+            # prevent double search at same T 
+            if any(itemp .= inp.temps)
+                ind = itemp .= inp.temps
+                if isnan(Delta0[ind])
+                end
+            end
         end
 
     else
@@ -488,9 +503,10 @@ function findTc(inp, console, matval, ML_Tc)
 
     printTextCentered(inp, "Stopping now!", console["partingLine"], true)
 
-    return inp.temps, Znorm0, Delta0, Shift0, EfMu
+    return Tc, inp.temps, Znorm0, Delta0, Shift0, EfMu
 
 end
+
 
 """
     EliashbergSolver(arguments)
@@ -506,7 +522,7 @@ function EliashbergSolver(inp::arguments, testFlag = false)
         printFlagsAsText(inp)
 
         ########### start loop over temperatures ##########
-        temps, Znorm0, Delta0, Shift0, EfMu = findTc(inp, console, matval, ML_Tc)
+        Tc, temps, Znorm0, Delta0, Shift0, EfMu = findTc(inp, console, matval, ML_Tc)
 
         # write Tc to console
         printSummary(inp, temps, Delta0)
@@ -525,7 +541,7 @@ function EliashbergSolver(inp::arguments, testFlag = false)
                 out_vars = hcat(out_vars, Shift0, EfMu)
             end
 
-            writeToOutFile(inp, out_vars, header)
+            writeToOutFile(Tc, inp, out_vars, header)
 
         end
 
@@ -561,7 +577,9 @@ function EliashbergSolver(inp::arguments, testFlag = false)
                 # print gap vs. temperature
                 Delta0_plot = Delta0
                 Delta0_plot[isnan.(Delta0)] .= 0
-                temps_plot = temps
+                order = sortperm(temps)
+                temps_plot = temps[order]
+                Delta0_plot = Delta0_plot[order]
 
                 plot_font = "Computer Modern"
 

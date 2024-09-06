@@ -11,7 +11,7 @@
 #
 #
 # routine to solve the full-bandwidth isotropic Migdal-Eliashberg equations
-# adapted from the EPW implementation
+# inspired by the EPW implementation
 # 2023-10-17 - Christoph Heil
 
 
@@ -47,7 +47,7 @@ const kb = 0.08617333262; # meV/K
 ### Define input struct ###
 @kwdef mutable struct arguments
     # Parameters
-    temps::Vector{Number} = [-1]        # change to type number?
+    temps::Vector{Number} = [-1]        
     muc_AD::Float64 = 0.14
     omega_c::Float64 = 10000.0
     muc_ME::Float64 = -1

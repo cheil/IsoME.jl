@@ -156,8 +156,8 @@ function printSummary(inp, temps, Delta0)
 
     text = ""
     if all(isnan.(Delta0))
-        if minimum(temps) <= 1
-            text = text*"\n - " * inp.material * " is not a superconductor"
+        if minimum(temps) <= 0.5
+            text = text*"\n - " * inp.material * " is not a superconductor above T = 0.5 K"
         else
             text = text*"\n - Couldn't find a superconducting gap in the specified area"
             text = text*"\n - Consider searching below T = " * string(minimum(temps)) * " K"
@@ -443,9 +443,9 @@ function printFlagsAsText(inp)
 
     # Weep
     if inp.include_Weep == 1
-        text *= " - Full Coulomb interaction given in "*inp.Weep_unit*"\n"
+        text *= " - Static Coulomb interaction W(e,ep) in "*inp.Weep_unit*"\n"
     elseif inp.include_Weep == 0
-        text *= " - Anderson pseudopotential, μ*_AD = "*string(round(inp.muc_AD, digits=3))*" , μ*_ME = "*string(round(inp.muc_ME, digits=3))*"\n"
+        text *= " - Morel-Anderson pseudopotential, μ*_AD = "*string(round(inp.muc_AD, digits=3))*" , μ*_ME = "*string(round(inp.muc_ME, digits=3))*"\n"
     end
 
     print(text)
@@ -456,15 +456,21 @@ function printFlagsAsText(inp)
 end
 
 
-function writeToOutFile(inp, out_vars, header)
+function writeToOutFile(Tc ,inp, out_vars, header)
     # write to output file
     name = ""
     if inp.material != "Material"
         name = name*inp.material*"_"
     end
     name = name*"Summary.txt"
+
+    if isfile(inp.outdir*name)
+        rm(inp.outdir*name)
+    end
     outfile = open(inp.outdir*name, "w")
-    out = ""
+    
+    ### write Tc
+    out = "Tc = "*string(Tc)*"\n\n"
 
     ### calc width of each column
     width = minimum([length.(header) .+ 2])

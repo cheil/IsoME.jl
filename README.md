@@ -16,8 +16,10 @@ julia main.jl
 
 
 # ToDo's
+- DIfferent integration method than trapz 
+- Read in: mode if energies are already centered around ef
+- Tc_search mode: never use T < converged, T > not converged
 - Sparse sampling Roman FBW
-- warning if only mu*_AD defined
 - Global error handle
     * check in beginning if outdir exists/is writable
 - remove log_file from inp
@@ -31,9 +33,6 @@ julia main.jl
 - convergence threshold??
 - Improve Mixing
 - Error when starting from terminal??
-- Tc search mode: For a given material the code should be able to find the Tc w/o running through all temperatures, the user may give an initial guess for the Tc
-    * Manual mode: user specifies all temperatures 
-    * Auto mode:   User specifies just one initial guess for T
 - termination criterion: if Delta0 < 0.1 for e.g. first 20 iterations, then force a higher initial guess for gap0??
 - Gap increases sometimes when other dos is used
     * Change Tc search mode s.t. if gap increases manual mode is used
@@ -68,6 +67,10 @@ julia main.jl
 
 
 ---- Done ----
+- Tc search mode: For a given material the code should be able to find the Tc w/o running through all temperatures, the user may give an initial guess for the Tc
+    * Manual mode: user specifies all temperatures 
+    * Auto mode:   User specifies just one initial guess for T
+- warning if only mu*_AD defined
 - Error handle, error file
 - readin: cut off zero of DOS at beginning and end?
 - Format log-file analog to console output?

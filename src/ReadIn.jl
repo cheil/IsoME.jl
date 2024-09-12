@@ -90,14 +90,19 @@ function InputParser(inp::arguments)
 
     ########## read-in and process Dos and Weep ##########
     if ~isempty(inp.dos_file) 
-         # read dos
-         dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.cDOS_flag, inp.colFermi_dos, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos)
-            
+        # read dos
+        dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.cDOS_flag, inp.colFermi_dos, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos)
+
+        # remove zeros at begining/end of dos
+        dos, dos_en = discardZeros(dos, dos_en)
+
         if inp.include_Weep == 1
             # read Weep + energy grid points
             Weep, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Weep_col, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep)
             W_en = readIn_Wen(inp.Wen_file, inp.Wen_unit, inp.nheader_Wen, inp.nfooter_Wen)
 
+            #=
+            ### Interpolate Dos
             # overlap of energies
             en_interval = [W_en[findfirst(W_en .> dos_en[1])]; W_en[findlast(W_en .< dos_en[end])]]
             # number of points overlapping
@@ -108,7 +113,40 @@ function InputParser(inp::arguments)
             Weep = Weep[idxOverlap[1]:idxOverlap[2], idxOverlap[1]:idxOverlap[2]]
             
             # Interpolation Dos
+            dos_en2, dos2 = interpolateDos(dos_en, dos, en_interval, Nitp)
+            =#
+
+            ### Interpolate Weep & Dos
+            en_interval = [W_en[findfirst(W_en .> dos_en[1])]; W_en[findlast(W_en .< dos_en[end])]]
+            # number of points overlapping
+            idxOverlap = [findfirst(dos_en .> W_en[1]), findlast(dos_en .< W_en[end])]
+            Nitp = idxOverlap[2] - idxOverlap[1] + 1
+            Nitp = 2000
+            dos_en = dos_en[idxOverlap[1]:idxOverlap[2]]
+            dos = dos[idxOverlap[1]:idxOverlap[2]]
+           
             dos_en, dos = interpolateDos(dos_en, dos, en_interval, Nitp)
+            Weep = interpolateWeep(W_en, Weep, en_interval, Nitp)
+
+            print(size(Weep))
+            print(size(dos))
+
+            #=
+            p=plot(dos_en, dos, label="raw")
+            plot(p, dos_en2, dos2, label="itp")
+            savefig("dos_itp.pdf")
+            =#
+
+            #=
+            idx_ef = findmin(abs.(W_en))
+            idx_ef = idx_ef[2]
+            idx_ef2 = findmin(abs.(dos_en2))
+            idx_ef2 = idx_ef2[2]
+            p = plot(W_en, Weep[idx_ef, :], label="raw")
+            p = plot(p, dos_en2, Weep2[idx_ef2, :], label="itp")
+            savefig("Weep_Constant.pdf")
+            =#
+            
         else
             # no Weep
             Weep = nothing
@@ -183,14 +221,6 @@ function InputParser(inp::arguments)
             # call restrict function
             dos, dos_en = restrictInput(inp.Nrestrict, inp.wndRestrict, ef, dos, dos_en)
         end
-    end
-
-
-    ### remove zeros at begining/end of dos ###
-    if inp.include_Weep == 1 
-        dos, dos_en, Weep = neglectZeros(dos, dos_en, Weep = Weep)
-    elseif inp.cDOS_flag == 0
-        dos, dos_en = neglectZeros(dos, dos_en)
     end
 
 
@@ -304,12 +334,14 @@ function readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsme
     (~isempty(unit)) || (unit = getUnit(header, "a2F"))
     if "meV" == unit
         omega_raw = omega_raw
+    elseif "eV" == unit
+        omega_raw = omega_raw*1000
     elseif "THz" == unit
             omega_raw = omega_raw * THz2meV
     elseif "Ry" == unit
         omega_raw = omega_raw * Ry2meV
     else
-        error("Invalid Unit! Please checkt the header of the a2F-file and try again!")
+        error("Invalid Unit! Please check the header of the a2F-file and try again!")
     end
 
     ### a2f for one smearing ###
@@ -439,7 +471,7 @@ function readIn_Weep(Weep_file, Weep_col=3, unit="", nheader=-1, nfooter=-1)
     Weep = transpose(reshape(Weep, (Int(sqrt(size(Weep, 1))), Int(sqrt(size(Weep, 1))))))
 
     ### remove outliers from Weep ###
-    outlier = findall(Weep .< 0)    #.|| Weep .> 1e5	
+    outlier = findall(Weep .< 0)  	#.|| Weep .> 1e3
     for k in eachindex(outlier)
         Weep[outlier[k]] = 0
     end
@@ -450,6 +482,10 @@ function readIn_Weep(Weep_file, Weep_col=3, unit="", nheader=-1, nfooter=-1)
         Weep = Weep
     elseif  "eV" == unit     # eV
         Weep = Weep.*1000
+    elseif  "Ry" == unit      # Ry
+        Weep = Weep.*Ry2meV
+    elseif  "Ha" == unit     # Hartree
+        Weep = Weep.*Ry2meV*2
     else
         error("Invalid Unit! Please checkt the header of the Weep-file and try again!")
     end
@@ -486,6 +522,10 @@ function readIn_Wen(Wen_file, unit="", nheader=-1, nfooter=-1)
         W_en = W_en
     elseif  "eV" == unit     # eV
         W_en = W_en.*1000
+    elseif  "Ry" == unit      # Ry
+        W_en = W_en.*Ry2meV
+    elseif  "Ha" == unit     # Hartree
+        W_en = W_en.*Ry2meV*2
     else
         error("Invalid Unit! Please checkt the header of the Weep-file and try again!")
     end
@@ -519,14 +559,14 @@ function getUnit(header, file=nothing)
     --------------------------------------------------------------------
     """
 
-    units = ["meV", "eV", "THz", "Ry"]
+    units = ["meV", "eV", "THz", "Ry", "Ha"]
     for unit in units
         if occursin(unit, header)
             return unit
         end
     end
     
-    println("Auto-extraction of unit from "*file*"-file failed! Please type the correct unit TWICE(!) into the console:")
+    println("Auto-extraction of unit from "*file*"-file failed! Please type the correct unit case sensitive into the console:")
     unit = readline();
 
     return unit
@@ -536,19 +576,15 @@ end
 
 
 """
-    neglectZeros(Dos, energies[, Weep])
+    discardZeros(Dos, energies)
 
 Discard zeros in dos.
 """
-function neglectZeros(Dos::Vector{Float64}, energies::Vector{Float64}; Weep = nothing)
+function discardZeros(Dos::Vector{Float64}, energies::Vector{Float64})
     idxLower = findfirst(Dos .!= 0)
     idxUpper = findlast(Dos .!= 0)
 
-    if isnothing(Weep)
-        return     Dos[idxLower:idxUpper], energies[idxLower:idxUpper]
-    else
-        return     Dos[idxLower:idxUpper], energies[idxLower:idxUpper], Weep[idxLower:idxUpper, idxLower:idxUpper]
-    end
+    return     Dos[idxLower:idxUpper], energies[idxLower:idxUpper]
 end
 
 

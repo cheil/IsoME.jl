@@ -411,6 +411,26 @@ function findTc(inp, console, matval, ML_Tc)
                 Delta0 = push!(Delta0, data[2])
             end
 
+
+            # Escape
+            if itemp < 1 && isnan(Delta0[end])
+                if inp.flag_log == 1
+                    print(inp.log_file, "\nTemperature already below 1 K. Material is most likely not a superconductor!\n")
+                end
+
+                print("\nTemperature already below 1 K. Material is most likely not a superconductor!\n")
+
+                break
+            elseif length(inp.temps) > 500
+                if inp.flag_log == 1
+                    print(inp.log_file, "Couldn't find a Tc! \n")
+                end
+
+                print("Couldn't find a Tc! \n")
+
+                break
+            end
+
             order = sortperm(inp.temps)
             if length(Delta0) >= 2 && any(diff(inp.temps[order]) .<= 1 .& (.~isnan.(Delta0[order][1:end-1]) .& isnan.(Delta0[order][2:end])))
                 # converged
@@ -425,11 +445,19 @@ function findTc(inp, console, matval, ML_Tc)
 
             elseif sum(.~isnan.(Delta0)) == 1 
                 # get a second gap value
+                if length(Delta0) == 1
+                    itemp = ceil(itemp + maximum([itemp / 2, 2]))
+                else
+                    itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
+                end
+                
+                #=
                 if isnan(Delta0[end])
                     itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
                 else
                     itemp = ceil(itemp + maximum([itemp / 2, 2]))
                 end
+                =#
 
             elseif sum(.~isnan.(Delta0)) == 2 && fitFlag
                 # fit only once
@@ -460,6 +488,14 @@ function findTc(inp, console, matval, ML_Tc)
                     itemp += 1
                 end
 
+                
+                # prevent search below converged T, above not converged T
+                #=
+                if itemp <= maximum(inp.temps[.~isnan.(Delta0)]) || itemp >= minimum(inp.temps[isnan.(Delta0)])
+                    itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
+                end
+                =#
+
             else
                 # search around fit value
                 if isnan(Delta0[end]) 
@@ -468,33 +504,7 @@ function findTc(inp, console, matval, ML_Tc)
                     itemp += 1
                 end
             end
-
-
-            # Escape
-            if itemp < 1
-                if inp.flag_log == 1
-                    print(inp.log_file, "\nTemperature already below 1 K. Material is most likely not a superconductor!\n")
-                end
-
-                print("\nTemperature already below 1 K. Material is most likely not a superconductor!\n")
-
-                break
-            elseif length(inp.temps) > 500
-                if inp.flag_log == 1
-                    print(inp.log_file, "Couldn't find a Tc! \n")
-                end
-
-                print("Couldn't find a Tc! \n")
-
-                break
-            end
-
-            # prevent double search at same T 
-            if any(itemp .= inp.temps)
-                ind = itemp .= inp.temps
-                if isnan(Delta0[ind])
-                end
-            end
+            
         end
 
     else

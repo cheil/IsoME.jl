@@ -89,7 +89,7 @@ function solve_eliashberg(itemp, inp, console, matval)
             znormi = ones(nsiw) #.* 2 ./(1 .+ exp.(wsi .- round(nsiw/4))) .+1  # sigmoid function
             shifti = -zeros(nsiw)
             phiphi = ones(nsiw) .* BCS_gap
-            phici = -zeros(ndos)
+            phici = -ones(ndos).*0.1
             muintr = ef
 
             ### Print to console & log file
@@ -101,7 +101,7 @@ function solve_eliashberg(itemp, inp, console, matval)
             deltai = ones(ndos, nsiw) .* BCS_gap
             znormi = ones(nsiw) #.* 2 ./(1 .+ exp.(wsi .- round(nsiw/4))) .+1  # sigmoid function
             phiphi = ones(nsiw) .* BCS_gap
-            phici = zeros(ndos)
+            phici = -ones(ndos).*0.1
 
             ### Print to console & log file
             console["InitValues"] = [0 phici[idx_ef] phiphi[1] znormi[1] deltai[idx_ef, 1] nothing]
@@ -441,23 +441,20 @@ function findTc(inp, console, matval, ML_Tc)
 
             elseif all(isnan.(Delta0))
                 # temperature too high
-                itemp = floor(itemp / 2)
+                if itemp > 1
+                    itemp = ceil(itemp / 2)
+                else
+                    # lowest T
+                    itemp = 1/2 
+                end
 
             elseif sum(.~isnan.(Delta0)) == 1 
                 # get a second gap value
                 if length(Delta0) == 1
-                    itemp = ceil(itemp + maximum([itemp / 2, 2]))
+                    itemp = itemp + round(maximum([itemp / 3, 2]))
                 else
                     itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
                 end
-                
-                #=
-                if isnan(Delta0[end])
-                    itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
-                else
-                    itemp = ceil(itemp + maximum([itemp / 2, 2]))
-                end
-                =#
 
             elseif sum(.~isnan.(Delta0)) == 2 && fitFlag
                 # fit only once
@@ -477,31 +474,26 @@ function findTc(inp, console, matval, ML_Tc)
                     itemp = maximum(inp.temps[nnanDelta]) + sum(inp.temps[nnanDelta]) / 2
                 end
 
-                # check if T < 0, happens when gap increases with T 
-                # ideally a increasing gap should not happen at all
-                if itemp < 0
-                    itemp = maximum(inp.temps[nnanDelta]) + sum(inp.temps[nnanDelta]) / 2
-                end
+                # sanity check
+                if length(Delta0) == 2  # no nans
+                    if itemp < maximum(inp.temps)       # error in fit
+                        itemp = ceil(maximum(inp.temps)*3/2)
+                    elseif itemp == maximum(inp.temps)  # fit equals highest value
+                        itemp += maximum([2, round(itemp/10)])
+                    end
+                elseif length(Delta0) >= 2
+                    # prevent search below converged T, above not converged T
+                    if itemp <= maximum(inp.temps[.~isnan.(Delta0)]) || itemp >= minimum(inp.temps[isnan.(Delta0)])
+                        itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
+                    end
 
-                # fit result equals highest value
-                if itemp == maximum(inp.temps)
-                    itemp += 1
                 end
-
-                
-                # prevent search below converged T, above not converged T
-                #=
-                if itemp <= maximum(inp.temps[.~isnan.(Delta0)]) || itemp >= minimum(inp.temps[isnan.(Delta0)])
-                    itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
-                end
-                =#
-
             else
                 # search around fit value
-                if isnan(Delta0[end]) 
-                    itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + inp.temps[end])/2)
+                if any(isnan.(Delta0)) 
+                    itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
                 else
-                    itemp += 1
+                    itemp += maximum([2, round(itemp/10)])
                 end
             end
             

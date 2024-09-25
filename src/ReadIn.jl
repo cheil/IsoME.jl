@@ -92,9 +92,27 @@ function InputParser(inp::arguments)
     if ~isempty(inp.dos_file) 
         # read dos
         dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.cDOS_flag, inp.colFermi_dos, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos)
+        if inp.cDOS_flag == 1
+            center = 0
+        else
+            center = ef
+        end
 
+        print(size(dos_en))
         # remove zeros at begining/end of dos
         dos, dos_en = discardZeros(dos, dos_en)
+
+        # fsthick in meV
+        if inp.fsthick != -1
+            if (center + inp.fsthick) > dos_en[end] || (center - inp.fsthick) < dos_en[1]
+                println("warning: fsthick larger than given energy interval!")
+            else
+                logFsthick = (dos_en .> (center-inp.fsthick)) .& (dos_en .< (center+inp.fsthick))
+                dos      = dos[logFsthick]
+                dos_en   = dos_en[logFsthick]
+            end
+        end
+        print(size(dos_en))
 
         if inp.include_Weep == 1
             # read Weep + energy grid points
@@ -113,23 +131,37 @@ function InputParser(inp::arguments)
             Weep = Weep[idxOverlap[1]:idxOverlap[2], idxOverlap[1]:idxOverlap[2]]
             
             # Interpolation Dos
-            dos_en2, dos2 = interpolateDos(dos_en, dos, en_interval, Nitp)
+            dos_en, dos = interpolateDos(dos_en, dos, en_interval, Nitp)
             =#
-
+#=
             ### Interpolate Weep & Dos
             en_interval = [W_en[findfirst(W_en .> dos_en[1])]; W_en[findlast(W_en .< dos_en[end])]]
             # number of points overlapping
             idxOverlap = [findfirst(dos_en .> W_en[1]), findlast(dos_en .< W_en[end])]
             Nitp = idxOverlap[2] - idxOverlap[1] + 1
-            Nitp = 2000
             dos_en = dos_en[idxOverlap[1]:idxOverlap[2]]
             dos = dos[idxOverlap[1]:idxOverlap[2]]
+            Nitp = 2000
            
             dos_en, dos = interpolateDos(dos_en, dos, en_interval, Nitp)
             Weep = interpolateWeep(W_en, Weep, en_interval, Nitp)
+=#
 
-            print(size(Weep))
-            print(size(dos))
+            ### Interpolate Weep & Dos onto non-uniform grid
+            # no itp outside of [ef-1000, ef+1000], 2 meV steps within [ef-1000, ef-500] & [ef+500, ef+1000], 1 meV steps within [ef-500, ef+500]
+            # get indices at [ef-1000, ef-500, ef+500, ef+1000]
+
+            # check if energy window > bndItp
+            bndItp = [1000, 500]
+            en_interval = [W_en[findfirst(W_en .> dos_en[1])], center-bndItp[1], center-bndItp[2], center+bndItp[2], center+bndItp[1],  W_en[findlast(W_en .< dos_en[end])]]
+            
+            #idxOverlap = [findfirst(dos_en .> W_en[1]), findlast(dos_en .< W_en[idxWeep[1]])]
+            gridSpecs = [("step", 50), ("step", 5), ("step", 1), ("step", 5), ("step", 50)]
+
+          
+            dos_en, dos = interpolateDos(dos_en, dos, en_interval, gridSpecs)
+            Weep = interpolateWeep(W_en, Weep, en_interval, gridSpecs)
+
 
             #=
             p=plot(dos_en, dos, label="raw")
@@ -322,7 +354,7 @@ function readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsme
     ### Define defaults
     (nheader != -1) || (nheader = findfirst(isa.(a2f_data[:,1], Number))-1)
     (nfooter != -1) || (nfooter = size(a2f_data, 1) - findlast(isa.(a2f_data[:,1], Number)))
-    (nsmear != -1) || (nsmear = length(a2f_data[nheader, isa.(a2f_data[nheader,:], Number)])-1)
+    (nsmear != -1) || (nsmear = length(a2f_data[nheader+1, :])-1)
     (indSmear != -1) || (indSmear = Int64(ceil(nsmear/2)))
 
     ### Remove header & footer

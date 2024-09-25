@@ -56,7 +56,8 @@ const kb = 0.08617333262; # meV/K
     mixing_beta::Number = -1
     nItFullCoul::Number = 10
     conv_thr::Float64 = 1e-4
-    N_it::Int64 = 5000             
+    N_it::Int64 = 5000   
+    fsthick::Float64 = -1          
 
     # mode
     cDOS_flag::Int64 = 1
@@ -115,6 +116,7 @@ include("AllenDynes.jl")
 include("MuUpdate.jl")
 include("WriteOutput.jl")
 include("EliashbergEq.jl")
+include("Integration.jl")
 
 
 end

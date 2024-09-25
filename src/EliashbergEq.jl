@@ -114,13 +114,27 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     theta_inv = 1 ./ ((znormip' .* wsi') .^ 2 .+ (phiphip' .+ phicip) .^ 2 .+ (dos_en .- muintr .+ shiftip') .^ 2)
 
     # matsubara sum, Nx1
-    ckernel = sum(theta_inv .* (phiphip' .+ phicip), dims=2) - sum(phicip ./ (wsi' .^ 2 .+ dos_en .^ 2 .+ phicip .^ 2), dims=2)
+    ckernel = sum(theta_inv .* (phiphip' .+ phicip), dims=2) - sum(phicip ./ (wsi' .^ 2 .+ (dos_en .- muintr) .^ 2 .+ phicip .^ 2), dims=2)
 
     # add analytic part, NxN
-    ckernel = dos' .* wgCoulomb .* Weep .* (2 * kb * itemp .* ckernel' .+ 1 / 2 .* phicip' .* tanh.(1 / (2 * kb * itemp) .* sqrt.(dos_en' .^ 2 .+ phicip' .^ 2)) ./ (sqrt.(dos_en' .^ 2 .+ phicip' .^ 2)))
+    ckernel = dos' .* wgCoulomb .* Weep .* (2 * kb * itemp .* ckernel' .+ 1 / 2 .* phicip' .* tanh.(1 / (2 * kb * itemp) .* sqrt.((dos_en' .- muintr)  .^ 2 .+ phicip' .^ 2)) ./ (sqrt.((dos_en' .- muintr) .^ 2 .+ phicip' .^ 2)))
 
     # integrate phic, Nx1    
     phici = -trapz(dos_en, ckernel)
+
+##
+#=
+    for i = 1:1#length(dos_en)
+        #f_interp = scale(interpolate(ckernel[i,:], BSpline(Cubic())), epsilonItp) 
+        p=plot(dos_en, ckernel[i,:], label="raw")
+        vline(p, [muintr-1000, muintr+1000])
+
+        savefig("itp_temp")
+        error("a")
+        #phici[i] = -quadgk(x -> f_interp(x), minimum(dos_en), maximum(dos_en))[1]  # Adaptive quadrature
+    end
+=#
+##
 
     # z kernel, NxM
     zkernel =  dos .* theta_inv .* wsi' .* znormip'
@@ -244,6 +258,21 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
 
     # add analytic part and multiply with Weep, NxN
     ckernel = dos' .* wgCoulomb .* Weep .* (2 * kb * itemp .* ckernel' .+ 1 / 2 .* phicip' .* tanh.(1 / (2 * kb * itemp) .* sqrt.(dos_en' .^ 2 .+ phicip' .^ 2)) ./ (sqrt.(dos_en' .^ 2 .+ phicip' .^ 2)))
+
+##
+#=
+    epsilonItp = range(dos_en[1], dos_en[end], length(dos_en))  
+    for i = 1:1#length(dos_en)
+        #f_interp = scale(interpolate(ckernel[i,:], BSpline(Cubic())), epsilonItp) 
+        p=plot(dos_en, ckernel[i,:], label="raw")
+        vline(p, [-1000, 1000])
+
+        savefig("itp_temp")
+        error("a")
+        #phici[i] = -quadgk(x -> f_interp(x), minimum(dos_en), maximum(dos_en))[1]  # Adaptive quadrature
+    end
+=#
+##
 
     # integrate phi_c
     phici = -trapz(dos_en, ckernel)
@@ -409,9 +438,6 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     --------------------------------------------------------------------
     Output:
         data:   Vector containing the updated quantities
-                    -
-                    -
-                    -
 
     --------------------------------------------------------------------
     Comments:

@@ -429,6 +429,15 @@ function printFlagsAsText(inp)
     
     # cut off
     text *= " - Matsubara cutoff: "*string(inp.omega_c)*" meV\n"
+
+    # fsthick
+    if inp.cDOS_flag == 0 
+        if inp.fsthick == -1
+            text *= " - fsthick: full dos\n"
+        else
+            text *= " - fsthick: "*string(inp.fsthick)*" meV\n"
+        end
+    end
     
     # cDos
     if inp.cDOS_flag == 0
@@ -456,6 +465,11 @@ function printFlagsAsText(inp)
 end
 
 
+"""
+    writeToOutFile(Tc ,inp, out_vars, header)
+
+Save results of each iteration and input parameters in a file Summary.txt
+"""
 function writeToOutFile(Tc ,inp, out_vars, header)
     # write to output file
     name = ""
@@ -522,32 +536,6 @@ function writeToOutFile(Tc ,inp, out_vars, header)
 end
 
 
-"""
-     Base.getproperty(a::arguments, v::Symbol)
-
-return all arguments in input structure arguments
-"""
-function Base.getproperty(a::arguments, v::Symbol)
-    if v == :all
-        input = Vector{String}()
-        for name in fieldnames(arguments)
-            text = string(name)*": "*string(getfield(a, name))
-            input = push!(input, text)
-        end
-
-        return input
-    elseif v == :args
-        input = Vector{String}()
-        for name in fieldnames(arguments)
-            input = push!(input, string(name))
-        end
-
-        return input
-    else
-        return getfield(a, v)
-    end
-end
-
 
 """
     saveSelfEnergyComponents(inp, iwn, Delta, Z; epsilon=nothing,  chi=nothing, phiph=nothing, phic=nothing)
@@ -604,5 +592,32 @@ function saveSelfEnergyComponents(itemp, inp, iwn, Delta, Z; epsilon=nothing,  c
             writedlm(io, [epsilon phic])
         end
     end
+end
 
+
+
+"""
+     Base.getproperty(a::arguments, v::Symbol)
+
+return all arguments in input structure arguments
+"""
+function Base.getproperty(a::arguments, v::Symbol)
+    if v == :all
+        input = Vector{String}()
+        for name in fieldnames(arguments)
+            text = string(name)*": "*string(getfield(a, name))
+            input = push!(input, text)
+        end
+
+        return input
+    elseif v == :args
+        input = Vector{String}()
+        for name in fieldnames(arguments)
+            input = push!(input, string(name))
+        end
+
+        return input
+    else
+        return getfield(a, v)
+    end
 end

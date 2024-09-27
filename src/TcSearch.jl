@@ -31,7 +31,7 @@ function solve_eliashberg(itemp, inp, console, matval)
     M = ceil(Int, (omega_c / (pi * kb * itemp) - 1) / 2)
     wsi = (2 * collect(1:M+1) .- 1) .* π .* kb .* itemp
     nsiw = size(wsi, 1)
-
+    
     ### sparse sampling, consider only subset of mat frequencies up to M
     # only reasonable if T < 1 K
     if itemp < 5

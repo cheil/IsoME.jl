@@ -18,7 +18,11 @@ Comments:
 function calcLambda(itemp, M, a2f_omega, a2f)
     """
     Calculate electron-phonon coupling strength on imaginary axis
-    based on eq. (6) in Pellegrini, Phys. Mater. 5 (2022) 024007
+    based on ...
+    λ(iω_n - iω_m) is calcualted for all pairs
+    --> λ[1] = m-n = 0
+        λ[2] = abs(m-n) = 1
+        and so on
 
     -------------------------------------------------------------------
     Input:
@@ -41,8 +45,8 @@ function calcLambda(itemp, M, a2f_omega, a2f)
     --------------------------------------------------------------------
     """    
 
-    λ = zeros(2 * M + 2)
-    for n in 1:2*M+2
+    λ = zeros(2 * M + 4)
+    for n in 1:2*M+4
         # n-th matsubara frequency
         omega = 2 * (n - 1) * π * kb * itemp
 
@@ -121,20 +125,6 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
 
     # integrate phic, Nx1    
     phici = -trapz(dos_en, ckernel)
-
-##
-#=
-    for i = 1:1#length(dos_en)
-        #f_interp = scale(interpolate(ckernel[i,:], BSpline(Cubic())), epsilonItp) 
-        p=plot(dos_en, ckernel[i,:], label="raw")
-        vline(p, [muintr-1000, muintr+1000])
-
-        savefig("itp_temp")
-        error("a")
-        #phici[i] = -quadgk(x -> f_interp(x), minimum(dos_en), maximum(dos_en))[1]  # Adaptive quadrature
-    end
-=#
-##
 
     # z kernel, NxM
     zkernel =  dos .* theta_inv .* wsi' .* znormip'
@@ -259,20 +249,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     # add analytic part and multiply with Weep, NxN
     ckernel = dos' .* wgCoulomb .* Weep .* (2 * kb * itemp .* ckernel' .+ 1 / 2 .* phicip' .* tanh.(1 / (2 * kb * itemp) .* sqrt.(dos_en' .^ 2 .+ phicip' .^ 2)) ./ (sqrt.(dos_en' .^ 2 .+ phicip' .^ 2)))
 
-##
-#=
-    epsilonItp = range(dos_en[1], dos_en[end], length(dos_en))  
-    for i = 1:1#length(dos_en)
-        #f_interp = scale(interpolate(ckernel[i,:], BSpline(Cubic())), epsilonItp) 
-        p=plot(dos_en, ckernel[i,:], label="raw")
-        vline(p, [-1000, 1000])
 
-        savefig("itp_temp")
-        error("a")
-        #phici[i] = -quadgk(x -> f_interp(x), minimum(dos_en), maximum(dos_en))[1]  # Adaptive quadrature
-    end
-=#
-##
 
     # integrate phi_c
     phici = -trapz(dos_en, ckernel)
@@ -368,9 +345,40 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     dekernel = dos .* theta_inv .* deltaip' .* znormip'
     shkernel = dos .* theta_inv .* (dos_en .- muintr .+ shiftip')
 
-    ziwp = trapz(dos_en, zkernel') / dosef
-    deiwp = trapz(dos_en, dekernel') / dosef
-    shiwp = trapz(dos_en, shkernel') / dosef
+
+    ziwp = trapz(dos_en, zkernel') 
+    deiwp = trapz(dos_en, dekernel') 
+    shiwp = trapz(dos_en, shkernel') 
+
+    ##
+
+        #idx_mu = findmin(abs.(dos_en .- muintr))
+        #idx_mu = idx_mu[2]
+        #println(trapz(dos_en[1:idx_mu-1], theta_inv[1:idx_mu-1,1]))
+        #println(trapz(dos_en[idx_mu+1:end], theta_inv[idx_mu+1:end,1]))
+    #=
+        println(trapz(dos_en[1:idx_mu-500], shkernel[1:idx_mu-500,1]')/dosef)
+        println(trapz(dos_en[idx_mu+500:end], shkernel[idx_mu+500:end,1]')/dosef)
+        println(trapz(dos_en, shkernel[:,1])/dosef)
+        #p=plot(dos_en, (shkernel[:,1]), label="kernel")
+        p=plot(abs.(muintr.-dos_en[idx_mu-1:-1:idx_mu-700]), abs.(shkernel[idx_mu-1:-1:idx_mu-700,1]), label="lower")
+        p=plot(p, dos_en[idx_mu+1:idx_mu+700,1].-muintr, (shkernel[idx_mu+1:idx_mu+700,1]), label="upper")
+        p=vline(p, [abs(muintr-dos_en[idx_mu-500])])
+        vline(p, [dos_en[idx_mu+500]-muintr])
+        savefig("shiftiKernel.png")
+        =#
+        #vline(p, [muintr])
+        #=
+        # kernel vs dos/en
+        p=plot(dos_en[idx_mu:-1:1], abs.(shkernel[idx_mu:-1:1,1]), label="lower")
+        plot(p, dos_en[idx_mu:-1:1], dos[idx_mu:-1:1]./(dos_en[idx_mu:-1:1].-muintr).^2, label="dos")
+        savefig("shiftiKernel_dos_lower.png")
+        p=plot(dos_en[idx_mu+1:end], (shkernel[idx_mu+1:end,1]), label="upper")
+        plot(p, dos_en[idx_mu+1:end], (dos[idx_mu+1:end]./(dos_en[idx_mu+1:end].-muintr).^2),label="dos")
+        savefig("shiftiKernel_dos_upper.png")
+        =#
+        #error("hallo")
+    ##
 
     for iw in ind_mat_freq # loop over omega
         tmp1 = lambdai[abs.(iw .- nsiw_vec).+1] 
@@ -401,9 +409,9 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     end
 
     # Eqs.(29)-(31) in Lee, npj Computational Materials volume 9, 156 (2023)
-    znormi = 1.0 .+ kb * itemp .* znormi .* inv.(wsi)
-    deltai = kb * itemp .* deltai .* inv.(znormi)
-    shifti = -kb * itemp .* shifti
+    znormi = 1.0 .+ kb * itemp .* znormi .* inv.(wsi) / dosef
+    deltai = kb * itemp .* deltai .* inv.(znormi) / dosef
+    shifti = -kb * itemp .* shifti / dosef
 
     data = Vector{Vector{Float64}}([znormi, deltai, shifti])
 

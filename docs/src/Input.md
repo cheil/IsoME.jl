@@ -26,6 +26,7 @@ General input parameters are:
 | flag_figure | Int64 | 0: no figures are plotted , 1: plot gap and a2f-values | Default = 1 |
 | flag_outfile | Int64 | Create an output file | Default = 1 |
 | material | String | Name of compound | Default = "Material" |    
+| fsthick  | Float64 | energy window around fermi energy that is used for calculations | Default = -1 (full available window is used) |
 
 
 Depending on the mode chosen, the following input files may be needed.

@@ -139,6 +139,7 @@ function update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip, o
         end
         iter += 1
         if iter > 200
+            #=
             mu_error = range(mu0error , mu1error, 1000)
             Ne_error = zeros(size(mu_error))
             for k in eachindex(mu_error)
@@ -151,8 +152,9 @@ function update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip, o
             elseif ~isfile("mu2.png")
                 savefig("mu2.png")
             end
+            =#
 
-            error("Error in mu update. Couldn't find a root.")
+            error("Error in mu update - Couldn't find a root. Please check your input files, in particular the dos-file.")
         end
     end
 

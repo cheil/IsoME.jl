@@ -77,18 +77,10 @@ function InputParser(inp::arguments)
 
     ########## READ-IN ##########
     ####### a2f file #######
-    a2f_omega_fine, a2f_fine = readIn_a2f(inp.a2f_file, inp.ind_smear, inp.a2f_unit, inp.nheader_a2f, inp.nfooter_a2f, inp.nsmear)
-
-    # determine superconducting properties from Allen-Dynes McMillan equation based on interpolated a2F
-    AD_data = calc_AD_Tc(a2f_omega_fine, a2f_fine, inp.muc_AD)
-    ML_Tc = AD_data[1] / kb;    # ML-Tc in K
-    AD_Tc = AD_data[2] / kb;    # AD-Tc in K
-    BCS_gap = AD_data[3];       # BCS gap value in meV
-    lambda = AD_data[4];        # total lambda
-    omega_log = AD_data[5];     # omega_log in meV
+    a2f_omega, a2f = readIn_a2f(inp.a2f_file, inp.ind_smear, inp.a2f_unit, inp.nheader_a2f, inp.nfooter_a2f, inp.nsmear)
 
 
-    ########## read-in and process Dos and Weep ##########
+    ########## Dos and Weep ##########
     if ~isempty(inp.dos_file) 
         # read dos
         dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.cDOS_flag, inp.colFermi_dos, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos)
@@ -98,21 +90,27 @@ function InputParser(inp::arguments)
             center = ef
         end
 
-        print(size(dos_en))
+
+        p=plot(dos_en, dos)
+        p=vline(p,[ef])
+
+
         # remove zeros at begining/end of dos
-        dos, dos_en = discardZeros(dos, dos_en)
+        #dos, dos_en = discardZeros(dos, dos_en)
 
         # fsthick in meV
         if inp.fsthick != -1
             if (center + inp.fsthick) > dos_en[end] || (center - inp.fsthick) < dos_en[1]
-                println("warning: fsthick larger than given energy interval!")
+                print(@yellow "WARNING: ")
+                println("fsthick larger than given energy interval!")
             else
                 logFsthick = (dos_en .> (center-inp.fsthick)) .& (dos_en .< (center+inp.fsthick))
                 dos      = dos[logFsthick]
                 dos_en   = dos_en[logFsthick]
             end
         end
-        print(size(dos_en))
+
+
 
         if inp.include_Weep == 1
             # read Weep + energy grid points
@@ -149,19 +147,18 @@ function InputParser(inp::arguments)
 
             ### Interpolate Weep & Dos onto non-uniform grid
             # no itp outside of [ef-1000, ef+1000], 2 meV steps within [ef-1000, ef-500] & [ef+500, ef+1000], 1 meV steps within [ef-500, ef+500]
-            # get indices at [ef-1000, ef-500, ef+500, ef+1000]
-
-            # check if energy window > bndItp
             bndItp = [1000, 500]
-            en_interval = [W_en[findfirst(W_en .> dos_en[1])], center-bndItp[1], center-bndItp[2], center+bndItp[2], center+bndItp[1],  W_en[findlast(W_en .< dos_en[end])]]
-            
-            #idxOverlap = [findfirst(dos_en .> W_en[1]), findlast(dos_en .< W_en[idxWeep[1]])]
+            en_interval = [W_en[findfirst(W_en .> dos_en[1])], center-bndItp[1], center-bndItp[2], center+bndItp[2], center+bndItp[1],  W_en[findlast(W_en .< dos_en[end])]]  
             gridSpecs = [("step", 50), ("step", 5), ("step", 1), ("step", 5), ("step", 50)]
-
+                        
+            # check if energy window < bndItp
+            logBnd = (en_interval[1] .<= en_interval) .& (en_interval[end] .>= en_interval)
+            en_interval = en_interval[logBnd]
+            gridSpecs   = gridSpecs[append!(logBnd[2:3], [true], logBnd[4:5])]
           
+            # interpolate 
             dos_en, dos = interpolateDos(dos_en, dos, en_interval, gridSpecs)
             Weep = interpolateWeep(W_en, Weep, en_interval, gridSpecs)
-
 
             #=
             p=plot(dos_en, dos, label="raw")
@@ -185,7 +182,16 @@ function InputParser(inp::arguments)
             W_en = nothing
 
             # Interpolation Dos
-            #dos_en, dos = interpolateDos(dos_en, dos, [dos_en[1], dos_en[end]], 10*length(dos_en))
+            bndItp = [1000, 500]
+            en_interval = [-minimum([abs(dos_en[1]-center), abs(dos_en[end]-center)])+center, center-bndItp[1], center-bndItp[2], center+bndItp[2], center+bndItp[1],  minimum([abs(dos_en[1]-center), abs(dos_en[end]-center)])+center]  
+            gridSpecs = [("step", 50), ("step", 5), ("step", 1), ("step", 5), ("step", 50)] 
+            # check if energy window < bndItp
+            logBnd = (en_interval[1] .<= en_interval) .& (en_interval[end] .>= en_interval)
+            en_interval = en_interval[logBnd]
+            gridSpecs   = gridSpecs[append!(logBnd[2:3], [true], logBnd[4:5])]
+          
+            # interpolate 
+            dos_en, dos = interpolateDos(dos_en, dos, en_interval, gridSpecs)
         end
     else
         dos = []
@@ -221,11 +227,11 @@ function InputParser(inp::arguments)
                     end
                 end
 
-                inp.muc_AD = inp.mu / (1 + inp.mu*log(ef/maximum(a2f_omega_fine[a2f_fine .> 0.01])))
+                inp.muc_AD = inp.mu / (1 + inp.mu*log(ef/maximum(a2f_omega[a2f .> 0.01])))
                 inp.muc_ME = inp.mu / (1 + inp.mu*log(ef/inp.omega_c))
             end
         elseif inp.muc_ME == -1
-            inp.muc_ME = inp.muc_AD / (1 + inp.muc_AD*log(maximum(a2f_omega_fine[a2f_fine .> 0.01])/inp.omega_c))
+            inp.muc_ME = inp.muc_AD / (1 + inp.muc_AD*log(maximum(a2f_omega[a2f .> 0.01])/inp.omega_c))
 
             if inp.muc_ME < 0 || inp.muc_ME > 3*inp.muc_AD || inp.muc_ME > 0.8
                 inp.muc_ME = minimum([3*inp.muc_AD, 0.8])
@@ -239,9 +245,6 @@ function InputParser(inp::arguments)
             end
         end
     end
-
-    # print Allen-Dynes
-    printADtable(inp, console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log)
 
 
     # restrict Dos/Weep to a subset of grid points
@@ -258,9 +261,9 @@ function InputParser(inp::arguments)
 
     if inp.include_Weep == 0 && inp.cDOS_flag == 1
         # default values in case no dos-file is given
-        ndos = 0
-        idx_ef = 0
-        dosef = 0
+        ndos = -1
+        idx_ef = -1
+        dosef = -1
     else
         # length energy vector
         ndos = size(dos_en, 1)
@@ -273,8 +276,25 @@ function InputParser(inp::arguments)
         dosef = dos[idx_ef]
     end
 
+    plot(p,dos_en[idx_ef-500:idx_ef+500], dos[idx_ef-500:idx_ef+500])       
+    savefig("dos.png")
+
+    #println(trapz(dos_en[1:idx_ef], dos[1:idx_ef]./dos_en[1:idx_ef].^2)-trapz(dos_en[idx_ef:end], dos[idx_ef:end]./dos_en[idx_ef:end].^2))
+
+    ### determine superconducting properties from Allen-Dynes McMillan equation based on interpolated a2F
+    AD_data = calc_AD_Tc(a2f_omega, a2f, inp.muc_AD)
+    ML_Tc = AD_data[1] / kb    # ML-Tc in K
+    AD_Tc = AD_data[2] / kb    # AD-Tc in K
+    BCS_gap = AD_data[3]       # BCS gap value in meV
+    lambda = AD_data[4]        # total lambda
+    omega_log = AD_data[5]     # omega_log in meV
+
+    # print Allen-Dynes
+    printADtable(inp, console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log)
+    
+
     # material specific values
-    matval = (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, ef, dosef, idx_ef, ndos, BCS_gap)
+    matval = (a2f_omega, a2f, dos_en, dos, Weep, ef, dosef, idx_ef, ndos, BCS_gap)
 
     return inp, console, matval, ML_Tc
 end
@@ -303,10 +323,10 @@ function checkInput!(inp::arguments)
     elseif (~(isfile(inp.Weep_file) || ~isfile(inp.Wen_file))) && inp.include_Weep == 1
         inp.include_Weep = 0
         print(@yellow "WARNING: ")
-        print("No valid Weep/Energies-file specified! Calculating Tc using Anderson-pseudopotential instead\n\n")
+        print("No valid Weep-files specified! Calculating Tc using Anderson-pseudopotential instead\n\n")
     
         if inp.flag_log == 1
-            print(inp.log_file, "WARNING: No valid Weep/DosWeep-file specified! Calculating Tc using Anderson-pseudopotential instead\n\n")
+            print(inp.log_file, "WARNING: No valid Weep-files specified! Calculating Tc using Anderson-pseudopotential instead\n\n")
         end
     end
 
@@ -315,16 +335,18 @@ function checkInput!(inp::arguments)
     if inp.temps == [-1]
         inp.TcSearchMode_flag = 1
         print(@yellow "WARNING: ")
-        print("No temperatures specified - Activating automatic Tc search mode instead!\n\n")
+        print("No temperatures specified - Activating Tc search mode instead!\n\n")
     
         if inp.flag_log == 1
-            print(inp.log_file, "WARNING: No temperatures specified - Activating automatic Tc search mode instead!\n\n")
+            print(inp.log_file, "WARNING: No temperatures specified - Activating Tc search mode instead!\n\n")
         end
     end
 
 
     # create output directory
-    if ~(inp.outdir[end] == '/' || inp.outdir[end] == '\\')
+    if isempty(inp.outdir) 
+        inp.outdir = "./output/"
+    elseif ~(inp.outdir[end] == '/' || inp.outdir[end] == '\\')
         inp.outdir = inp.outdir*"/"
     end
 
@@ -332,7 +354,7 @@ function checkInput!(inp::arguments)
         try
             mkdir(inp.outdir)
         catch
-            error("Couldn't write into "*inp.outdir*"! Path in outdir may not be writable or invalid.")
+            error("Couldn't write into "*inp.outdir*"! Outdir may not writable or an invalid path.")
         end
     end
 
@@ -354,7 +376,7 @@ function readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsme
     ### Define defaults
     (nheader != -1) || (nheader = findfirst(isa.(a2f_data[:,1], Number))-1)
     (nfooter != -1) || (nfooter = size(a2f_data, 1) - findlast(isa.(a2f_data[:,1], Number)))
-    (nsmear != -1) || (nsmear = length(a2f_data[nheader+1, :])-1)
+    (nsmear != -1) || (nsmear = length(a2f_data[nheader+1, isa.(a2f_data[nheader+1,:], Number)])-1)
     (indSmear != -1) || (indSmear = Int64(ceil(nsmear/2)))
 
     ### Remove header & footer

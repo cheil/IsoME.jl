@@ -23,7 +23,7 @@ Solve the eliashberg eq. self-consistently for a fixed temperature
 """
 function solve_eliashberg(itemp, inp, console, matval)
     # destruct inputs
-    (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, ef, dosef, idx_ef, ndos, BCS_gap) = matval
+    (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, ef, dosef, idx_ef, ndos, BCS_gap, idxEncut) = matval
     (; cDOS_flag, include_Weep, flag_log, omega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag, outdir) = inp
 
     ### Matsubara frequencies ###
@@ -31,7 +31,7 @@ function solve_eliashberg(itemp, inp, console, matval)
     M = ceil(Int, (omega_c / (pi * kb * itemp) - 1) / 2)
     wsi = (2 * collect(1:M+1) .- 1) .* π .* kb .* itemp
     nsiw = size(wsi, 1)
-    
+
     ### sparse sampling, consider only subset of mat frequencies up to M
     # only reasonable if T < 1 K
     if itemp < 5
@@ -182,11 +182,11 @@ function solve_eliashberg(itemp, inp, console, matval)
             ### Variable DoS ###
             if cDOS_flag == 0
                 ### mu update 
-                if mu_flag == 1
-                    muintr = update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip, outdir)
+                if mu_flag == 1 && i_it > 1
+                    muintr = update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip, idxEncut, outdir)
                 end
 
-                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb, muintr)
+                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb, muintr, idxEncut)
                 shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[4]
 
                 ### Constant DoS ###
@@ -228,11 +228,11 @@ function solve_eliashberg(itemp, inp, console, matval)
 
             if cDOS_flag == 0
                 ### mu update
-                if mu_flag == 1
-                    muintr = update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip, outdir)
+                if mu_flag == 1 && i_it > 1
+                    muintr = update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip, idxEncut, outdir)
                 end
 
-                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, muintr, wgCoulomb)
+                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, muintr, wgCoulomb, idxEncut)
                 shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[3]
 
             elseif cDOS_flag == 1
@@ -309,6 +309,21 @@ function solve_eliashberg(itemp, inp, console, matval)
                 end
             end
 
+            #=
+            plot(wsi, shifti)
+            savefig("shift_fstick_"*string(inp.Wcut)*".png")
+            =#
+
+#=
+            plot(wsi, shifti)
+            savefig("shift_nomu_"*string(inp.Wcut)*".png")
+
+            plot(wsi, znormip)
+            savefig("Z_nomu_"*string(inp.Wcut)*".png")
+
+            plot(wsi, deltai)
+            savefig("delta_nomu_"*string(inp.Wcut)*".png")
+=#
             return data
             break
         end
@@ -516,134 +531,138 @@ end
 Main function. User has to pass the input arguments and it returns the Tc.
 """
 function EliashbergSolver(inp::arguments, testFlag = false)
-    dt = @elapsed begin
-        # inputs
-        inp, console, matval, ML_Tc = InputParser(inp)
-        
-        ### Print to console ###
-        printFlagsAsText(inp)
+    try
+        dt = @elapsed begin
+            # inputs
+            inp, console, matval, ML_Tc = InputParser(inp)
+            
+            ### Print to console ###
+            printFlagsAsText(inp)
 
-        ########### start loop over temperatures ##########
-        Tc, temps, Znorm0, Delta0, Shift0, EfMu = findTc(inp, console, matval, ML_Tc)
+            ########### start loop over temperatures ##########
+            Tc, temps, Znorm0, Delta0, Shift0, EfMu = findTc(inp, console, matval, ML_Tc)
 
-        # write Tc to console
-        printSummary(inp, temps, Delta0)
+            # write Tc to console
+            printSummary(inp, temps, Delta0)
 
-        # write output-file
-        if inp.flag_outfile == 1
-            ### Data ###
-            header = ["T / K", "Δ(0) / meV", "Z(0) / 1"]
+            # write output-file
+            if inp.flag_outfile == 1
+                ### Data ###
+                header = ["T / K", "Δ(0) / meV", "Z(0) / 1"]
 
-            out_vars = zeros(size(Delta0, 1), 3)
-            out_vars[:, 1] = temps
-            out_vars[:, 2] = Delta0
-            out_vars[:, 3] = Znorm0
-            if inp.cDOS_flag == 0
-                header = push!(header, "χ(0) / meV", "ϵ_F - μ / meV")
-                out_vars = hcat(out_vars, Shift0, EfMu)
+                out_vars = zeros(size(Delta0, 1), 3)
+                out_vars[:, 1] = temps
+                out_vars[:, 2] = Delta0
+                out_vars[:, 3] = Znorm0
+                if inp.cDOS_flag == 0
+                    header = push!(header, "χ(0) / meV", "ϵ_F - μ / meV")
+                    out_vars = hcat(out_vars, Shift0, EfMu)
+                end
+
+                writeToOutFile(Tc, inp, out_vars, header)
+
             end
 
-            writeToOutFile(Tc, inp, out_vars, header)
 
-        end
+            ### figures
+            a2f_omega_fine, a2f_fine = matval
+            plot_font = "Computer Modern"
+            default(
+                fontfamily=plot_font,
+                linewidth=2,
+                framestyle=:box,
+                label=nothing,
+                grid=false
+            )
+            if inp.flag_figure == 1
+                # print a2F vs. energy
+                xlim_max = round(maximum(a2f_omega_fine) / 10 * 1.01, RoundUp) * 10
+                xtick_val = 0:10:xlim_max
+                ylim_max = round(maximum(a2f_fine), RoundUp)
 
-
-        ### figures
-        a2f_omega_fine, a2f_fine = matval
-        plot_font = "Computer Modern"
-        default(
-            fontfamily=plot_font,
-            linewidth=2,
-            framestyle=:box,
-            label=nothing,
-            grid=false
-        )
-        if inp.flag_figure == 1
-            # print a2F vs. energy
-            xlim_max = round(maximum(a2f_omega_fine) / 10 * 1.01, RoundUp) * 10
-            xtick_val = 0:10:xlim_max
-            ylim_max = round(maximum(a2f_fine), RoundUp)
-
-            plot(a2f_omega_fine, a2f_fine)
-            xlims!(0, xlim_max)
-            ylims!(0, ylim_max)
-            title!(inp.material)
-            xlabel!(L"\omega ~ \mathrm{(meV)}")
-            ylabel!(L"\alpha^2F ~ \mathrm{(1/meV)}")
-            savefig(inp.outdir * "/a2F_sm" * string(inp.ind_smear) * ".pdf")
-
-            if all(isnan.(Delta0))
-                print(@blue "Info: ")
-                println("No superconducting gap found - skipping plot\n")
-            else
-                # print gap vs. temperature
-                Delta0_plot = Delta0
-                Delta0_plot[isnan.(Delta0)] .= 0
-                order = sortperm(temps)
-                temps_plot = temps[order]
-                Delta0_plot = Delta0_plot[order]
-
-                plot_font = "Computer Modern"
-
-                if maximum(temps_plot) < 10
-                    xlim_max = round(maximum(temps_plot) * 1.1, RoundUp)
-                    xtick_val = 0:1:xlim_max
-                else
-                    xlim_max = round(maximum(temps_plot) / 10 * 1.01, RoundUp) * 10
-                    xtick_val = 0:10:xlim_max
-                end
-
-                if maximum(Delta0_plot) < 10
-                    ylim_max = round(maximum(Delta0_plot), RoundUp)
-                else
-                    ylim_max = round(maximum(Delta0_plot) / 10, RoundUp) * 10
-                end
-
-                plot(temps_plot, Delta0_plot, marker=:circle)
-                plot!(xticks=xtick_val)
+                plot(a2f_omega_fine, a2f_fine)
                 xlims!(0, xlim_max)
                 ylims!(0, ylim_max)
                 title!(inp.material)
-                xlabel!(L"T ~ \mathrm{(K)}")
-                ylabel!(L"\Delta_0 ~ \mathrm{(meV)}")
+                xlabel!(L"\omega ~ \mathrm{(meV)}")
+                ylabel!(L"\alpha^2F ~ \mathrm{(1/meV)}")
+                savefig(inp.outdir * "/a2F_sm" * string(inp.ind_smear) * ".pdf")
 
-                namePlot = "Delta0"
-                if inp.material != "material"
-                    namePlot = namePlot*"_"*inp.material
-                end
-                if inp.cDOS_flag == 1
-                    namePlot = namePlot*"_"*"cDOS"
+                if all(isnan.(Delta0))
+                    print(@blue "Info: ")
+                    println("No superconducting gap found - skipping plot\n")
                 else
-                    namePlot = namePlot*"_"*"vDOS"
+                    # print gap vs. temperature
+                    Delta0_plot = Delta0
+                    Delta0_plot[isnan.(Delta0)] .= 0
+                    order = sortperm(temps)
+                    temps_plot = temps[order]
+                    Delta0_plot = Delta0_plot[order]
+
+                    plot_font = "Computer Modern"
+
+                    if maximum(temps_plot) < 10
+                        xlim_max = round(maximum(temps_plot) * 1.1, RoundUp)
+                        xtick_val = 0:1:xlim_max
+                    else
+                        xlim_max = round(maximum(temps_plot) / 10 * 1.01, RoundUp) * 10
+                        xtick_val = 0:10:xlim_max
+                    end
+
+                    if maximum(Delta0_plot) < 10
+                        ylim_max = round(maximum(Delta0_plot), RoundUp)
+                    else
+                        ylim_max = round(maximum(Delta0_plot) / 10, RoundUp) * 10
+                    end
+
+                    plot(temps_plot, Delta0_plot, marker=:circle)
+                    plot!(xticks=xtick_val)
+                    xlims!(0, xlim_max)
+                    ylims!(0, ylim_max)
+                    title!(inp.material)
+                    xlabel!(L"T ~ \mathrm{(K)}")
+                    ylabel!(L"\Delta_0 ~ \mathrm{(meV)}")
+
+                    namePlot = "Delta0"
+                    if inp.material != "material"
+                        namePlot = namePlot*"_"*inp.material
+                    end
+                    if inp.cDOS_flag == 1
+                        namePlot = namePlot*"_"*"cDOS"
+                    else
+                        namePlot = namePlot*"_"*"vDOS"
+                    end
+                    if inp.include_Weep== 1
+                        namePlot = namePlot*"_"*"W"
+                    else
+                        namePlot = namePlot*"_"*"muc"
+                    end
+                    namePlot = namePlot*".pdf"
+                    savefig(inp.outdir*namePlot)
                 end
-                if inp.include_Weep== 1
-                    namePlot = namePlot*"_"*"W"
-                else
-                    namePlot = namePlot*"_"*"muc"
-                end
-                namePlot = namePlot*".pdf"
-                savefig(inp.outdir*namePlot)
             end
         end
-    end
 
-    # print time elapsed
-    print("Total Runtime: ", dt, " seconds\n")
-    if inp.flag_log == 1
-        print(inp.log_file, "Total Runtime: ", dt, " seconds\n")
-   
-        # close & save
-        close(inp.log_file)
-    end
-
-    ### !!! Better solution for runtest !!!
-    if testFlag
-        if all(isnan.(Delta0))
-            Tc = NaN
-        else
-            Tc = maximum(temps[.~isnan.(Delta0)])
+        # print time elapsed
+        print("Total Runtime: ", dt, " seconds\n")
+        if inp.flag_log == 1
+            print(inp.log_file, "Total Runtime: ", dt, " seconds\n")
+    
+            # close & save
+            close(inp.log_file)
         end
-        return Tc
+
+        ### !!! Better solution for runtest !!!
+        if testFlag
+            if all(isnan.(Delta0))
+                Tc = NaN
+            else
+                Tc = maximum(temps[.~isnan.(Delta0)])
+            end
+            return Tc
+        end
+    catch ex
+        crashFile = open
     end
 end
 

@@ -45,8 +45,8 @@ function calcLambda(itemp, M, a2f_omega, a2f)
     --------------------------------------------------------------------
     """    
 
-    λ = zeros(2 * M + 4)
-    for n in 1:2*M+4
+    λ = zeros(2 * M + 2)
+    for n in 1:2*M+2
         # n-th matsubara frequency
         omega = 2 * (n - 1) * π * kb * itemp
 
@@ -69,7 +69,8 @@ Evaluate the isotropic Eliashberg equations, vDOS & Weep
 function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_mat_freq::Vector{Int64},
                         sparse_sampling_flag::Int64, lambdai::Vector{Float64}, dosef::Float64, ndos::Int64, 
                         dos_en::Vector{Float64}, dos::Vector{Float64}, Weep::Matrix{Float64}, znormip::Vector{Float64}, 
-                        phiphip::Vector{Float64}, phicip::Vector{Float64}, shiftip::Vector{Float64}, wgCoulomb::Float64, muintr::Float64)
+                        phiphip::Vector{Float64}, phicip::Vector{Float64}, shiftip::Vector{Float64}, wgCoulomb::Float64, 
+                        muintr::Float64, idxEncut::Vector{Int64})
     """
     Evaluate the Isotropic Eliashberg equations for
         - variable Dos
@@ -131,12 +132,12 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     # ph kernel, NxM
     phkernel = dos .* theta_inv .* (phiphip' .+ phicip)
     # shift kernel, NxM
-    shkernel = dos .* theta_inv .* (dos_en .- muintr .+ shiftip')
+    shkernel = dos[idxEncut[1]:idxEncut[2]] .* theta_inv[idxEncut[1]:idxEncut[2],:] .* (dos_en[idxEncut[1]:idxEncut[2]] .- muintr .+ shiftip')
 
     # integrate over energy, gives vector of matsubara summands, Mx1
     ziwp = trapz(dos_en, zkernel')
     phiwp = trapz(dos_en, phkernel')
-    shiwp = trapz(dos_en, shkernel')
+    shiwp = trapz(dos_en[idxEncut[1]:idxEncut[2]], shkernel')
 
     for iw in ind_mat_freq # loop over omega
         # Eq. (4.4) in Picket, PRB 26, 1186 (1982)
@@ -296,8 +297,8 @@ Evaluate the isotropic Eliashberg equations, variable dos, mu*
 """
 function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_mat_freq::Vector{Int64}, 
                         sparse_sampling_flag::Int64, lambdai::Vector{Float64}, dos_en::Vector{Float64}, 
-                        dos::Vector{Float64}, dosef::Float64, znormip::Vector{Float64}, 
-                        deltaip::Vector{Float64}, shiftip::Vector{Float64}, muc::Float64, muintr::Float64, wgCoulomb)
+                        dos::Vector{Float64}, dosef::Float64, znormip::Vector{Float64}, deltaip::Vector{Float64}, 
+                        shiftip::Vector{Float64}, muc::Float64, muintr::Float64, wgCoulomb::Float64, idxEncut::Vector{Int64})
     """
     Evaluate the Isotropic Eliashberg equations for
         - Variable Dos
@@ -343,42 +344,12 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     theta_inv = 1 ./ (znormip' .^ 2 .* (wsi' .^ 2 .+ deltaip' .^ 2) .+ (dos_en .- muintr .+ shiftip') .^ 2)
     zkernel = dos .* theta_inv .* wsi' .* znormip'
     dekernel = dos .* theta_inv .* deltaip' .* znormip'
-    shkernel = dos .* theta_inv .* (dos_en .- muintr .+ shiftip')
-
+    shkernel = dos[idxEncut[1]:idxEncut[2]] .* theta_inv[idxEncut[1]:idxEncut[2],:] .* (dos_en[idxEncut[1]:idxEncut[2]] .- muintr .+ shiftip')
 
     ziwp = trapz(dos_en, zkernel') 
     deiwp = trapz(dos_en, dekernel') 
-    shiwp = trapz(dos_en, shkernel') 
+    shiwp = trapz(dos_en[idxEncut[1]:idxEncut[2]], shkernel') 
 
-    ##
-
-        #idx_mu = findmin(abs.(dos_en .- muintr))
-        #idx_mu = idx_mu[2]
-        #println(trapz(dos_en[1:idx_mu-1], theta_inv[1:idx_mu-1,1]))
-        #println(trapz(dos_en[idx_mu+1:end], theta_inv[idx_mu+1:end,1]))
-    #=
-        println(trapz(dos_en[1:idx_mu-500], shkernel[1:idx_mu-500,1]')/dosef)
-        println(trapz(dos_en[idx_mu+500:end], shkernel[idx_mu+500:end,1]')/dosef)
-        println(trapz(dos_en, shkernel[:,1])/dosef)
-        #p=plot(dos_en, (shkernel[:,1]), label="kernel")
-        p=plot(abs.(muintr.-dos_en[idx_mu-1:-1:idx_mu-700]), abs.(shkernel[idx_mu-1:-1:idx_mu-700,1]), label="lower")
-        p=plot(p, dos_en[idx_mu+1:idx_mu+700,1].-muintr, (shkernel[idx_mu+1:idx_mu+700,1]), label="upper")
-        p=vline(p, [abs(muintr-dos_en[idx_mu-500])])
-        vline(p, [dos_en[idx_mu+500]-muintr])
-        savefig("shiftiKernel.png")
-        =#
-        #vline(p, [muintr])
-        #=
-        # kernel vs dos/en
-        p=plot(dos_en[idx_mu:-1:1], abs.(shkernel[idx_mu:-1:1,1]), label="lower")
-        plot(p, dos_en[idx_mu:-1:1], dos[idx_mu:-1:1]./(dos_en[idx_mu:-1:1].-muintr).^2, label="dos")
-        savefig("shiftiKernel_dos_lower.png")
-        p=plot(dos_en[idx_mu+1:end], (shkernel[idx_mu+1:end,1]), label="upper")
-        plot(p, dos_en[idx_mu+1:end], (dos[idx_mu+1:end]./(dos_en[idx_mu+1:end].-muintr).^2),label="dos")
-        savefig("shiftiKernel_dos_upper.png")
-        =#
-        #error("hallo")
-    ##
 
     for iw in ind_mat_freq # loop over omega
         tmp1 = lambdai[abs.(iw .- nsiw_vec).+1] 
@@ -412,6 +383,9 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     znormi = 1.0 .+ kb * itemp .* znormi .* inv.(wsi) / dosef
     deltai = kb * itemp .* deltai .* inv.(znormi) / dosef
     shifti = -kb * itemp .* shifti / dosef
+
+    #plot(wsi, shifti)
+    #savefig("shifti_temp.png")
 
     data = Vector{Vector{Float64}}([znormi, deltai, shifti])
 

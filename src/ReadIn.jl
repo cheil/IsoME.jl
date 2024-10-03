@@ -55,7 +55,7 @@ function InputParser(inp::arguments)
         # header table
         console["header"] = ["it", "znormi", "shifti", "ef-mu", "deltai", "err_delta"]
         #width table
-        console["width"] = [8, 10, 10, 10, 10, 12]
+        console["width"] = [8, 10, 10, 11, 10, 12]
         # precision data
         console["precision"] = [0, 2, 2, 2, 2, 5]
 
@@ -91,25 +91,20 @@ function InputParser(inp::arguments)
         end
 
 
-        p=plot(dos_en, dos)
-        p=vline(p,[ef])
-
-
         # remove zeros at begining/end of dos
         #dos, dos_en = discardZeros(dos, dos_en)
 
-        # fsthick in meV
-        if inp.fsthick != -1
-            if (center + inp.fsthick) > dos_en[end] || (center - inp.fsthick) < dos_en[1]
+        # Wcut in meV
+        if inp.Wcut != -1
+            if (center + inp.Wcut) > dos_en[end] || (center - inp.Wcut) < dos_en[1]
                 print(@yellow "WARNING: ")
-                println("fsthick larger than given energy interval!")
+                println("Wcut larger than given energy interval!")
             else
-                logFsthick = (dos_en .> (center-inp.fsthick)) .& (dos_en .< (center+inp.fsthick))
-                dos      = dos[logFsthick]
-                dos_en   = dos_en[logFsthick]
+                logWcut = (dos_en .> (center-inp.Wcut)) .& (dos_en .< (center+inp.Wcut))
+                dos      = dos[logWcut]
+                dos_en   = dos_en[logWcut]
             end
         end
-
 
 
         if inp.include_Weep == 1
@@ -117,38 +112,11 @@ function InputParser(inp::arguments)
             Weep, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Weep_col, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep)
             W_en = readIn_Wen(inp.Wen_file, inp.Wen_unit, inp.nheader_Wen, inp.nfooter_Wen)
 
-            #=
-            ### Interpolate Dos
-            # overlap of energies
-            en_interval = [W_en[findfirst(W_en .> dos_en[1])]; W_en[findlast(W_en .< dos_en[end])]]
-            # number of points overlapping
-            idxOverlap = [findfirst(W_en .> dos_en[1]), findlast(W_en .< dos_en[end])]
-            Nitp = idxOverlap[2] - idxOverlap[1] + 1
-            
-            # restrict Weep
-            Weep = Weep[idxOverlap[1]:idxOverlap[2], idxOverlap[1]:idxOverlap[2]]
-            
-            # Interpolation Dos
-            dos_en, dos = interpolateDos(dos_en, dos, en_interval, Nitp)
-            =#
-#=
-            ### Interpolate Weep & Dos
-            en_interval = [W_en[findfirst(W_en .> dos_en[1])]; W_en[findlast(W_en .< dos_en[end])]]
-            # number of points overlapping
-            idxOverlap = [findfirst(dos_en .> W_en[1]), findlast(dos_en .< W_en[end])]
-            Nitp = idxOverlap[2] - idxOverlap[1] + 1
-            dos_en = dos_en[idxOverlap[1]:idxOverlap[2]]
-            dos = dos[idxOverlap[1]:idxOverlap[2]]
-            Nitp = 2000
-           
-            dos_en, dos = interpolateDos(dos_en, dos, en_interval, Nitp)
-            Weep = interpolateWeep(W_en, Weep, en_interval, Nitp)
-=#
-
             ### Interpolate Weep & Dos onto non-uniform grid
             # no itp outside of [ef-1000, ef+1000], 2 meV steps within [ef-1000, ef-500] & [ef+500, ef+1000], 1 meV steps within [ef-500, ef+500]
             bndItp = [1000, 500]
-            en_interval = [W_en[findfirst(W_en .> dos_en[1])], center-bndItp[1], center-bndItp[2], center+bndItp[2], center+bndItp[1],  W_en[findlast(W_en .< dos_en[end])]]  
+            en_range = minimum([abs(dos_en[1]-center), abs(dos_en[end]-center)])
+            en_interval = [W_en[findfirst(W_en .> -en_range+center)], center-bndItp[1], center-bndItp[2], center+bndItp[2], center+bndItp[1],  W_en[findlast(W_en .< en_range+center)]]  
             gridSpecs = [("step", 50), ("step", 5), ("step", 1), ("step", 5), ("step", 50)]
                         
             # check if energy window < bndItp
@@ -160,21 +128,8 @@ function InputParser(inp::arguments)
             dos_en, dos = interpolateDos(dos_en, dos, en_interval, gridSpecs)
             Weep = interpolateWeep(W_en, Weep, en_interval, gridSpecs)
 
-            #=
-            p=plot(dos_en, dos, label="raw")
-            plot(p, dos_en2, dos2, label="itp")
-            savefig("dos_itp.pdf")
-            =#
-
-            #=
-            idx_ef = findmin(abs.(W_en))
-            idx_ef = idx_ef[2]
-            idx_ef2 = findmin(abs.(dos_en2))
-            idx_ef2 = idx_ef2[2]
-            p = plot(W_en, Weep[idx_ef, :], label="raw")
-            p = plot(p, dos_en2, Weep2[idx_ef2, :], label="itp")
-            savefig("Weep_Constant.pdf")
-            =#
+            # idx encut
+            idxEncut = [findfirst(dos_en .> -inp.encut+center), findlast(dos_en .< inp.encut+center)]
             
         else
             # no Weep
@@ -183,7 +138,8 @@ function InputParser(inp::arguments)
 
             # Interpolation Dos
             bndItp = [1000, 500]
-            en_interval = [-minimum([abs(dos_en[1]-center), abs(dos_en[end]-center)])+center, center-bndItp[1], center-bndItp[2], center+bndItp[2], center+bndItp[1],  minimum([abs(dos_en[1]-center), abs(dos_en[end]-center)])+center]  
+            en_range = minimum([abs(dos_en[1]-center), abs(dos_en[end]-center)])
+            en_interval = [-en_range+center, center-bndItp[1], center-bndItp[2], center+bndItp[2], center+bndItp[1],  en_range+center]  
             gridSpecs = [("step", 50), ("step", 5), ("step", 1), ("step", 5), ("step", 50)] 
             # check if energy window < bndItp
             logBnd = (en_interval[1] .<= en_interval) .& (en_interval[end] .>= en_interval)
@@ -192,11 +148,15 @@ function InputParser(inp::arguments)
           
             # interpolate 
             dos_en, dos = interpolateDos(dos_en, dos, en_interval, gridSpecs)
+
+             # idx encut
+             idxEncut = [findfirst(dos_en .> -inp.encut+center), findlast(dos_en .< inp.encut+center)]
         end
     else
         dos = []
         dos_en = []
         ef = nothing
+        idxEncut = -1
     end
 
     # user specified ef
@@ -264,6 +224,7 @@ function InputParser(inp::arguments)
         ndos = -1
         idx_ef = -1
         dosef = -1
+        itp_dos = -1
     else
         # length energy vector
         ndos = size(dos_en, 1)
@@ -275,9 +236,6 @@ function InputParser(inp::arguments)
         # dos at ef
         dosef = dos[idx_ef]
     end
-
-    plot(p,dos_en[idx_ef-500:idx_ef+500], dos[idx_ef-500:idx_ef+500])       
-    savefig("dos.png")
 
     #println(trapz(dos_en[1:idx_ef], dos[1:idx_ef]./dos_en[1:idx_ef].^2)-trapz(dos_en[idx_ef:end], dos[idx_ef:end]./dos_en[idx_ef:end].^2))
 
@@ -294,7 +252,7 @@ function InputParser(inp::arguments)
     
 
     # material specific values
-    matval = (a2f_omega, a2f, dos_en, dos, Weep, ef, dosef, idx_ef, ndos, BCS_gap)
+    matval = (a2f_omega, a2f, dos_en, dos, Weep, ef, dosef, idx_ef, ndos, BCS_gap, idxEncut)
 
     return inp, console, matval, ML_Tc
 end
@@ -332,7 +290,7 @@ function checkInput!(inp::arguments)
 
 
     # Tc search mode
-    if inp.temps == [-1]
+    if inp.temps == [-1] && inp.TcSearchMode_flag == 0
         inp.TcSearchMode_flag = 1
         print(@yellow "WARNING: ")
         print("No temperatures specified - Activating Tc search mode instead!\n\n")
@@ -356,6 +314,7 @@ function checkInput!(inp::arguments)
         catch
             error("Couldn't write into "*inp.outdir*"! Outdir may not writable or an invalid path.")
         end
+        
     end
 
     return inp

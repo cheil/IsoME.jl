@@ -430,12 +430,12 @@ function printFlagsAsText(inp)
     # cut off
     text *= " - Matsubara cutoff: "*string(inp.omega_c)*" meV\n"
 
-    # fsthick
+    # Wcut
     if inp.cDOS_flag == 0 
-        if inp.fsthick == -1
-            text *= " - fsthick: full dos\n"
+        if inp.Wcut == -1
+            text *= " - Wcut: full dos\n"
         else
-            text *= " - fsthick: "*string(inp.fsthick)*" meV\n"
+            text *= " - Wcut: "*string(inp.Wcut)*" meV\n"
         end
     end
     

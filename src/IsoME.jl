@@ -39,16 +39,20 @@ using Term                  # styled text terminal
 using Revise    # REMOVE before publishing
 
 
+# Remove
+#using DoubleFloats
+
 ### defining constants ###
 const Ry2meV = 13605.662285137
 const THz2meV = 4.13566553853599;
 const kb = 0.08617333262; # meV/K
 
+
 ### Define input struct ###
 @kwdef mutable struct arguments
     # Parameters
     temps::Vector{Number} = [-1]        
-    muc_AD::Float64 = 0.14
+    muc_AD::Float64 = 0.12
     omega_c::Float64 = 10000.0
     muc_ME::Float64 = -1
     mu::Float64 = -1  
@@ -57,7 +61,9 @@ const kb = 0.08617333262; # meV/K
     nItFullCoul::Number = 10
     conv_thr::Float64 = 1e-4
     N_it::Int64 = 5000   
-    fsthick::Float64 = -1          
+    Wcut::Float64 = -1      # Wencut, cutoff Wenergies
+    encut::Float64 = 2000   # cutoff shift & Ne
+
 
     # mode
     cDOS_flag::Int64 = 1

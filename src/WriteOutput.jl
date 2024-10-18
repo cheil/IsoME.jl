@@ -17,7 +17,7 @@ Comments:
 
 Start message
 """
-function printStartMessage(inp, console)
+function printStartMessage(console, log_file)
 
     strIsoMe = "\n\n"
     strIsoMe = strIsoMe*"   _                 __  __   ______ \n"
@@ -34,20 +34,19 @@ function printStartMessage(inp, console)
     strEliash = "Eliashberg Solver started"
 
     print(strIsoMe)
-    #printTextCentered(inp, "Version 1.0", strLine, false)
+    #printTextCentered(log_file, "Version 1.0", strLine, false)
     print(strAuthors)
     print(strLine)
-    if inp.flag_log == 1
-        print(inp.log_file, strIsoMe)
-        print(inp.log_file, strAuthors)
-        print(inp.log_file, strLine)
-    end
-    printTextCentered(inp, strEliash, strLine, true)
-    print(strLine*"\n\n\n")
-    if inp.flag_log == 1
-        print(inp.log_file, strLine*"\n\n\n")
-    end
+    # log file
+    print(log_file, strIsoMe)
+    print(log_file, strAuthors)
+    print(log_file, strLine)
 
+    printTextCentered(strEliash, strLine, file = log_file, bold = true)
+    print(strLine*"\n\n\n")
+    # log file
+    print(log_file, strLine*"\n\n\n")
+    
     console["partingLine"] = strLine
     
     return console
@@ -60,7 +59,7 @@ end
 
 Print the Allen-Dynes results to the console.
 """
-function printADtable(inp, console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log)
+function printADtable(console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log, log_file)
 
     # hline in rest of console
     partingLineCons = console["partingLine"]
@@ -140,10 +139,8 @@ function printADtable(inp, console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log)
     logText = logText*"|\n"*" "^blanksAD*replace(Hline, "." => " ")*"\n\n"
     print("|\n"*" "^blanksAD*replace(Hline, "." => " ")*"\n\n")
 
-    # write everything to inp.log_file
-    if inp.flag_log == 1
-        print(inp.log_file, logText*"\n")
-    end
+    # write everything to log file
+    print(log_file, logText*"\n")
 end
 
 
@@ -152,32 +149,31 @@ end
 
 Summarize Tc calculation and print it to the console
 """
-function printSummary(inp, temps, Delta0)
+function printSummary(inp, Tc, log_file)
 
     text = ""
-    if all(isnan.(Delta0))
-        if minimum(temps) <= 0.5
-            text = text*"\n - " * inp.material * " is not a superconductor above T = 0.5 K"
-        else
-            text = text*"\n - Couldn't find a superconducting gap in the specified area"
-            text = text*"\n - Consider searching below T = " * string(minimum(temps)) * " K"
-        end
+    if Tc[2] <= 0.5
+        text = text * "\n - " * inp.material * " is not a superconductor above T = 0.5 K"
+    elseif isnan(Tc[1])
+        text = text * "\n - Couldn't find a superconducting gap in the specified area"
+        text = text * "\n - Consider searching below T = " * string(Tc[2]) * " K"
+    elseif isnan(Tc[2])
+        text = text * "\n - " * inp.material * " is a superconductor"
+        text = text * "\n - Highest given temperature reached"
+        text = text * "\n - Tc > " * string(Tc[1]) * " K"
+    elseif (Tc[2]-Tc[1]) <= 1
+        text = text * "\n - " * inp.material * " is a superconductor"
+        text = text * "\n - Tc = " * string(Tc[1]) * " K!"
     else
-        if inp.TcSearchMode_flag == 0 && ~isnan(last(Delta0))
-            text = text*"\n - " * inp.material * " is a superconductor"
-            text = text*"\n - Highest given temperature reached"
-            text = text*"\n - Tc > " * string(maximum(temps[.~isnan.(Delta0)])) * " K"
-        else
-            text = text*"\n - " * inp.material * " is a superconductor"
-            text = text*"\n - Tc = " * string(maximum(temps[.~isnan.(Delta0)])) * " K!"
-        end
+        text = text * "\n - " * inp.material * " is a superconductor"
+        text = text * "\n - Tc = " * string(Tc[1]) * " - " * string(Tc[2]) * " K!"
     end
-    printstyled("\nSummary:", bold=true)
-    println(text*"\n")
 
-    if inp.flag_log == 1
-        print(inp.log_file, "\nSummary:"*text*"\n\n")
-    end
+    printstyled("\nSummary:", bold=true)
+    println(text)
+
+    # log file
+    print(log_file, "\nSummary:"*text*"\n")
 
 end
 
@@ -187,23 +183,23 @@ end
 
 print a text centered within a line consisting of delimiters
 """
-function printTextCentered(inp, text, hline, boldFlag = false, blanks=3, delimiter = "-")
+function printTextCentered(text, hline; file = nothing, bold = false, blanks=3, delimiter = "-")
 
     lenLeft = Int(ceil((length(hline) - length(text))/2) - blanks)
     lenRight = Int(floor((length(hline) - length(text))/2) - blanks)
 
     print("\n"*delimiter^lenLeft*" "^blanks)
-    if boldFlag
+    if bold
         print(@bold text)
     else
         print(text)
     end
     print(" "^blanks * delimiter^lenRight*"\n")
 
-    if inp.flag_log == 1
-        print(inp.log_file, "\n"*"-"^lenLeft*" "^blanks)
-        print(inp.log_file, text)
-        print(inp.log_file, " "^blanks * "-"^lenRight*"\n")
+    if ~isnothing(file)
+        print(file, "\n"*"-"^lenLeft*" "^blanks)
+        print(file, text)
+        print(file, " "^blanks * "-"^lenRight*"\n")
     end
 
 end
@@ -214,7 +210,7 @@ end
 
 Initialize the Table header and print it to the console
 """
-function printTableHeader(inp, console)
+function printTableHeader(console, log_file)
 
     width = console["width"]
     header = console["header"]
@@ -258,18 +254,15 @@ function printTableHeader(inp, console)
     end
 
     # write everything to log_file
-    if inp.flag_log == 1
-        print(inp.log_file,tableHeader*"\n")
-        for i in axes(strFormat, 1)
-            # print
-            if isnothing(initValues[i])
-                print(inp.log_file, strFormat[i])
-            else
-                Printf.format(inp.log_file, Printf.Format(strFormat[i]), format[i, 1], " ", format[i, 2], format[i, 3], initValues[i], format[i, 4], " ")
-            end
+    print(log_file, tableHeader * "\n")
+    for i in axes(strFormat, 1)
+        # print
+        if isnothing(initValues[i])
+            print(log_file, strFormat[i])
+        else
+            Printf.format(log_file, Printf.Format(strFormat[i]), format[i, 1], " ", format[i, 2], format[i, 3], initValues[i], format[i, 4], " ")
         end
     end
-
 
     console["Hline"] = tableHline
 
@@ -314,7 +307,7 @@ end
 # change to two functions which differ in 
 #   - prec::Int = 5
 #   - prec::Vector{Int} ?
-function formatTableRow(vec, widthCol, prec=5)
+function formatTableRow(vec, widthCol, prec=5, logConsole=true)
     """
     Format the console output s.t. it is aligned to the header
     This is done by introducing a dynamic width and precision via
@@ -371,10 +364,15 @@ function formatTableRow(vec, widthCol, prec=5)
                 numDig[2] = prec[k]
             end
 
-            if k == 1   # nr iteration, no comma
+            if k == 1    # nr iteration, no comma
                 out[k] = "|%*s%*.*f%*s|"
-                spacing = (width - (numDig[1])) / 2
-                format[k, :] = [floor(spacing), numDig[1], 0, ceil(spacing)]
+                if logConsole
+                    spacing = (width - (numDig[1])) / 2
+                    format[k, :] = [floor(spacing), numDig[1], 0, ceil(spacing)]
+                else
+                    spacing = (width - (sum(numDig) + 1)) / 2
+                    format[k, :] = [floor(spacing), numDig[1], numDig[2], ceil(spacing)]
+                end
             else
                 out[k] = "%*s%*.*f%*s|"
                 spacing = (width - (sum(numDig) + 1)) / 2
@@ -411,7 +409,7 @@ end
 
 Print the flag values as text to the console
 """
-function printFlagsAsText(inp)
+function printFlagsAsText(inp, log_file)
     text = ""
     if inp.material != "Material"
         text *=  " - Material: "*inp.material*" \n"
@@ -432,10 +430,10 @@ function printFlagsAsText(inp)
 
     # Wcut
     if inp.cDOS_flag == 0 
-        if inp.Wcut == -1
-            text *= " - Wcut: full dos\n"
+        if inp.encut == -1
+            text *= " - encut: full dos\n"
         else
-            text *= " - Wcut: "*string(inp.Wcut)*" meV\n"
+            text *= " - encut: "*string(inp.encut)*" meV\n"
         end
     end
     
@@ -454,13 +452,16 @@ function printFlagsAsText(inp)
     if inp.include_Weep == 1
         text *= " - Static Coulomb interaction W(e,ep) in "*inp.Weep_unit*"\n"
     elseif inp.include_Weep == 0
-        text *= " - Morel-Anderson pseudopotential, μ*_AD = "*string(round(inp.muc_AD, digits=3))*" , μ*_ME = "*string(round(inp.muc_ME, digits=3))*"\n"
+        text *= " - Morel-Anderson pseudopotential\n"
+        text *= "     - μ*_AD = "*string(round(inp.muc_AD, digits=3))*"\n"
+        text *= "     - μ*_ME = "*string(round(inp.muc_ME, digits=3))*"\n"
     end
 
     print(text)
-    if inp.flag_log == 1
-        print(inp.log_file, text)
-    end
+    
+    # log file
+    print(log_file, text)
+
 
 end
 
@@ -484,7 +485,17 @@ function writeToOutFile(Tc ,inp, out_vars, header)
     outfile = open(inp.outdir*name, "w")
     
     ### write Tc
-    out = "Tc = "*string(Tc)*"\n\n"
+    out = ""
+    if isnan(Tc[1])
+        out = out * "Tc < " * string(Tc[2]) *" K"
+    elseif isnan(Tc[2])
+        out = out * "Tc > " * string(Tc[1]) * " K"
+    elseif (Tc[2]-Tc[1]) <= 1
+        out = out * "Tc = " * string(Tc[1]) * " K!"
+    else
+        out = out * "Tc = " * string(Tc[1]) * " - " * string(Tc[2]) * " K!"
+    end
+    out = out*"\n\n"
 
     ### calc width of each column
     width = minimum([length.(header) .+ 2])
@@ -516,7 +527,8 @@ function writeToOutFile(Tc ,inp, out_vars, header)
     ### write values to out file ###
     for i in axes(out_vars, 1)
         var = out_vars[i,:]
-        var, strFormat, format = formatTableRow(var, width, 2)
+        precision = [1; Int64.(2*ones(length(var)-1,1))]
+        var, strFormat, format = formatTableRow(var, width, precision, false)
         for j in eachindex(var)
             # print
             if isnan(var[j])
@@ -533,6 +545,91 @@ function writeToOutFile(Tc ,inp, out_vars, header)
     print(outfile, "\n\n"*join(inp.all, "\n"))
 
     close(outfile)
+end
+
+
+function createFigures(inp, matval, Delta0, temps, log_file)
+
+    # values
+    a2f_omega_fine, a2f_fine = matval
+
+    # defaults
+    plot_font = "Computer Modern"
+    default(
+        fontfamily=plot_font,
+        linewidth=2,
+        framestyle=:box,
+        label=nothing,
+        grid=false
+    )
+
+    # print a2F vs. energy
+    xlim_max = round(maximum(a2f_omega_fine) / 10 * 1.01, RoundUp) * 10
+    xtick_val = 0:10:xlim_max
+    ylim_max = round(maximum(a2f_fine), RoundUp)
+
+    plot(a2f_omega_fine, a2f_fine)
+    xlims!(0, xlim_max)
+    ylims!(0, ylim_max)
+    title!(inp.material)
+    xlabel!(L"\omega ~ \mathrm{(meV)}")
+    ylabel!(L"\alpha^2F ~ \mathrm{(1/meV)}")
+    savefig(inp.outdir * "/a2F_sm" * string(inp.ind_smear) * ".pdf")
+
+    if all(isnan.(Delta0))
+        print(@blue "Info: ")
+        println("No superconducting gap found - skipping plot\n")
+
+        print(log_file,  "Info: No superconducting gap found - skipping plot\n")
+    else
+        # print gap vs. temperature
+        Delta0_plot = Delta0
+        Delta0_plot[isnan.(Delta0)] .= 0
+        order = sortperm(temps)
+        temps_plot = temps[order]
+        Delta0_plot = Delta0_plot[order]
+
+        plot_font = "Computer Modern"
+
+        if maximum(temps_plot) < 10
+            xlim_max = round(maximum(temps_plot) * 1.1, RoundUp)
+            xtick_val = 0:1:xlim_max
+        else
+            xlim_max = round(maximum(temps_plot) / 10 * 1.01, RoundUp) * 10
+            xtick_val = 0:10:xlim_max
+        end
+
+        if maximum(Delta0_plot) < 10
+            ylim_max = round(maximum(Delta0_plot), RoundUp)
+        else
+            ylim_max = round(maximum(Delta0_plot) / 10, RoundUp) * 10
+        end
+
+        plot(temps_plot, Delta0_plot, marker=:circle)
+        plot!(xticks=xtick_val)
+        xlims!(0, xlim_max)
+        ylims!(0, ylim_max)
+        title!(inp.material)
+        xlabel!(L"T ~ \mathrm{(K)}")
+        ylabel!(L"\Delta_0 ~ \mathrm{(meV)}")
+
+        namePlot = "Delta0"
+        if inp.material != "material"
+            namePlot = namePlot * "_" * inp.material
+        end
+        if inp.cDOS_flag == 1
+            namePlot = namePlot * "_" * "cDOS"
+        else
+            namePlot = namePlot * "_" * "vDOS"
+        end
+        if inp.include_Weep == 1
+            namePlot = namePlot * "_" * "W"
+        else
+            namePlot = namePlot * "_" * "muc"
+        end
+        namePlot = namePlot * ".pdf"
+        savefig(inp.outdir * namePlot)
+    end
 end
 
 

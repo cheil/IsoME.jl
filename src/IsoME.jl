@@ -57,13 +57,13 @@ const kb = 0.08617333262; # meV/K
     muc_ME::Float64 = -1
     mu::Float64 = -1  
     ef::Float64 = -1
+    efW::Float64 = -1
     mixing_beta::Number = -1
     nItFullCoul::Number = 10
     conv_thr::Float64 = 1e-4
     N_it::Int64 = 5000   
     Wcut::Float64 = -1      # Wencut, cutoff Wenergies
     encut::Float64 = 2000   # cutoff shift & Ne
-
 
     # mode
     cDOS_flag::Int64 = 1
@@ -74,9 +74,9 @@ const kb = 0.08617333262; # meV/K
     # a2f input file
     a2f_file::String
     ind_smear::Int64 = -1
-    nsmear::Number   = -1
-    nheader_a2f::Number = -1
-    nfooter_a2f::Number = -1
+    nsmear::Int64   = -1
+    nheader_a2f::Int64 = -1
+    nfooter_a2f::Int64 = -1
     a2f_unit::String    = ""
 
     # dos input file
@@ -89,26 +89,24 @@ const kb = 0.08617333262; # meV/K
 
     # Weep input file, auto extraction if -1
     Weep_file::String = ""
-    nheader_Weep::Number = -1
-    nfooter_Weep::Number = -1
+    nheader_Weep::Int64 = -1
+    nfooter_Weep::Int64 = -1
     Weep_unit::String = ""
-    Weep_col::Number = 3
+    Weep_col::Int64 = 3
     Wen_file::String = ""
-    nheader_Wen::Number = -1 
-    nfooter_Wen::Number = -1
+    nheader_Wen::Int64 = -1 
+    nfooter_Wen::Int64 = -1
     Wen_unit::String   = ""
+    colFermi_Wen::Int64 = 0
 
     # Output
-    outdir::String = pwd()*"/output/" 
-    flag_log::Int64 = 1
+    outdir::String = pwd() 
     flag_figure::Int64 = 1
-    flag_outfile::Int64 = 1
     flag_writeSelfEnergy::Int64 = 0
-    log_file::Any = ""
     material::String = "Material"
 
     # Restrict Weep
-    Nrestrict::Number = -1
+    Nrestrict::Int64 = -1
     wndRestrict::Vector{Number} = [-1]
 end
 

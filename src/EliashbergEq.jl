@@ -250,8 +250,6 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     # add analytic part and multiply with Weep, NxN
     ckernel = dos' .* wgCoulomb .* Weep .* (2 * kb * itemp .* ckernel' .+ 1 / 2 .* phicip' .* tanh.(1 / (2 * kb * itemp) .* sqrt.(dos_en' .^ 2 .+ phicip' .^ 2)) ./ (sqrt.(dos_en' .^ 2 .+ phicip' .^ 2)))
 
-
-
     # integrate phi_c
     phici = -trapz(dos_en, ckernel)
 

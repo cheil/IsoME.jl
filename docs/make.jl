@@ -20,6 +20,9 @@ makedocs(
     ),
     pages = [
         "Home" => "index.md",
+        "Input" => "Input.md",
+        "Best Practices" => "bestPractices.md",
+        "FAQ"   => "FAQ.md",
     ],
     warnonly = false,
     doctest = true,

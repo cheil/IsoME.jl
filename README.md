@@ -16,12 +16,22 @@ julia main.jl
 
 
 # ToDo's
-- DIfferent integration method than trapz 
+- Improve Mixing
+    * Slow convergence in some cases
+- include_Weep/cDOS_flag = 2 --> run both options
+- Shift integration
+    * add small imaginary part to epsilon --> epsilon + i eta
+    * Quad precision
+    * transform integrand
+- Interpolation:
+    * How dense must the grid be?
+    * vDOS: Interpolate each iteration to include mu?
+    *
 - Read in: mode if energies are already centered around ef
-- Tc_search mode: never use T < converged, T > not converged
 - Sparse sampling Roman FBW
 - Global error handle
     * check in beginning if outdir exists/is writable
+    * adapt all try catch blocks
 - remove log_file from inp
 - adapt output file
 - runtest: 
@@ -31,19 +41,12 @@ julia main.jl
     * Change 200 in definition of mu*_ME
 - Enable Documentation: Christoph --> repo --> settings --> enable
 - convergence threshold??
-- Improve Mixing
 - Error when starting from terminal??
 - termination criterion: if Delta0 < 0.1 for e.g. first 20 iterations, then force a higher initial guess for gap0??
-- Gap increases sometimes when other dos is used
-    * Change Tc search mode s.t. if gap increases manual mode is used
-    * Occurs if fsthick is too small (~ < 30 eV)
 - !! Remove **Revise** package before publication !!
 
 
 --- Discarded / On hold ---
-- Shift energies in vDos to ef=0?
-    * Problem: in each iteration epsilon - mu is calculated --> epsilon + ef - mu should work
-    * Did not work because problem with mu update --> why?
 - replace trapz by simps? --> Only if there is an official julia package 
 - Broyden mixing:
     * Initial values  (cDos W)                
@@ -67,6 +70,8 @@ julia main.jl
 
 
 ---- Done ----
+- Shift energies in vDos to ef=0?
+- Tc_search mode: never use T < converged, T > not converged
 - Tc search mode: For a given material the code should be able to find the Tc w/o running through all temperatures, the user may give an initial guess for the Tc
     * Manual mode: user specifies all temperatures 
     * Auto mode:   User specifies just one initial guess for T
@@ -125,9 +130,6 @@ plot W 3d - symmetric
     * Weep: data has to be in third column
     * Dos: energies must be in first, dos in second column
     * a2f: first column energies, 2:end a2f for different smearings
-- Tc search mode: unexpected T < 0 K
-    * check if gap increases with T
-- Specified units are not recognized
-    * Units are case sensitive
-    * Currently available are: eV, meV, THz, Ry
+
+
 

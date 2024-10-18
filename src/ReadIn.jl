@@ -20,18 +20,7 @@ Include the file specified via path.
 
 # Examples
 """
-function InputParser(inp::arguments)
-
-    inp = checkInput!(inp)
-
-    ### open log_file ###
-    if inp.flag_log == 1
-        if isfile(inp.outdir * "log.txt")
-            rm(inp.outdir * "log.txt")
-        end
-
-        inp.log_file = open(inp.outdir * "log.txt", "w")
-    end
+function InputParser(inp::arguments, log_file::IOStream)
 
     ### Init table size ###
     console = Dict()
@@ -72,7 +61,7 @@ function InputParser(inp::arguments)
     end
     console = formatTableHeader(console)
 
-    console = printStartMessage(inp, console)
+    console = printStartMessage(console, log_file)
   
 
     ########## READ-IN ##########
@@ -83,24 +72,18 @@ function InputParser(inp::arguments)
     ########## Dos and Weep ##########
     if ~isempty(inp.dos_file) 
         # read dos
-        dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.cDOS_flag, inp.colFermi_dos, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos)
-        if inp.cDOS_flag == 1
-            center = 0
-        else
-            center = ef
-        end
-
+        dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.ef, inp.colFermi_dos, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos)
 
         # remove zeros at begining/end of dos
         #dos, dos_en = discardZeros(dos, dos_en)
 
         # Wcut in meV
         if inp.Wcut != -1
-            if (center + inp.Wcut) > dos_en[end] || (center - inp.Wcut) < dos_en[1]
+            if (inp.Wcut) > dos_en[end] || (inp.Wcut) < dos_en[1]
                 print(@yellow "WARNING: ")
                 println("Wcut larger than given energy interval!")
             else
-                logWcut = (dos_en .> (center-inp.Wcut)) .& (dos_en .< (center+inp.Wcut))
+                logWcut = (dos_en .> (inp.Wcut)) .& (dos_en .< (inp.Wcut))
                 dos      = dos[logWcut]
                 dos_en   = dos_en[logWcut]
             end
@@ -110,13 +93,12 @@ function InputParser(inp::arguments)
         if inp.include_Weep == 1
             # read Weep + energy grid points
             Weep, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Weep_col, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep)
-            W_en = readIn_Wen(inp.Wen_file, inp.Wen_unit, inp.nheader_Wen, inp.nfooter_Wen)
+            W_en = readIn_Wen(inp.Wen_file, inp.efW, inp.colFermi_Wen, inp.Wen_unit, inp.nheader_Wen, inp.nfooter_Wen)  
 
             ### Interpolate Weep & Dos onto non-uniform grid
-            # no itp outside of [ef-1000, ef+1000], 2 meV steps within [ef-1000, ef-500] & [ef+500, ef+1000], 1 meV steps within [ef-500, ef+500]
             bndItp = [1000, 500]
-            en_range = minimum([abs(dos_en[1]-center), abs(dos_en[end]-center)])
-            en_interval = [W_en[findfirst(W_en .> -en_range+center)], center-bndItp[1], center-bndItp[2], center+bndItp[2], center+bndItp[1],  W_en[findlast(W_en .< en_range+center)]]  
+            en_range = minimum([abs(dos_en[1]), abs(dos_en[end])])
+            en_interval = [W_en[findfirst(W_en .> -en_range)], -bndItp[1], -bndItp[2], bndItp[2], bndItp[1],  W_en[findlast(W_en .< en_range)]]  
             gridSpecs = [("step", 50), ("step", 5), ("step", 1), ("step", 5), ("step", 50)]
                         
             # check if energy window < bndItp
@@ -129,8 +111,8 @@ function InputParser(inp::arguments)
             Weep = interpolateWeep(W_en, Weep, en_interval, gridSpecs)
 
             # idx encut
-            idxEncut = [findfirst(dos_en .> -inp.encut+center), findlast(dos_en .< inp.encut+center)]
-            
+            idxEncut = [findfirst(dos_en .> -inp.encut), findlast(dos_en .< inp.encut)]
+
         else
             # no Weep
             Weep = nothing
@@ -138,8 +120,8 @@ function InputParser(inp::arguments)
 
             # Interpolation Dos
             bndItp = [1000, 500]
-            en_range = minimum([abs(dos_en[1]-center), abs(dos_en[end]-center)])
-            en_interval = [-en_range+center, center-bndItp[1], center-bndItp[2], center+bndItp[2], center+bndItp[1],  en_range+center]  
+            en_range = minimum([abs(dos_en[1]), abs(dos_en[end])])
+            en_interval = [-en_range, -bndItp[1], -bndItp[2], bndItp[2], bndItp[1],  en_range]  
             gridSpecs = [("step", 50), ("step", 5), ("step", 1), ("step", 5), ("step", 50)] 
             # check if energy window < bndItp
             logBnd = (en_interval[1] .<= en_interval) .& (en_interval[end] .>= en_interval)
@@ -149,8 +131,8 @@ function InputParser(inp::arguments)
             # interpolate 
             dos_en, dos = interpolateDos(dos_en, dos, en_interval, gridSpecs)
 
-             # idx encut
-             idxEncut = [findfirst(dos_en .> -inp.encut+center), findlast(dos_en .< inp.encut+center)]
+            # idx encut
+            idxEncut = [findfirst(dos_en .> -inp.encut), findlast(dos_en .< inp.encut)]
         end
     else
         dos = []
@@ -159,21 +141,15 @@ function InputParser(inp::arguments)
         idxEncut = -1
     end
 
-    # user specified ef
-    if inp.ef != -1
-        ef = inp.ef 
-    end
-
     ### calc mu*'s
     if inp.include_Weep == 0
         if inp.mu != -1
-            if isnothing(ef)
+            if isnothing(ef) || ef == -1 || ef == 0
                 print(@yellow "WARNING: ")
                 print("Unable to calculate μ* from μ without the fermi-energy! Either provide a dos-file or set the fermi-energy directly in the input structure.\n\n")
             
-                if inp.flag_log == 1
-                    print(inp.log_file, "WARNING: Unable to calculate μ* from μ without the fermi-energy! Either provide a dos-file or set the fermi-energy directly in the input structure.\n\n")
-                end
+                # log file
+                print(log_file, "WARNING: Unable to calculate μ* from μ without the fermi-energy! Either provide a dos-file or set the fermi-energy directly in the input structure.\n\n")
             else
                 # ensure μ*_ME < 4*μ --> reasonable ??
                 if inp.omega_c > ef*exp(3/(4*inp.mu))
@@ -182,9 +158,8 @@ function InputParser(inp::arguments)
                     print(@yellow "WARNING: ")
                     print("Matsubara cutoff would lead to μ*_ME > 4*μ. omega_c has been set to a smaller value.\n\n")
             
-                    if inp.flag_log == 1
-                        print(inp.log_file, "WARNING: Matsubara cutoff would lead to μ*_ME > 4*μ. omega_c has been set to a smaller value.\n\n")
-                    end
+                    # log file
+                    print(log_file, "WARNING: Matsubara cutoff would lead to μ*_ME > 4*μ. omega_c has been set to a smaller value.\n\n")
                 end
 
                 inp.muc_AD = inp.mu / (1 + inp.mu*log(ef/maximum(a2f_omega[a2f .> 0.01])))
@@ -193,28 +168,26 @@ function InputParser(inp::arguments)
         elseif inp.muc_ME == -1
             inp.muc_ME = inp.muc_AD / (1 + inp.muc_AD*log(maximum(a2f_omega[a2f .> 0.01])/inp.omega_c))
 
-            if inp.muc_ME < 0 || inp.muc_ME > 3*inp.muc_AD || inp.muc_ME > 0.8
+            if inp.muc_ME < 0 || inp.muc_ME > 0.8 || inp.muc_ME > 3*inp.muc_AD                 
                 inp.muc_ME = minimum([3*inp.muc_AD, 0.8])
 
                 print(@yellow "WARNING: ")
-                print("Couldn't calculate a reasonable μ*_ME from μ*_AD. Using μ*_ME = minimum(3*μ*_AD, 0.8) instead. Consider setting it manually! \n\n")
+                print("Couldn't calculate a reasonable μ*_ME from μ*_AD.\n Using μ*_ME = minimum(3*μ*_AD, 0.8) instead.\n Consider setting it manually! \n\n")
             
-                if inp.flag_log == 1
-                    print(inp.log_file, "WARNING: Couldn't find a reasonable μ*_ME from μ*_AD. Using μ*_ME = minimum(3*μ*_AD, 0.8) instead. Consider setting it manually! \n\n")
-                end
+                # log file
+                print(log_file, "WARNING: Couldn't find a reasonable μ*_ME from μ*_AD.\n Using μ*_ME = minimum(3*μ*_AD, 0.8) instead.\n Consider setting it manually! \n\n")
             end
         end
     end
-
 
     # restrict Dos/Weep to a subset of grid points
     if inp.Nrestrict != -1
         if inp.include_Weep == 1
             # call restrict function
-            Weep, dos, dos_en = restrictInput(inp.Nrestrict, inp.wndRestrict, ef, dos, dos_en, Weep)
+            Weep, dos, dos_en = restrictInput(inp.Nrestrict, inp.wndRestrict, dos, dos_en, Weep)
         else
             # call restrict function
-            dos, dos_en = restrictInput(inp.Nrestrict, inp.wndRestrict, ef, dos, dos_en)
+            dos, dos_en = restrictInput(inp.Nrestrict, inp.wndRestrict, dos, dos_en)
         end
     end
 
@@ -224,20 +197,17 @@ function InputParser(inp::arguments)
         ndos = -1
         idx_ef = -1
         dosef = -1
-        itp_dos = -1
     else
         # length energy vector
         ndos = size(dos_en, 1)
 
         # index of fermi energy
-        idx_ef = findmin(abs.(dos_en .- ef))
+        idx_ef = findmin(abs.(dos_en))
         idx_ef = idx_ef[2]
 
         # dos at ef
         dosef = dos[idx_ef]
     end
-
-    #println(trapz(dos_en[1:idx_ef], dos[1:idx_ef]./dos_en[1:idx_ef].^2)-trapz(dos_en[idx_ef:end], dos[idx_ef:end]./dos_en[idx_ef:end].^2))
 
     ### determine superconducting properties from Allen-Dynes McMillan equation based on interpolated a2F
     AD_data = calc_AD_Tc(a2f_omega, a2f, inp.muc_AD)
@@ -248,13 +218,53 @@ function InputParser(inp::arguments)
     omega_log = AD_data[5]     # omega_log in meV
 
     # print Allen-Dynes
-    printADtable(inp, console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log)
+    printADtable(console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log, log_file)
     
 
     # material specific values
-    matval = (a2f_omega, a2f, dos_en, dos, Weep, ef, dosef, idx_ef, ndos, BCS_gap, idxEncut)
+    matval = (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxEncut)
 
     return inp, console, matval, ML_Tc
+end
+
+
+"""
+    createDirectory()
+
+Check which input files (a2f, dos, weep) exist. Overwrite flags if neccessary.
+"""
+function createDirectory(inp::arguments)
+
+    # create output directory
+    if isempty(inp.outdir) 
+        inp.outdir = "./"
+    elseif ~(inp.outdir[end] == '/' || inp.outdir[end] == '\\')
+        inp.outdir = inp.outdir*"/"
+    end
+
+    idxDir = 1
+    tempDir = inp.outdir[1:end-1]
+    while isdir(inp.outdir)
+        inp.outdir = tempDir*"_"*string(idxDir)*"/"
+        idxDir+=1
+    end
+
+    try
+        mkdir(inp.outdir)
+    catch ex
+        error("Couldn't write into " * inp.outdir * "! Outdir may not writable or an invalid path.\n\n"*"Exception: "*ex.msg)
+    end
+
+    # open log file
+    if isfile(inp.outdir * "log.txt")
+        rm(inp.outdir * "log.txt")
+    end
+
+    log_file = open(inp.outdir * "log.txt", "w")
+    print(log_file)
+
+    return inp, log_file
+
 end
 
 
@@ -263,8 +273,9 @@ end
 
 Check which input files (a2f, dos, weep) exist. Overwrite flags if neccessary.
 """
-function checkInput!(inp::arguments)
-    # input files / cDOS & Weep
+function checkInput(inp::arguments, log_file::IOStream)
+
+    # check input files / cDOS & Weep
     if ~isfile(inp.a2f_file)
         error("Invalid path to a2f-file!")
         
@@ -274,18 +285,16 @@ function checkInput!(inp::arguments)
         print(@yellow "WARNING: ")
         print("No valid Dos-file specified! Calculating Tc within constant Dos approximation using Anderson-pseudopotential instead\n\n")
     
-        if inp.flag_log == 1
-            print(inp.log_file, "WARNING: No valid Dos-file specified! Calculating Tc within constant Dos approximation using Anderson-pseudopotential instead\n\n")
-        end
+        # log file
+        print(log_file, "WARNING: No valid Dos-file specified! Calculating Tc within constant Dos approximation using Anderson-pseudopotential instead\n\n")
     
     elseif (~(isfile(inp.Weep_file) || ~isfile(inp.Wen_file))) && inp.include_Weep == 1
         inp.include_Weep = 0
         print(@yellow "WARNING: ")
         print("No valid Weep-files specified! Calculating Tc using Anderson-pseudopotential instead\n\n")
     
-        if inp.flag_log == 1
-            print(inp.log_file, "WARNING: No valid Weep-files specified! Calculating Tc using Anderson-pseudopotential instead\n\n")
-        end
+        # log file
+        print(log_file, "WARNING: No valid Weep-files specified! Calculating Tc using Anderson-pseudopotential instead\n\n")
     end
 
 
@@ -295,26 +304,8 @@ function checkInput!(inp::arguments)
         print(@yellow "WARNING: ")
         print("No temperatures specified - Activating Tc search mode instead!\n\n")
     
-        if inp.flag_log == 1
-            print(inp.log_file, "WARNING: No temperatures specified - Activating Tc search mode instead!\n\n")
-        end
-    end
-
-
-    # create output directory
-    if isempty(inp.outdir) 
-        inp.outdir = "./output/"
-    elseif ~(inp.outdir[end] == '/' || inp.outdir[end] == '\\')
-        inp.outdir = inp.outdir*"/"
-    end
-
-    if ~isdir(inp.outdir)
-        try
-            mkdir(inp.outdir)
-        catch
-            error("Couldn't write into "*inp.outdir*"! Outdir may not writable or an invalid path.")
-        end
-        
+        # log file
+        print(log_file, "WARNING: No temperatures specified - Activating Tc search mode instead!\n\n")
     end
 
     return inp
@@ -373,7 +364,7 @@ end
 
 
 # Read in DOS
-function readIn_Dos(dos_file, cDOS_flag, colFermi=1, spin=2, unit="", nheader=-1, nfooter=-1)
+function readIn_Dos(dos_file, ef =-1, colFermi=1, spin=2, unit="", nheader=-1, nfooter=-1, outdir ="")
     """
     Read in DoS file to solve the isotropic Migdal-Eliashberg equations
     All quantities are converted to meV
@@ -411,51 +402,88 @@ function readIn_Dos(dos_file, cDOS_flag, colFermi=1, spin=2, unit="", nheader=-1
     dos_data = readdlm(dos_file) 
 
     ### Default values ###
-    (nheader != -1) || (nheader = findfirst(isa.(dos_data[:,1], Number))-1)
-    (nfooter != -1) || (nfooter = size(dos_data,1) - findlast(isa.(dos_data[:,1], Number)))
-
-    ### Fermi energy
-    ef = Float64.((dos_data[1, end-colFermi]))  
+    (nheader != -1) || (nheader = findfirst(isa.(dos_data[:, 1], Number)) - 1)
+    (nfooter != -1) || (nfooter = size(dos_data, 1) - findlast(isa.(dos_data[:, 1], Number)))
 
     ### Remove header & footer
-    header = join(dos_data[1:nheader,:], " ")
-    dos_data = Float64.(dos_data[nheader+1:end-nfooter, 1:2])
+    header = join(dos_data[1:nheader, :], " ")
+    dos = Float64.(dos_data[nheader+1:end-nfooter, 1:2])
+    (~isempty(unit)) || (unit = getUnit(header, "Dos"))
 
     ### extract energies and dos
-    energies = dos_data[:,1]
-    dos = dos_data[:,2]
+    energies = dos[:, 1]
+    dos = dos[:, 2]
     dos[dos.<0.0] .= 0.0 # set negative dos to 0
 
     ### spin
-    dos = dos/spin
+    dos = dos / spin
 
-    ### Convert units ###
-    (~isempty(unit)) || (unit = getUnit(header, "Dos"))
-    if unit == "meV"
-        ef = ef
-        energies = energies
-        dos = dos
-    elseif unit == "eV"
-        ef = ef .*1000 
-        energies = energies .*1000
-        dos = dos .* 0.001
-    elseif unit == "THz"
-        ef = ef * THz2meV
-        energies = energies .* THz2meV
-        dos = dos ./ THz2meV
-    elseif unit == "Ry"
-        ef = ef .* Ry2meV
-        energies = energies .* Ry2meV
-        dos = dos ./ Ry2meV
+    ### Fermi energy
+    if ef == -1
+        try
+            ef = Float64.((dos_data[1, end-colFermi]))
+
+            ### Convert units ###
+            if unit == "meV"
+                ef = ef
+                energies = energies
+                dos = dos
+            elseif unit == "eV"
+                ef = ef .* 1000
+                energies = energies .* 1000
+                dos = dos .* 0.001
+            elseif unit == "THz"
+                ef = ef * THz2meV
+                energies = energies .* THz2meV
+                dos = dos ./ THz2meV
+            elseif unit == "Ry"
+                ef = ef .* Ry2meV
+                energies = energies .* Ry2meV
+                dos = dos ./ Ry2meV
+            else
+                error("Invalid Unit! Please check the header of the Dos-file and try again!")
+            end
+
+        catch ex
+
+            # log file
+            print(log_file, "\nERROR while reading the fermi energy from the Dos-file:")
+            showerror(log_file, ex)
+            print(log_file, "\n\nCheck the header of the Dos-file or enter the fermi energy by hand via ef")
+            print(log_file, "\n\nFor further information please refer to the CRASH file\n")
+            close(log_file)
+
+            # crash file
+            crashFile = open(inp.outdir * "CRASH", "a")
+            print(crashFile, "ERROR while reading the fermi energy from the Dos-file:\n")
+            print(crashFile, current_exceptions())
+            print(crashFile, "\n\nCheck the header of the Dos-file or enter the fermi energy by hand via ef\n\n")
+            close(crashFile)
+
+            # Stop
+            rethrow(ex)
+        end
     else
-        error("Invalid Unit! Please check the header of the Dos-file and try again!")
+        ### Convert units ###
+        if unit == "meV"
+            energies = energies
+            dos = dos
+        elseif unit == "eV"
+            energies = energies .* 1000
+            dos = dos .* 0.001
+        elseif unit == "THz"
+            energies = energies .* THz2meV
+            dos = dos ./ THz2meV
+        elseif unit == "Ry"
+            energies = energies .* Ry2meV
+            dos = dos ./ Ry2meV
+        else
+            error("Invalid Unit! Either set the unit manually via dos_unit or check the header of the Dos-file and try again!")
+        end
     end
-
 
     ### Shift energies by ef for cDos ###
-    if cDOS_flag == 1
-        energies = energies .- ef
-    end
+    energies = energies .- ef
 
     return energies, dos, ef, unit
 end
@@ -503,45 +531,88 @@ function readIn_Weep(Weep_file, Weep_col=3, unit="", nheader=-1, nfooter=-1)
         error("Invalid Unit! Please checkt the header of the Weep-file and try again!")
     end
 
-    ### make Weep symmetric ###
-    # Weep should be symmetric anyway
-    #Weep = Symmetric(Weep)
-
     return Weep, unit
 
 end
 
 """
-    readIn_Weep(Weep_file[, unit, nheader, nfooter])
+    readIn_Wen(Wen_file[, ef, colFermi, unit, nheader, nfooter])
 
 Read in Weep file containing the sreened coulomb interaction.
 Weep data must be in column 3
 """
-function readIn_Wen(Wen_file, unit="", nheader=-1, nfooter=-1)
+function readIn_Wen(Wen_file, ef=-1, colFermi=0, unit="", nheader=-1, nfooter=-1)
     ### Read in Weep file ###
     Wen_data = readdlm(Wen_file);
 
     ### Default values ###
     (nheader != -1) || (nheader = findfirst(isa.(Wen_data[:,1], Number))-1)
-    (nfooter != -1) || (nfooter = size(Wen_data,1) - findlast(isa.(Wen_data[:,1], Number)))
+    (nfooter != -1) || (nfooter = size(Wen_data, 1) - findlast(isa.(Wen_data[:, 1], Number)))
 
     ### Remove header & footer
-    header = join(Wen_data[1:nheader,:], " ")
+    header = join(Wen_data[1:nheader, :], " ")
     W_en = Float64.(Wen_data[nheader+1:end-nfooter, 1])
-
-    ### Convert ###
     (~isempty(unit)) || (unit = getUnit(header, "Wen"))
-    if "meV" == unit    # meV
-        W_en = W_en
-    elseif  "eV" == unit     # eV
-        W_en = W_en.*1000
-    elseif  "Ry" == unit      # Ry
-        W_en = W_en.*Ry2meV
-    elseif  "Ha" == unit     # Hartree
-        W_en = W_en.*Ry2meV*2
+
+    ### Fermi energy
+    if ef == -1
+        try
+            ef = Float64.((Wen_data[1, end-colFermi]))  
+
+            ### Convert ###
+            if "meV" == unit    # meV
+                W_en = W_en
+            elseif "eV" == unit     # eV
+                ef = ef .* 1000
+                W_en = W_en .* 1000
+            elseif "Ry" == unit      # Ry
+                ef = ef .* Ry2meV
+                W_en = W_en .* Ry2meV
+            elseif "Ha" == unit     # Hartree
+                ef = ef .* Ry2meV * 2
+                W_en = W_en .* Ry2meV * 2
+            else
+                error("Invalid Unit! Please checkt the header of the Weep-file and try again!")
+            end
+
+        catch ex
+
+            # log file
+            print(log_file, "\nERROR while reading the fermi energy from the Wen-file:")
+            showerror(log_file, ex)
+            print(log_file, "\n\nCheck the header of the Wen-file or enter the fermi energy by hand via ef")
+            print(log_file, "\n\nFor further information please refer to the CRASH file\n")
+            close(log_file)
+
+            # crash file
+            crashFile = open(inp.outdir * "CRASH", "a")
+            print(crashFile, "ERROR while reading the fermi energy from the Wen-file:\n")
+            print(crashFile, current_exceptions())
+            print(crashFile, "\n\nCheck the header of the Wen-file or enter the fermi energy by hand via ef\n\n")
+            close(crashFile)
+
+            # Stop
+            rethrow(ex)
+        end
     else
-        error("Invalid Unit! Please checkt the header of the Weep-file and try again!")
+        ### Convert only Wen, ef already in correct unit
+        if "meV" == unit    # meV
+            W_en = W_en
+        elseif "eV" == unit     # eV
+            W_en = W_en .* 1000
+        elseif "Ry" == unit      # Ry
+            W_en = W_en .* Ry2meV
+        elseif "Ha" == unit     # Hartree
+            W_en = W_en .* Ry2meV * 2
+        else
+            error("Invalid Unit! Please checkt the header of the Weep-file and try again!")
+        end
     end
+
+
+    ### Shift energies by ef ###
+    W_en = W_en .- ef
+
 
     return W_en
 
@@ -612,13 +683,13 @@ Restrict the input (Weep, Dos and energies) to a energy window around the fermi 
 julia> restrictInput(30, [2,3], [10], [pi.*sqrt.(range(5,15,200))], [range(5,15,200)])
 ```
 """
-function restrictInput(n::Int, enWndw::Any, ef::Float64, Dos::Vector{Float64}, energies::Vector{Float64}, Weep::Matrix{Float64})
+function restrictInput(n::Int, enWndw::Any, Dos::Vector{Float64}, energies::Vector{Float64}, Weep::Matrix{Float64})
 
-    (~isnothing(enWndw)) || (enWndw = [ef - energies[1], energies[end] - ef])
+    (~isnothing(enWndw)) || (enWndw = [ -energies[1], energies[end]])
   
 
-    idxLower = findfirst(ef - enWndw[1] .<= energies)
-    idxUpper = findlast(ef + enWndw[2] .>= energies)
+    idxLower = findfirst(- enWndw[1] .<= energies)
+    idxUpper = findlast(enWndw[2] .>= energies)
 
     # total grid points
     N = idxUpper - idxLower
@@ -643,13 +714,13 @@ function restrictInput(n::Int, enWndw::Any, ef::Float64, Dos::Vector{Float64}, e
 end
 
 
-function restrictInput(n::Int, enWndw::Any, ef::Float64, Dos::Vector{Float64}, energies::Vector{Float64})
+function restrictInput(n::Int, enWndw::Any, Dos::Vector{Float64}, energies::Vector{Float64})
  
-    (~isnothing(enWndw)) || (enWndw = [ef - energies[1], energies[end] - ef])
+    (~isnothing(enWndw)) || (enWndw = [-energies[1], energies[end]])
   
 
-    idxLower = findfirst(ef - enWndw[1] .<= energies)
-    idxUpper = findlast(ef + enWndw[2] .>= energies)
+    idxLower = findfirst(-enWndw[1] .<= energies)
+    idxUpper = findlast(enWndw[2] .>= energies)
 
     # total grid points
     N = idxUpper - idxLower

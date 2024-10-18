@@ -77,7 +77,7 @@ Routine to update chemical potential s.t. the number of electrons stays fixed
 The routine uses the bisection method to find a value for the chemical potential
 where the amount of electrons in the SC state is equal to the normal state
 """
-function update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip, idxEncut, outdir)
+function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxEncut, outdir)
 
     # delta as row vector, needed if no weep
     if size(deltaip, 2) == 1
@@ -87,14 +87,14 @@ function update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip, i
     end
 
     ### Calculate N_e in the non-SC state
-    Ne_nsc = trapz(dos_en[idxEncut[1]:idxEncut[2]], 2 .* fermiFcn(dos_en[idxEncut[1]:idxEncut[2]], ef, itemp) .* dos[idxEncut[1]:idxEncut[2]])
+    Ne_nsc = trapz(dos_en[idxEncut[1]:idxEncut[2]], 2 .* fermiFcn(dos_en[idxEncut[1]:idxEncut[2]], 0.0, itemp) .* dos[idxEncut[1]:idxEncut[2]])   
 
     # call calc_Ne_Sc with first argument unspecified
     fmu(x) = calc_Ne_Sc(x, Ne_nsc, itemp, wsi, dos_en[idxEncut[1]:idxEncut[2]], dos[idxEncut[1]:idxEncut[2]], znormip, deltaip, shiftip)  
 
     ### starting values for mu
-    mu0 = ef - 100
-    mu1 = ef + 100
+    mu0 = -100
+    mu1 = +100
     fmu0 = fmu(mu0)
     fmu1 = fmu(mu1)
 
@@ -146,130 +146,3 @@ function update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip, i
 
 end
 
-
-# Routine to update chemical potential as implemented in EPW
-function update_mu_epw(itemp,nel,nstate, wsi, M, muintr,  ndos, dos_en, dos, znormip, deltaip, shiftip)
-    beta = 1 / (kb * itemp)
-
-    muin = muintr
-
-    broyden_beta = 0.2
-
-    N_it = 5000
-    for it in 1:N_it
-        # summation as implemented in EPW, considerably slower in Julia than trapz version below
-        # fmu = 0.0 # f(mu)
-        # dmu = 0.0 # d_f(mu)/d_mu
-        # for ie in 1:ndos
-        #     for iw in 1:M+1
-        #         delta = dos_en[ie] - muin + shiftip[iw]
-        #         theta = (wsi[iw] * znormip[iw])^2 + (dos_en[ie] - muin + shiftip[iw])^2 + (znormip[iw] * deltaip[iw])^2
-        #         # delta = delta/1000
-        #         # theta = theta*1e-6
-        #         fmu = fmu + 2.0 * dos_del * dos[ie] * delta / theta
-        #         dmu = dmu + 2.0 * dos_del * dos[ie] * (2.0 * delta^2 - theta) / (theta^2)
-        #         # if ie == 1 && iw == 1
-        #         #     println("delta: ", delta)
-        #         #     println("theta: ", theta)
-        #         #     println("fmu: ", fmu)
-        #         #     println("dmu: ", dmu)
-        #         #     println("dos_del*dos[ie]: ",dos_del*dos[ie])
-        #         #     # readline()
-        #         # end
-        #     end # iw
-        # end # ie
-
-        # this is much faster in Julia
-        integrand_fmu = zeros(ndos)
-        integrand_dmu = zeros(ndos)
-        for iw in 1:M+1
-            delta = dos_en .- muin .+ shiftip[iw]
-            theta = (wsi[iw] .* znormip[iw]).^2 .+ (dos_en .- muin .+ shiftip[iw]).^2 .+ (znormip[iw] .* deltaip[iw]).^2
-
-            integrand_fmu = integrand_fmu .+ delta./theta
-            integrand_dmu = integrand_dmu .+ (2.0 .* delta.^2 .- theta)./(theta.^2)
-        end # iw
-        fmu = trapz(dos_en,2 .* integrand_fmu.*dos) # f(mu)
-        dmu = trapz(dos_en,2 .* integrand_dmu.*dos) # d_f(mu)/d_mu
-
-        fmu = nstate - 2.0 / beta * fmu - nel
-        dmu = -2.0 / beta * dmu
-
-        muout = muin - fmu / dmu
-        # linear mixing
-        muout = (1.0 - abs(broyden_beta)) * muin + abs(broyden_beta) * muout
-
-        if (abs((muout - muin) / muin) < 1e-6)
-            return muout
-            break
-        end
-        muin = muout
-
-        if it == N_it
-            println("update mu not converged.")
-        end
-    end
-end
-
-
-function update_mu_own_old(itemp,nel,nstate, wsi, M, muintr, dosef, ndos, dos_en, dos, dos_del, znormip, deltaip, shiftip)
-    # Newton - Raphson, doesn't work here, it diverges after a few iterations
-    # I'm using the secant method that seems to work very well
-
-    mu0 = ef
-    mu1 = muintr
-    if abs(mu0-mu1) < 1e-6 # in the first iteration both are ef
-        mu1 = mu0 + 10.0
-    end
-
-    N_it = 5000
-
-    # Calculate f(mu) in the non-SC state
-    integrand_fmu_nsc = zeros(ndos)
-    for iw in 1:M+1
-        delta = dos_en .- ef
-        theta = ( wsi[iw] ).^2 .+ (dos_en .- ef ).^2 
-
-        integrand_fmu_nsc = integrand_fmu_nsc .+ delta./theta
-    end
-    fmu_nsc = trapz(dos_en,2 .* integrand_fmu_nsc.*dos) 
-
-    for it in 1:N_it
-        # f(mu0) in the SC state
-        integrand_fmu = zeros(ndos)
-        for iw in 1:M+1
-            delta = dos_en .- mu0 .+ shiftip[iw]
-            theta = (wsi[iw] .* znormip[iw]).^2 .+ (dos_en .- mu0 .+ shiftip[iw]).^2 .+ (znormip[iw] .* deltaip[iw]).^2
-
-            integrand_fmu = integrand_fmu .+ delta./theta
-        end # iw
-        fmu0 = trapz(dos_en,2 .* integrand_fmu.*dos) # f(mu)
-        fmu0 = - 2.0 * kb * itemp * (fmu_nsc - fmu0)
-
-        # f(mu1) in the SC state
-        integrand_fmu = zeros(ndos)
-        for iw in 1:M+1
-            delta = dos_en .- mu1 .+ shiftip[iw]
-            theta = (wsi[iw] .* znormip[iw]).^2 .+ (dos_en .- mu1 .+ shiftip[iw]).^2 .+ (znormip[iw] .* deltaip[iw]).^2
-
-            integrand_fmu = integrand_fmu .+ delta./theta
-        end # iw
-        fmu1 = trapz(dos_en,2 .* integrand_fmu.*dos) # f(mu)
-        fmu1 = - 2.0 * kb * itemp * (fmu_nsc - fmu1)
- 
-        mu = mu1 - fmu1 * (mu1-mu0)/(fmu1-fmu0)
-
-        # println("it: ",it,",   mu0: ", mu0,",   mu1: ", mu1,",   mu: ", mu)
-        if (abs((mu - mu1) / mu1) < 1e-6)
-            return mu
-            break
-        end
-        mu0 = mu1
-        mu1 = mu
-
-        if it == N_it
-            println("update mu not converged, try using a mu1 starting point.")
-            return
-        end
-    end # it = 1:N_it
-end

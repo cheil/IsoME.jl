@@ -1,5 +1,3 @@
-```@contents
-```
 # isoME
 The package isoME.jl offers a quick way to solve the isotropic Eliashberg equations.  
 The superconducting critical temperature (Tc) as well as the components of the self-energy $\Delta, Z, \chi$ are returned. (cite our paper??)  
@@ -67,5 +65,8 @@ Some of the input files have to obey a certain structure. For more information p
 
  ## Outline 
  ```@index
+```
+
+```@contents
 ```
 

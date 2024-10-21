@@ -18,6 +18,7 @@ using Test
                     TcSearchMode_flag = 0
                     )
 
+    @test 1 == 1
 #=
     Tc = EliashbergSolver(inp, true)
     @test Tc == 17

@@ -342,12 +342,12 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
         end
 
         # Gap too small
-        if data[2] < 0.1 && i_it > maximum([minIt, inp.nItFullCoul+1])
+        if data[2] < inp.minGap && i_it > maximum([minIt, inp.nItFullCoul+1])
             println(replace(console["Hline"], "." => " "))
-            printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than 0.1 meV!\n\n"; bold=false)
+            printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than "*string(round(inp.minGap, digits=2))*" meV!\n\n"; bold=false)
 
             println(log_file, replace(console["Hline"], "." => " "))
-            printstyled(log_file, "\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than 0.1 meV!\n\n"; bold=false)
+            printstyled(log_file, "\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than "*string(round(inp.minGap, digits=2))*" meV!\n\n"; bold=false)
 
             data[2] = NaN
             return data
@@ -687,9 +687,9 @@ function EliashbergSolver(inp::arguments, testFlag=false)
 
 
     # print time elapsed
-    print("\nTotal Runtime: ", dt, " seconds\n")
+    print("\nTotal Runtime: ", round(dt, digits=2), " seconds\n")
     # log file
-    print(log_file, "\nTotal Runtime: ", dt, " seconds\n")
+    print(log_file, "\nTotal Runtime: ", round(dt, digits=2), " seconds\n")
 
     # close & save
     close(log_file)

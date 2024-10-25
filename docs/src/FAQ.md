@@ -9,7 +9,7 @@ The eliashberg equations are unstable when the coulomb part is greater than the 
 ## Q3: What does -1 indicate in the input structure?
 -1 indicates that either a default value is used or that it is an optional input. The value of all mandatory input parameters will be overwritten during the run.
 
-E.g. If the fermi-energy (ef) is unspecified its value will be extracted from the header of the dos-file the -1 will be overwritten with the acutal value.
+E.g. If the fermi-energy (ef) is unspecified its value will be extracted from the header of the dos-file and the -1 will be overwritten with the acutal value.
 
 ## Q4: Why is the code unable to read my input files?
 Per default, a certain structure of the input files is assumed:

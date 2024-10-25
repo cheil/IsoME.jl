@@ -66,13 +66,14 @@ function InputParser(inp::arguments, log_file::IOStream)
 
     ########## READ-IN ##########
     ####### a2f file #######
-    a2f_omega, a2f = readIn_a2f(inp.a2f_file, inp.ind_smear, inp.a2f_unit, inp.nheader_a2f, inp.nfooter_a2f, inp.nsmear)
+    a2f_omega, a2f, inp.ind_smear, inp.a2f_unit = readIn_a2f(inp.a2f_file, inp.ind_smear, inp.a2f_unit, inp.nheader_a2f, inp.nfooter_a2f, inp.nsmear)
 
 
     ########## Dos and Weep ##########
     if ~isempty(inp.dos_file) 
         # read dos
-        dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.ef, inp.colFermi_dos, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos)
+        dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.ef, inp.colFermi_dos, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos, outdir = inp.outdir, logFile = log_file)
+        inp.ef = ef
 
         # remove zeros at begining/end of dos
         #dos, dos_en = discardZeros(dos, dos_en)
@@ -80,8 +81,10 @@ function InputParser(inp::arguments, log_file::IOStream)
         # Wcut in meV
         if inp.Wcut != -1
             if (inp.Wcut) > dos_en[end] || (inp.Wcut) < dos_en[1]
-                print(@yellow "WARNING: ")
+                print(@info "Info: ")
                 println("Wcut larger than given energy interval!")
+
+                println(log_file, "Info: Wcut larger than given energy interval!")
             else
                 logWcut = (dos_en .> (inp.Wcut)) .& (dos_en .< (inp.Wcut))
                 dos      = dos[logWcut]
@@ -93,7 +96,7 @@ function InputParser(inp::arguments, log_file::IOStream)
         if inp.include_Weep == 1
             # read Weep + energy grid points
             Weep, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Weep_col, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep)
-            W_en = readIn_Wen(inp.Wen_file, inp.efW, inp.colFermi_Wen, inp.Wen_unit, inp.nheader_Wen, inp.nfooter_Wen)  
+            W_en, inp.efW = readIn_Wen(inp.Wen_file, inp.efW, inp.colFermi_Wen, inp.Wen_unit, inp.nheader_Wen, inp.nfooter_Wen)  
 
             ### Interpolate Weep & Dos onto non-uniform grid
             bndItp = [1000, 500]
@@ -139,6 +142,8 @@ function InputParser(inp::arguments, log_file::IOStream)
         dos_en = []
         ef = nothing
         idxEncut = -1
+        Weep = nothing
+        W_en = nothing
     end
 
     ### calc mu*'s
@@ -250,13 +255,13 @@ function createDirectory(inp::arguments)
     end
 
     try
-        mkdir(inp.outdir)
+        mkpath(inp.outdir)   # mkpath
     catch ex
         error("Couldn't write into " * inp.outdir * "! Outdir may not writable or an invalid path.\n\n"*"Exception: "*ex.msg)
     end
 
     # open log file
-    if isfile(inp.outdir * "log.txt")
+    if isfile(inp.outdir * "log.txt")   #no longer neccessary
         rm(inp.outdir * "log.txt")
     end
 
@@ -358,13 +363,13 @@ function readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsme
     a2f_fine[a2f_fine.<0.0] .= 0.0
 
 
-    return omega_fine, a2f_fine
+    return omega_fine, a2f_fine, indSmear, unit
 
 end
 
 
 # Read in DOS
-function readIn_Dos(dos_file, ef =-1, colFermi=1, spin=2, unit="", nheader=-1, nfooter=-1, outdir ="")
+function readIn_Dos(dos_file, ef =-1, colFermi=1, spin=2, unit="", nheader=-1, nfooter=-1; outdir ="./", logFile = nothing)
     """
     Read in DoS file to solve the isotropic Migdal-Eliashberg equations
     All quantities are converted to meV
@@ -447,14 +452,16 @@ function readIn_Dos(dos_file, ef =-1, colFermi=1, spin=2, unit="", nheader=-1, n
         catch ex
 
             # log file
-            print(log_file, "\nERROR while reading the fermi energy from the Dos-file:")
-            showerror(log_file, ex)
-            print(log_file, "\n\nCheck the header of the Dos-file or enter the fermi energy by hand via ef")
-            print(log_file, "\n\nFor further information please refer to the CRASH file\n")
-            close(log_file)
+            if ~isnothing(logFile)
+                print(logFile, "\nERROR while reading the fermi energy from the Dos-file:")
+                showerror(logFile, ex)
+                print(logFile, "\n\nCheck the header of the Dos-file or enter the fermi energy by hand via ef")
+                print(logFile, "\n\nFor further information please refer to the CRASH file\n")
+                close(logFile)
+            end
 
             # crash file
-            crashFile = open(inp.outdir * "CRASH", "a")
+            crashFile = open(outdir * "CRASH", "a")
             print(crashFile, "ERROR while reading the fermi energy from the Dos-file:\n")
             print(crashFile, current_exceptions())
             print(crashFile, "\n\nCheck the header of the Dos-file or enter the fermi energy by hand via ef\n\n")
@@ -538,10 +545,10 @@ end
 """
     readIn_Wen(Wen_file[, ef, colFermi, unit, nheader, nfooter])
 
-Read in Weep file containing the sreened coulomb interaction.
-Weep data must be in column 3
+Read in Wen 
+Energy grid for Weep 
 """
-function readIn_Wen(Wen_file, ef=-1, colFermi=0, unit="", nheader=-1, nfooter=-1)
+function readIn_Wen(Wen_file, ef=-1, colFermi=0, unit="", nheader=-1, nfooter=-1; outdir = "./", logFile = nothing)
     ### Read in Weep file ###
     Wen_data = readdlm(Wen_file);
 
@@ -578,14 +585,16 @@ function readIn_Wen(Wen_file, ef=-1, colFermi=0, unit="", nheader=-1, nfooter=-1
         catch ex
 
             # log file
-            print(log_file, "\nERROR while reading the fermi energy from the Wen-file:")
-            showerror(log_file, ex)
-            print(log_file, "\n\nCheck the header of the Wen-file or enter the fermi energy by hand via ef")
-            print(log_file, "\n\nFor further information please refer to the CRASH file\n")
-            close(log_file)
+            if ~isnothing(logFile)
+                print(logFile, "\nERROR while reading the fermi energy from the Wen-file:")
+                showerror(logFile, ex)
+                print(logFile, "\n\nCheck the header of the Wen-file or enter the fermi energy by hand via ef")
+                print(logFile, "\n\nFor further information please refer to the CRASH file\n")
+                close(logFile)
+            end
 
             # crash file
-            crashFile = open(inp.outdir * "CRASH", "a")
+            crashFile = open(outdir * "CRASH", "a")
             print(crashFile, "ERROR while reading the fermi energy from the Wen-file:\n")
             print(crashFile, current_exceptions())
             print(crashFile, "\n\nCheck the header of the Wen-file or enter the fermi energy by hand via ef\n\n")
@@ -614,7 +623,7 @@ function readIn_Wen(Wen_file, ef=-1, colFermi=0, unit="", nheader=-1, nfooter=-1
     W_en = W_en .- ef
 
 
-    return W_en
+    return W_en, ef
 
 end
 
@@ -650,7 +659,7 @@ function getUnit(header, file=nothing)
         end
     end
     
-    println("Auto-extraction of unit from "*file*"-file failed! Please type the correct unit case sensitive into the console:")
+    println("Auto-extraction of unit from "*file*"-file failed! Please type the correct unit case sensitive into the console (it might be that you need to type it twice due to a bug in julia):")
     unit = readline();
 
     return unit

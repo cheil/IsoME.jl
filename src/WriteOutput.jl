@@ -161,12 +161,9 @@ function printSummary(inp, Tc, log_file)
         text = text * "\n - " * inp.material * " is a superconductor"
         text = text * "\n - Highest given temperature reached"
         text = text * "\n - Tc > " * string(Tc[1]) * " K"
-    elseif (Tc[2]-Tc[1]) <= 1
-        text = text * "\n - " * inp.material * " is a superconductor"
-        text = text * "\n - Tc = " * string(Tc[1]) * " K!"
     else
         text = text * "\n - " * inp.material * " is a superconductor"
-        text = text * "\n - Tc = " * string(Tc[1]) * " - " * string(Tc[2]) * " K!"
+        text = text * "\n - Tc = " * string(round((Tc[2]+Tc[1])/2, digits=2)) * " (±"* string(round((Tc[2]-Tc[1])/2, digits=2)) *")" * " K!"
     end
 
     printstyled("\nSummary:", bold=true)
@@ -474,9 +471,9 @@ Save results of each iteration and input parameters in a file Summary.txt
 function writeToOutFile(Tc ,inp, out_vars, header)
     # write to output file
     name = ""
-    if inp.material != "Material"
-        name = name*inp.material*"_"
-    end
+    #if inp.material != "Material"
+    #    name = name*inp.material*"_"
+    #end
     name = name*"Summary.txt"
 
     if isfile(inp.outdir*name)
@@ -490,10 +487,8 @@ function writeToOutFile(Tc ,inp, out_vars, header)
         out = out * "Tc < " * string(Tc[2]) *" K"
     elseif isnan(Tc[2])
         out = out * "Tc > " * string(Tc[1]) * " K"
-    elseif (Tc[2]-Tc[1]) <= 1
-        out = out * "Tc = " * string(Tc[1]) * " K!"
     else
-        out = out * "Tc = " * string(Tc[1]) * " - " * string(Tc[2]) * " K!"
+        out = out * "Tc = " * string(round((Tc[2]+Tc[1])/2, digits=2)) * " (±"* string(round((Tc[2]-Tc[1])/2, digits=2)) *")" * " K!"
     end
     out = out*"\n\n"
 
@@ -542,7 +537,7 @@ function writeToOutFile(Tc ,inp, out_vars, header)
     print(outfile, replace(tableHline, "." => " ")*"\n")
 
     ### Input parameters ###
-    print(outfile, "\n\n"*join(inp.all, "\n"))
+    print(outfile, replace(replace(replace("\n\n"*join(inp.all, "\n"), "-1.0"=>"-"), "Number[-1]"=>"-"), "-1"=>"-"))
 
     close(outfile)
 end
@@ -571,7 +566,9 @@ function createFigures(inp, matval, Delta0, temps, log_file)
     plot(a2f_omega_fine, a2f_fine)
     xlims!(0, xlim_max)
     ylims!(0, ylim_max)
-    title!(inp.material)
+    if inp.material != "Material"
+        title!(inp.material)
+    end
     xlabel!(L"\omega ~ \mathrm{(meV)}")
     ylabel!(L"\alpha^2F ~ \mathrm{(1/meV)}")
     savefig(inp.outdir * "/a2F_sm" * string(inp.ind_smear) * ".pdf")
@@ -609,12 +606,14 @@ function createFigures(inp, matval, Delta0, temps, log_file)
         plot!(xticks=xtick_val)
         xlims!(0, xlim_max)
         ylims!(0, ylim_max)
-        title!(inp.material)
+        if inp.material != "Material"
+            title!(inp.material)
+        end
         xlabel!(L"T ~ \mathrm{(K)}")
         ylabel!(L"\Delta_0 ~ \mathrm{(meV)}")
 
         namePlot = "Delta0"
-        if inp.material != "material"
+        if inp.material != "Material"
             namePlot = namePlot * "_" * inp.material
         end
         if inp.cDOS_flag == 1

@@ -36,7 +36,7 @@ using SparseIR              # Intermediate basis
 using LsqFit                # Fitting 
 using Roots                 # Root finding
 using Term                  # styled text terminal
-using Revise    # REMOVE before publishing
+using Revise                # REMOVE before publishing
 
 
 # Remove
@@ -61,6 +61,7 @@ const kb = 0.08617333262; # meV/K
     mixing_beta::Number = -1
     nItFullCoul::Number = 10
     conv_thr::Float64 = 1e-4
+    minGap::Float64 = 0.1
     N_it::Int64 = 5000   
     Wcut::Float64 = -1      # Wencut, cutoff Wenergies
     encut::Float64 = 2000   # cutoff shift & Ne

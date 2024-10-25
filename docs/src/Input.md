@@ -9,60 +9,61 @@ A comprehensive description of all the input parameters can be found below.
 General input parameters are:
 
 | Name    |      Type      |   Default   | Comment  | Description | 
-|---------|----------------|-------------|----------| ----------  |
-|TcSearchMode_flag | Int64 |  1    | 0: Loop over all values in temps <br> 1: Automatic Tc search with accuracy of 1 K | Choose the search mode |
+|:--------|:---------------|:------------|:---------|:----------  |
+|TcSearchMode_flag | Int64 |  1    | 0: Loop over all values in temps ``\\`` 1: Automatic Tc search with accuracy of 1 K | Choose the search mode |
 | temps   | Vector{Number} |  [-1] | Required if TcSearchMode_flag = 0 |  Considered temperatures | 
-| a2f_file    | String   |    ""    | required for all calculations | path to \alpha^2F$-file   
-| ind_smear   | Int64    |    -1    | per default the smearing in the middle is used | smearing which should be used | 
-| a2f_unit    | String   |    ""    | Is extracted from the header of the dos-file if not set <br> Currently supported: meV, eV, THz, Ry | unit of the a2f-file | 
-| omega_c | Float64        | 10000 | Matsubara cutoff $\omega_c$ in meV | |
+| a2f_file    | String   |    ""    | Required for all calculations | Path to ``\alpha^2F``-file   
+| ind_smear   | Int64    |    -1    | Per default the smearing in the middle column is used | Which smearing should be used | 
+| a2f_unit    | String   |    ""    | Is extracted from the header of the dos-file if not set ``\\`` Currently supported: meV, eV, THz, Ry | unit of the a2f-file | 
+| omega_c | Float64        | 7000 | Matsubara cutoff ``\omega_c`` in meV | |
 | mixing_beta | Number     | Iteration dependent | Linear mixing factor |   |
-| cDOS_flag | Int64 |  1   |0: variable dos <br> 1: constant dos  | dos_file has to be specified |
+| cDOS_flag | Int64 |  1   |0: variable dos <\br> 1: constant dos  | dos_file has to be specified |
 | dos_file  |  String  |     ""    | Required cDOS_flag = 0| path to the dos-file |  
 | ef        | Float64  |     -1    | Is extracted from the header of the dos-file if not set | Fermi-energy DOS in meV |
-| colFermi_dos | Int64 |      1    |  0 = last column <br> 1 = second to last column <br> 2 = ... |       column the fermi energy is in starting from the right |
-| spinDos   | Int64    |      2    |  1 = spin not considered <br> 2 = spin considered  | Does the dos consider spin | 
-| dos_unit   |  String |     ""    |  Is extracted from the header of the dos-file if not set <br> Currently supported: meV, eV, THz, Ry | units in dos file | 
-| mu      | Float64        |   -1  | Measure for Coulomb strength (This is not the chemical potential!) <br> If specified muc_AD & muc_ME are calculated based on mu | $\mu=N(e_f)*W(e_f,e_f)$ <br>  cite paper with formula |
-| muc_AD     | Float64     |  0.14 | Morel-Anderson Pseudopotential Allen-Dynes $\mu^*_{AD}$ | cite paper with formula |
-| muc_ME  | Float64        | ${\mu^*_{AD}}/({1 + \mu^*_{AD} \ln(\omega_{ph}/\omega_c)})$ | Morel-Anderson Pseudopotential Migdal-Eliashberg $\mu^*_{ME}$ | cite paper with formula |
+| colFermi_dos | Int64 |      1    |  0 = last column ``\\`` 1 = second to last column ``\\`` 2 = ... |       column the fermi energy is in starting from the right |
+| spinDos   | Int64    |      2    |  1 = spin not considered ``\\`` 2 = spin considered  | Does the dos consider spin | 
+| dos_unit   |  String |     ""    |  Is extracted from the header of the dos-file if not set ``\\`` Currently supported: meV, eV, THz, Ry | units in dos file | 
+| mu      | Float64        |   -1  | Measure for Coulomb strength (This is not the chemical potential!) ``\\`` If specified muc_AD & muc_ME are calculated based on mu | ``\mu=N(e_f)*W(e_f,e_f)`` ``\\``  cite paper with formula |
+| muc_AD     | Float64     |  0.12 | Morel-Anderson Pseudopotential Allen-Dynes ``\mu^*_{AD}`` | cite paper with formula |
+| muc_ME  | Float64        | ``{\mu^*_{AD}}/({1 + \mu^*_{AD} \ln(\omega_{ph}/\omega_c)})`` | Morel-Anderson Pseudopotential Migdal-Eliashberg ``\mu^*_{ME}`` | cite paper with formula |
 | nItFullCoul | Number     |  5    | First iteration in which full coulomb interaction is used , dampens oscillations |  |
-| mu_flag   | Int64 |  1   |  0: no mu-update <br> 1: mu-update (recommended) | Update the chemical potential in vDOS calculations |
-| include_Weep | Int64 | 0 |0: Morel-Anderson Pseudopotential <br> 1: static Coulomb interaction W(e,e') | Weep_file and Wen_file have to be specified |
+| mu_flag   | Int64 |  1   |  0: no mu-update ``\\`` 1: mu-update (recommended) | Update the chemical potential in vDOS calculations |
+| include_Weep | Int64 | 0 |0: Morel-Anderson Pseudopotential ``\\`` 1: static Coulomb interaction W(e,e') | Weep_file and Wen_file have to be specified |
 | Weep_file |  String  |     ""    |  Required if include_Weep = 1 |   Path to W-file  |
 | Wen_file  |  String  |     ""    |  Required if include_Weep = 1 | Path to file containing the energy grid points of W |
 | efW       | Float64  |     -1    | Is extracted from the header of the Wen-file if not set | Fermi-energy W energies in meV |
-| Weep_unit |  String  |     ""    | Is extracted from the header of the Weep-file if not set <br> Currently supported: meV, eV, Ry, Ha | Unit of the W | 
-| Wen_unit  |  String  |     ""    | Is extracted from the header of the Wen-file if not set <br> Currently supported: meV, eV, Ry, Ha  | Unit of the W energies |                 
+| Weep_unit |  String  |     ""    | Is extracted from the header of the Weep-file if not set ``\\`` Currently supported: meV, eV, Ry, Ha | Unit of the W | 
+| Wen_unit  |  String  |     ""    | Is extracted from the header of the Wen-file if not set ``\\`` Currently supported: meV, eV, Ry, Ha  | Unit of the W energies |                 
 | Weep_col  |   Int64  |     3     |                               | Column of the W-data in the Weep-file  | 
 | outdir | String |  pwd() | Path to the output directory |  |
-| flag_figure | Int64 |  1 | 0: no figures are plotted <br> 1: plot gap and a2f-values |  |
-| material | String | "Material" | Name of compound |  |    
-| encut  | Float64 | 2000 meV | Considered energy window around fermi energy |  meV |
-| Wcut  | Float64 |  -1 (full window is used) | Considered energy window around fermi energy used in integration of phic |  meV |
+| flag_figure | Int64 |  1 | 0: no figures are plotted ``\\`` 1: plot gap and a2f-values |  |
+| flag_writeSelfEnergy | Int64 | 0  | 0: Don't save the self-energy components 1: save the self-energy components at each temperature  | Should the self-energy components be saved |
+| material | String | "Material" | Will be used in plots, summary, ... | Name of compound  |    
+| encut  | Float64 | 2000 meV  | in meV | Considered energy window around fermi energy |
+| Wcut  | Float64 |  -1 (full window is used) | in meV | Considered energy window around fermi energy used in integration of phic |
 
 
 Depending on the mode chosen, the following input files may be needed.
 
-## $\alpha^2F$
-A file containing the Eliashberg spectral function $\alpha^2F(\omega)$ is required for all calculations.  
+## ``\alpha^2F``
+A file containing the Eliashberg spectral function ``\alpha^2F(\omega)`` is required for all calculations.  
 It must obey the following structure:
 - **header:** Optional. If the unit (meV, THz, Ry) is available it will be extraced automatically, otherwise set the unit via dos_unit. 
 - **first column:** energies
-- **second column onwards:** $\alpha^2F$ values for different smearings. Per default the smearing in the middle is used.
+- **second column onwards:** ``\alpha^2F`` values for different smearings. Per default the smearing in the middle is used.
 - **footer:** Optional
 
 The number of header/footer lines and smearing values should be recognized automatically.
 
 <details>
 <summary>Detailed description</summary>
-<br>
+``\\``
 
 >  **a2f_file** :: STRING 
 > 
-> Path to the $\alpha^2F$-file.  
+> Path to the ``\alpha^2F``-file.  
 > Required for all calculations.  
-> The first column must contain the energies, the second column onwards the $\alpha^2F$ values for different smearings.  
+> The first column must contain the energies, the second column onwards the ``\alpha^2F`` values for different smearings.  
 > 
 
 > **ind_smear** :: INTEGER | Default: 1
@@ -72,7 +73,7 @@ The number of header/footer lines and smearing values should be recognized autom
 
 >  **a2f_unit** :: STRING    | Default: nothing
 >
-> Energy unit in the $\alpha^2F$-file
+> Energy unit in the ``\alpha^2F``-file
 >
 > | Value | Description |
 > | ---   | ----------- |
@@ -83,7 +84,7 @@ The number of header/footer lines and smearing values should be recognized autom
 
 >  **nheader_a2f** :: INTEGER | Default: nothing  
 > 
-> Number of header lines in the $\alpha^2F$-file
+> Number of header lines in the ``\alpha^2F``-file
 >
 > | Value | Description |
 > | ---   | ----------- |
@@ -91,14 +92,14 @@ The number of header/footer lines and smearing values should be recognized autom
 
 >  **nfooter_a2f** :: INTEGER  | Default: nothing  
 >
-> Number of footer lines in the $\alpha^2F$-file
+> Number of footer lines in the ``\alpha^2F``-file
 >
 > | Value | Description |
 > | ---   | ----------- |
 > | nothing   | Auto-recognition |
 </details>                    
 
-## $N(\epsilon)$
+## ``N(\epsilon)``
 For a full bandwidth calculation a file containing the dos is required.  
 It must obey the following structure:
 - **header:** It is assumed that the fermi energy is the second to last entry of the first line as in a QE Dos-file. If this is not the case, specify the position of the fermi-energy via colFermi_dos starting from the right with 0 for the last column. Furthermore, it is assumed that the header contains the unit. If not, the unit has to be specified via dos_unit
@@ -108,7 +109,7 @@ It must obey the following structure:
 
 <details>
 <summary>Detailed description</summary>
-<br>
+``\\``
 
 >  **dos_file** :: STRING 
 > 
@@ -158,21 +159,21 @@ It must obey the following structure:
 </details>
 
 ## Weep
-For a calculation using the full screened Coulomb interaction two files containing $W(\epsilon,\epsilon')$ and the energy grid $\epsilon$, respectively are needed in addition to the dos-file.  
-The $W$-file must obey the following structure:
+For a calculation using the full screened Coulomb interaction two files containing ``W(\epsilon,\epsilon')`` and the energy grid ``\epsilon``, respectively are needed in addition to the dos-file.  
+The ``W``-file must obey the following structure:
 - **header:** It is assumed that the header contains the unit. If not, the unit has to be specified via Weep_unit
 - **column:** Specify column the W data is in via Weep_col (Default=3)
 - **footer:** Optional 
 
 The energy-file must obey the following structure:
 - **header:** It is assumed that the header contains the unit. If not, the unit has to be specified via Wen_unit
-- **first column:** energy grid points $\epsilon$ of $W(\epsilon, \epsilon')$
+- **first column:** energy grid points ``\epsilon`` of ``W(\epsilon, \epsilon')``
 - **footer:** Optional
 
 
 <details>
 <summary>Detailed description</summary>
-<br>
+``\\``
 
 >  **dos_file** :: STRING 
 > 

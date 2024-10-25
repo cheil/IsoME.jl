@@ -53,7 +53,7 @@ const kb = 0.08617333262; # meV/K
     # Parameters
     temps::Vector{Number} = [-1]        
     muc_AD::Float64 = 0.12
-    omega_c::Float64 = 10000.0
+    omega_c::Float64 = 7000.0
     muc_ME::Float64 = -1
     mu::Float64 = -1  
     ef::Float64 = -1

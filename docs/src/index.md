@@ -68,9 +68,9 @@ Some of the input files have to obey a certain structure. For more information p
 
 ## Minimal example
 A minimal example can be found at [Example files](https://github.com/cheil/IsoME.jl/tree/main/test/Nb).
-If you have followed the steps above you should be able to run the file test.jl.
+If you have followed the steps above you should be able to run the file examples.jl in any of the four cases.
 ```console
-~ $ julia test.jl
+~ $ julia --project= examples.jl
 ```
 
 

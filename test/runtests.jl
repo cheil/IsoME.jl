@@ -1,3 +1,5 @@
+# Automatic test - do not change !!!
+
 using IsoME
 using Test
 

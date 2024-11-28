@@ -1,6 +1,8 @@
 # Best practices
 ## Set up a project environment
-We recommend to use project [environments](https://docs.julialang.org/en/v1/manual/code-loading/#Environments-1) in julia. This determines all dependencies of a project and ensures reproducibility of the results. An environment can be set up via a julia REPL
+We recommend to use project [environments](https://docs.julialang.org/en/v1/manual/code-loading/#Environments-1) in julia. This determines all dependencies of a project and ensures reproducibility of the results.
+Furthermore, you won't have any incompatibilities with any other previously installed packages.
+An environment can be set up via a julia REPL
 ```julia-repl
 (@v1.9) pkg> activate MyProject
 Activating new environment at `~/MyProject/Project.toml`
@@ -11,7 +13,7 @@ Activating new environment at `~/MyProject/Project.toml`
 (MyProject) pkg> add IsoME
 ```
 Now you should have an environment containing only the IsoME package. 
-When running a script test.jl from the terminal, it can be necessary to specify the environment you want to use explicitly
+When running a script test.jl from the terminal, it can be necessary to explicitly specify the environment you want to use 
 ```console
 ~ $ julia --project=/MyProject/ test.jl
 ```

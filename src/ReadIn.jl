@@ -72,7 +72,7 @@ function InputParser(inp::arguments, log_file::IOStream)
     ########## Dos and Weep ##########
     if ~isempty(inp.dos_file) 
         # read dos
-        dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.ef, inp.colFermi_dos, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos, outdir = inp.outdir, logFile = log_file)
+        dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.ef, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos, outdir = inp.outdir, logFile = log_file)
         inp.ef = ef
 
         # remove zeros at begining/end of dos
@@ -95,8 +95,8 @@ function InputParser(inp::arguments, log_file::IOStream)
 
         if inp.include_Weep == 1
             # read Weep + energy grid points
-            Weep, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Weep_col, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep)
-            W_en, inp.efW = readIn_Wen(inp.Wen_file, inp.efW, inp.colFermi_Wen, inp.Wen_unit, inp.nheader_Wen, inp.nfooter_Wen)  
+            Weep, W_en, inp.efW, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, outdir = inp.outdir, logFile = log_file)
+            #W_en, inp.efW = readIn_Wen(inp.Wen_file, inp.efW, inp.colFermi_Wen, inp.Wen_unit, inp.nheader_Wen, inp.nfooter_Wen)  
 
             ### Interpolate Weep & Dos onto non-uniform grid
             bndItp = [1000, 500]
@@ -115,7 +115,6 @@ function InputParser(inp::arguments, log_file::IOStream)
 
             # idx encut
             idxEncut = [findfirst(dos_en .> -inp.encut), findlast(dos_en .< inp.encut)]
-
         else
             # no Weep
             Weep = nothing
@@ -302,17 +301,6 @@ function checkInput(inp::arguments, log_file::IOStream)
         print(log_file, "WARNING: No valid Weep-files specified! Calculating Tc using Anderson-pseudopotential instead\n\n")
     end
 
-
-    # Tc search mode
-    if inp.temps == [-1] && inp.TcSearchMode_flag == 0
-        inp.TcSearchMode_flag = 1
-        print(@yellow "WARNING: ")
-        print("No temperatures specified - Activating Tc search mode instead!\n\n")
-    
-        # log file
-        print(log_file, "WARNING: No temperatures specified - Activating Tc search mode instead!\n\n")
-    end
-
     return inp
 
 end
@@ -369,7 +357,7 @@ end
 
 
 # Read in DOS
-function readIn_Dos(dos_file, ef =-1, colFermi=1, spin=2, unit="", nheader=-1, nfooter=-1; outdir ="./", logFile = nothing)
+function readIn_Dos(dos_file, ef =-1, spin=2, unit="", nheader=-1, nfooter=-1; outdir ="./", logFile = nothing)
     """
     Read in DoS file to solve the isotropic Migdal-Eliashberg equations
     All quantities are converted to meV
@@ -411,9 +399,9 @@ function readIn_Dos(dos_file, ef =-1, colFermi=1, spin=2, unit="", nheader=-1, n
     (nfooter != -1) || (nfooter = size(dos_data, 1) - findlast(isa.(dos_data[:, 1], Number)))
 
     ### Remove header & footer
-    header = join(dos_data[1:nheader, :], " ")
+    header = dos_data[1:nheader, :]
     dos = Float64.(dos_data[nheader+1:end-nfooter, 1:2])
-    (~isempty(unit)) || (unit = getUnit(header, "Dos"))
+    (~isempty(unit)) || (unit = getUnit(join(header, " "), "Dos"))
 
     ### extract energies and dos
     energies = dos[:, 1]
@@ -425,68 +413,24 @@ function readIn_Dos(dos_file, ef =-1, colFermi=1, spin=2, unit="", nheader=-1, n
 
     ### Fermi energy
     if ef == -1
-        try
-            ef = Float64.((dos_data[1, end-colFermi]))
+        ef = extractFermiEnergy(header, unit, "Weep", outdir = outdir, logFile = logFile)
+    end
 
-            ### Convert units ###
-            if unit == "meV"
-                ef = ef
-                energies = energies
-                dos = dos
-            elseif unit == "eV"
-                ef = ef .* 1000
-                energies = energies .* 1000
-                dos = dos .* 0.001
-            elseif unit == "THz"
-                ef = ef * THz2meV
-                energies = energies .* THz2meV
-                dos = dos ./ THz2meV
-            elseif unit == "Ry"
-                ef = ef .* Ry2meV
-                energies = energies .* Ry2meV
-                dos = dos ./ Ry2meV
-            else
-                error("Invalid Unit! Please check the header of the Dos-file and try again!")
-            end
-
-        catch ex
-
-            # log file
-            if ~isnothing(logFile)
-                print(logFile, "\nERROR while reading the fermi energy from the Dos-file:")
-                showerror(logFile, ex)
-                print(logFile, "\n\nCheck the header of the Dos-file or enter the fermi energy by hand via ef")
-                print(logFile, "\n\nFor further information please refer to the CRASH file\n")
-                close(logFile)
-            end
-
-            # crash file
-            crashFile = open(outdir * "CRASH", "a")
-            print(crashFile, "ERROR while reading the fermi energy from the Dos-file:\n")
-            print(crashFile, current_exceptions())
-            print(crashFile, "\n\nCheck the header of the Dos-file or enter the fermi energy by hand via ef\n\n")
-            close(crashFile)
-
-            # Stop
-            rethrow(ex)
-        end
+    ### Convert 
+    if unit == "meV"
+        energies = energies
+        dos = dos
+    elseif unit == "eV"
+        energies = energies .* 1000
+        dos = dos .* 0.001
+    elseif unit == "THz"
+        energies = energies .* THz2meV
+        dos = dos ./ THz2meV
+    elseif unit == "Ry"
+        energies = energies .* Ry2meV
+        dos = dos ./ Ry2meV
     else
-        ### Convert units ###
-        if unit == "meV"
-            energies = energies
-            dos = dos
-        elseif unit == "eV"
-            energies = energies .* 1000
-            dos = dos .* 0.001
-        elseif unit == "THz"
-            energies = energies .* THz2meV
-            dos = dos ./ THz2meV
-        elseif unit == "Ry"
-            energies = energies .* Ry2meV
-            dos = dos ./ Ry2meV
-        else
-            error("Invalid Unit! Either set the unit manually via dos_unit or check the header of the Dos-file and try again!")
-        end
+        error("Invalid Unit! Either set the unit manually via dos_unit or check the header of the Dos-file and try again!")
     end
 
     ### Shift energies by ef for cDos ###
@@ -502,43 +446,64 @@ end
 Read in Weep file containing the sreened coulomb interaction.
 Weep data must be in column 3
 """
-function readIn_Weep(Weep_file, Weep_col=3, unit="", nheader=-1, nfooter=-1)
+function readIn_Weep(Weep_file, Wen_file, Weep_col=3, ef=-1, unit = "", nheader=-1, nfooter=-1,  nheaderWen=-1, nfooterWen=-1; outdir = "./", logFile = nothing)
 
     ### Read in Weep file ###
     Weep_data = readdlm(Weep_file);
 
-    ### Default values ###
+    # Default values
     (nheader != -1) || (nheader = findfirst(isa.(Weep_data[:,1], Number))-1)
     (nfooter != -1) || (nfooter = size(Weep_data,1) - findlast(isa.(Weep_data[:,1], Number)))
 
-    ### Remove header & footer
-    header = join(Weep_data[1:nheader,:], " ")
+    # Remove header & footer
+    header = Weep_data[1:nheader,:]
     Weep = Float64.(Weep_data[nheader+1:end-nfooter, Weep_col])
     
-    ### reshape to matrix
-    Weep = transpose(reshape(Weep, (Int(sqrt(size(Weep, 1))), Int(sqrt(size(Weep, 1))))))
+    # reshape to matrix
+    numWens = Int(sqrt(size(Weep, 1)))
+    Weep = transpose(reshape(Weep, numWens, numWens))
 
-    ### remove outliers from Weep ###
-    outlier = findall(Weep .< 0)  	#.|| Weep .> 1e3
-    for k in eachindex(outlier)
-        Weep[outlier[k]] = 0
+    # remove outliers from Weep 
+    Weep[Weep .< 0] .= 0
+
+    # unit
+    (~isempty(unit)) || (unit = getUnit(join(header, " "), "Weep"))
+
+    ### Fermi energy
+    if ef == -1
+        ef = extractFermiEnergy(header, unit, "Weep", outdir = outdir, logFile = logFile)
+    end
+
+    ### read in W energies ###
+    if isempty(Wen_file)
+        Wen_col = 2     # as input parameter?
+        #Wen = Float64.(Weep_data[nheader+1:numWens+nheader, Wen_col])
+        Wen = unique(Float64.(Weep_data[nheader+1:end-nfooter, 1]))
+    else
+        Wen = readIn_Wen(Wen_file, nheaderWen, nfooterWen)
     end
 
     ### Convert ###
-    (~isempty(unit)) || (unit = getUnit(header, "Weep"))
     if "meV" == unit    # meV
         Weep = Weep
+        Wen = Wen
     elseif  "eV" == unit     # eV
         Weep = Weep.*1000
+        Wen = Wen.*1000
     elseif  "Ry" == unit      # Ry
         Weep = Weep.*Ry2meV
+        Wen = Wen.*Ry2meV
     elseif  "Ha" == unit     # Hartree
         Weep = Weep.*Ry2meV*2
+        Wen = Wen.+Ry2meV*2
     else
-        error("Invalid Unit! Please checkt the header of the Weep-file and try again!")
+        error("Invalid Unit! Consider setting the unit manually (Weep_unit) or check the header of the Weep-file and try again!")
     end
 
-    return Weep, unit
+    # shift by ef
+    Wen = Wen .- ef
+
+    return Weep, Wen, ef, unit
 
 end
 
@@ -548,7 +513,7 @@ end
 Read in Wen 
 Energy grid for Weep 
 """
-function readIn_Wen(Wen_file, ef=-1, colFermi=0, unit="", nheader=-1, nfooter=-1; outdir = "./", logFile = nothing)
+function readIn_Wen(Wen_file, nheader=-1, nfooter=-1)
     ### Read in Weep file ###
     Wen_data = readdlm(Wen_file);
 
@@ -557,82 +522,85 @@ function readIn_Wen(Wen_file, ef=-1, colFermi=0, unit="", nheader=-1, nfooter=-1
     (nfooter != -1) || (nfooter = size(Wen_data, 1) - findlast(isa.(Wen_data[:, 1], Number)))
 
     ### Remove header & footer
-    header = join(Wen_data[1:nheader, :], " ")
     W_en = Float64.(Wen_data[nheader+1:end-nfooter, 1])
-    (~isempty(unit)) || (unit = getUnit(header, "Wen"))
 
-    ### Fermi energy
-    if ef == -1
-        try
-            ef = Float64.((Wen_data[1, end-colFermi]))  
+    return W_en
 
-            ### Convert ###
-            if "meV" == unit    # meV
-                W_en = W_en
-            elseif "eV" == unit     # eV
-                ef = ef .* 1000
-                W_en = W_en .* 1000
-            elseif "Ry" == unit      # Ry
-                ef = ef .* Ry2meV
-                W_en = W_en .* Ry2meV
-            elseif "Ha" == unit     # Hartree
-                ef = ef .* Ry2meV * 2
-                W_en = W_en .* Ry2meV * 2
-            else
-                error("Invalid Unit! Please checkt the header of the Weep-file and try again!")
-            end
+end
 
-        catch ex
 
-            # log file
-            if ~isnothing(logFile)
-                print(logFile, "\nERROR while reading the fermi energy from the Wen-file:")
-                showerror(logFile, ex)
-                print(logFile, "\n\nCheck the header of the Wen-file or enter the fermi energy by hand via ef")
-                print(logFile, "\n\nFor further information please refer to the CRASH file\n")
-                close(logFile)
-            end
+# Fermi energy
+"""
+    extractFermiEnergy(header, file=nothing)
 
-            # crash file
-            crashFile = open(outdir * "CRASH", "a")
-            print(crashFile, "ERROR while reading the fermi energy from the Wen-file:\n")
-            print(crashFile, current_exceptions())
-            print(crashFile, "\n\nCheck the header of the Wen-file or enter the fermi energy by hand via ef\n\n")
-            close(crashFile)
+Extract the fermi energy from the header of the input files
+"""
+function extractFermiEnergy(header, unit, file=nothing; outdir = "./", logFile = nothing)
 
-            # Stop
-            rethrow(ex)
-        end
-    else
-        ### Convert only Wen, ef already in correct unit
-        if "meV" == unit    # meV
-            W_en = W_en
-        elseif "eV" == unit     # eV
-            W_en = W_en .* 1000
-        elseif "Ry" == unit      # Ry
-            W_en = W_en .* Ry2meV
-        elseif "Ha" == unit     # Hartree
-            W_en = W_en .* Ry2meV * 2
+    ef = -1
+    try
+        logNums = isa.(header, Number)
+        if sum(logNums) == 1 
+            ef = Float64(only(header[logNums]))
+        elseif sum(logNums[2:end] .& (header[1:end-1] .== "=" )) == 1 
+            ef = Float64(only(header[2:end][logNums[2:end] .& (header[1:end-1] .== "=" )]))
         else
-            error("Invalid Unit! Please checkt the header of the Weep-file and try again!")
+            nameFermi = ["efermi", "ef", "fermi", "e_fermi"]
+            lcHeader = map(x -> isa(x, AbstractString) ? lowercase(x) : x, header)
+            ef = -2
+            for name in nameFermi
+                if any(lcHeader .== name)
+                    idx = findall(lcHeader .== name)
+                    row = idx[1][1]
+                    col = idx[1][2]
+                    ef = Float64.(only(header[row, findfirst(isa.(header[row, col:end], Number))+col-1]))
+                    break
+                end
+            end 
         end
+
+        ### Convert ###
+        if "meV" == unit    # meV
+            ef = ef
+        elseif "eV" == unit     # eV
+            ef = ef .* 1000
+        elseif "Ry" == unit      # Ry
+            ef = ef .* Ry2meV
+        elseif "Ha" == unit     # Hartree
+            ef = ef .* Ry2meV * 2
+        else
+            error("Invalid Unit! Consider setting the unit manually ("*file*"_unit) or check the header of the "*file*"-file and try again!")
+        end
+
+    catch ex
+        # log file
+        if ~isnothing(logFile)
+            print(logFile, "\nERROR while reading the fermi energy from the "*file*"-file:")
+            showerror(logFile, ex)
+            print(logFile, "\n\nCosnider setting the fermi-energy manually (ef or efW) or check the header of the "*file*"-file")
+            print(logFile, "\n\nFor further information please refer to the CRASH file\n")
+            close(logFile)
+        end
+
+        # crash file
+        crashFile = open(outdir * "CRASH", "a")
+        print(crashFile, "ERROR while reading the fermi energy from the "*file*"-file:\n")
+        print(crashFile, current_exceptions())
+        print(crashFile, "\n\nCosnider setting the fermi-energy manually (ef or efW) or check the header of the "*file*"-file\n\n")
+        close(crashFile)
+
+        # Stop
+        rethrow(ex)
     end
 
-
-    ### Shift energies by ef ###
-    W_en = W_en .- ef
-
-
-    return W_en, ef
-
+    return ef
 end
 
 
 # Convert units
 function getUnit(header, file=nothing)
     """
-    Return true if the specified unit exists in the file,
-    e.g. check if "eV" occurs in Dos file header
+    Return unit given in the header
 
     -------------------------------------------------------------------
     Input:

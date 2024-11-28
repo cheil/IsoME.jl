@@ -36,11 +36,8 @@ using SparseIR              # Intermediate basis
 using LsqFit                # Fitting 
 using Roots                 # Root finding
 using Term                  # styled text terminal
-using Revise                # REMOVE before publishing
+using Revise                # !!! REMOVE before publishing
 
-
-# Remove
-#using DoubleFloats
 
 ### defining constants ###
 const Ry2meV = 13605.662285137
@@ -69,7 +66,6 @@ const kb = 0.08617333262; # meV/K
     # mode
     cDOS_flag::Int64 = 1
     include_Weep::Int64 = 0
-    TcSearchMode_flag::Int64 = 1
     mu_flag::Int64 = 1
 
     # a2f input file
@@ -86,9 +82,8 @@ const kb = 0.08617333262; # meV/K
     nfooter_dos::Number = -1
     dos_unit::String   = ""
     spinDos::Int64   = 2
-    colFermi_dos::Int64 = 1
 
-    # Weep input file, auto extraction if -1
+    # Weep input file
     Weep_file::String = ""
     nheader_Weep::Int64 = -1
     nfooter_Weep::Int64 = -1
@@ -98,7 +93,6 @@ const kb = 0.08617333262; # meV/K
     nheader_Wen::Int64 = -1 
     nfooter_Wen::Int64 = -1
     Wen_unit::String   = ""
-    colFermi_Wen::Int64 = 0
 
     # Output
     outdir::String = pwd() 

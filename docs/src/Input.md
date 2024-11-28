@@ -10,8 +10,7 @@ General input parameters are:
 
 | Name    |      Type      |   Default   | Comment  | Description | 
 |:--------|:---------------|:------------|:---------|:----------  |
-|TcSearchMode_flag | Int64 |  1    | 0: Loop over all values in temps ``\\`` 1: Automatic Tc search with accuracy of 1 K | Choose the search mode |
-| temps   | Vector{Number} |  [-1] | Required if TcSearchMode_flag = 0 |  Considered temperatures | 
+| temps   | Vector{Number} |  [-1] | -1: Automatic Tc search mode ``\\`` else: Tc search at specified values|  Considered temperatures | 
 | a2f_file    | String   |    ""    | Required for all calculations | Path to ``\alpha^2F``-file   
 | ind_smear   | Int64    |    -1    | Per default the smearing in the middle column is used | Which smearing should be used | 
 | a2f_unit    | String   |    ""    | Is extracted from the header of the dos-file if not set ``\\`` Currently supported: meV, eV, THz, Ry | unit of the a2f-file | 

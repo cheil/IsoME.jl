@@ -412,14 +412,15 @@ function printFlagsAsText(inp, log_file)
         text *=  " - Material: "*inp.material*" \n"
     end
     # search mode
-    if inp.TcSearchMode_flag == 0
-        if length(inp.temps) == 1
-            text *= " - Tc search area: "*string(inp.temps[1])*" K\n"
-        else
-            text *= " - Tc search area: "*string(minimum(inp.temps))*" - "*string(maximum(inp.temps))*" K\n"
-        end
-    elseif inp.TcSearchMode_flag == 1
+    if inp.temps == [-1]
         text *= " - Tc search mode activated\n"
+    else 
+        if length(inp.temps) == 1
+            text *= " - Tc search range: "*string(inp.temps[1])*" K\n"
+        else
+            text *= " - Tc search range: "*string(minimum(inp.temps))*" - "*string(maximum(inp.temps))*" K\n"
+        end
+
     end
     
     # cut off
@@ -570,7 +571,7 @@ function createFigures(inp, matval, Delta0, temps, log_file)
         title!(inp.material)
     end
     xlabel!(L"\omega ~ \mathrm{(meV)}")
-    ylabel!(L"\alpha^2F ~ \mathrm{(1/meV)}")
+    ylabel!(L"\alpha^2F ~ \mathrm{(1)}")
     savefig(inp.outdir * "/a2F_sm" * string(inp.ind_smear) * ".pdf")
 
     if all(isnan.(Delta0))
@@ -580,10 +581,10 @@ function createFigures(inp, matval, Delta0, temps, log_file)
         print(log_file,  "Info: No superconducting gap found - skipping plot\n")
     else
         # print gap vs. temperature
-        Delta0_plot = Delta0
-        Delta0_plot[isnan.(Delta0)] .= 0
-        order = sortperm(temps)
-        temps_plot = temps[order]
+        Delta0_plot = Delta0[.~isnan.(Delta0)]
+        temps_plot = temps[.~isnan.(Delta0)]
+        order = sortperm(temps_plot)
+        temps_plot = temps_plot[order]
         Delta0_plot = Delta0_plot[order]
 
         plot_font = "Computer Modern"

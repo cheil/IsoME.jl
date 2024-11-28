@@ -1,4 +1,6 @@
-# Automatic test - do not change !!!
+# !!! Automatic test - Do not change !!!
+# What to do with outdir
+# testFlag
 
 using IsoME
 using Test

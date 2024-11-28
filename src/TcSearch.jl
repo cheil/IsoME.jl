@@ -326,17 +326,6 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
                 end
             end
             
-
-#=
-            plot(wsi, shifti)
-            savefig("shift_nomu_"*string(inp.Wcut)*".png")
-
-            plot(wsi, znormip)
-            savefig("Z_nomu_"*string(inp.Wcut)*".png")
-
-            plot(wsi, deltai)
-            savefig("delta_nomu_"*string(inp.Wcut)*".png")
-=#
             return data
             break
         end
@@ -387,7 +376,128 @@ function findTc(inp, console, matval, ML_Tc, log_file)
     Tc = [NaN, NaN]
 
 
-    if inp.TcSearchMode_flag == 0
+    if inp.temps == [-1]    # Tc search mode
+        # initial guess, Machine learning Tc           
+        itemp = round(ML_Tc)
+
+        # expansion of a + b*log(c-x) at x = 0, a=Delta(T2), b=1, c=Delta(T1) - use other function instead??
+        m(x, p) = p[1] + log(p[3]) .- p[2] * x ./ p[3] .- p[2] * x .^ 2 / (2 * p[3]^2) .- p[2] * x .^ 3 / (3 * p[3]^3) .- p[2] * x .^ 4 / (4 * p[3]^4) .- p[2] * x .^ 5 / (5 * p[3]^5)
+        inp.temps = Vector{Float64}()
+        fitFlag = true
+        while true
+            # save iterations
+            inp.temps = push!(inp.temps, itemp)
+
+            # solve Eliashberg equations
+            data = solve_eliashberg(itemp, inp, console, matval, log_file)
+            if inp.cDOS_flag == 0
+                Znorm0 = push!(Znorm0, data[1])
+                Delta0 = push!(Delta0, data[2])
+                Shift0 = push!(Shift0, data[3])
+                EfMu = push!(EfMu, data[4])
+            elseif inp.cDOS_flag == 1
+                Znorm0 = push!(Znorm0, data[1])
+                Delta0 = push!(Delta0, data[2])
+            end
+
+
+            # Escape
+            if itemp < 1 && isnan(Delta0[end])
+                # log file
+                print(log_file, "Lowest temperature of Tc search mode reached. If you want to search at even lower temperatures consider setting them manually!\n")
+
+                print("Lowest temperature of Tc search mode reached. If you want to search at even lower temperatures consider setting them manually!\n")
+
+                break
+            elseif length(inp.temps) > 500
+                # log file
+                print(log_file, "Couldn't find a Tc! \n")
+
+                print("Couldn't find a Tc! \n")
+
+                break
+            end
+
+            order = sortperm(inp.temps)
+            if length(Delta0) >= 2 && any(diff(inp.temps[order]) .<= 1 .& (.~isnan.(Delta0[order][1:end-1]) .& isnan.(Delta0[order][2:end])))
+                # converged and sort
+                inp.temps = inp.temps[order]
+                Delta0 = Delta0[order]
+                Tc = [maximum(inp.temps[.~isnan.(Delta0)]), minimum(inp.temps[isnan.(Delta0)])]
+                break
+
+            elseif all(isnan.(Delta0))
+                # temperature too high
+                if itemp > 1
+                    itemp = ceil(itemp / 2)
+                else
+                    # lowest T
+                    itemp = 1/2 
+                end
+
+            elseif sum(.~isnan.(Delta0)) == 1 
+                # get a second gap value
+                if length(Delta0) == 1
+                    itemp = itemp + round(maximum([itemp / 2, 2]))      # incorporate gap value into estimate of next Tc?
+                else
+                    itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
+                end
+
+            elseif sum(.~isnan.(Delta0)) == 2 && fitFlag
+                # fit only once
+                fitFlag = false
+
+                nnanDelta = .~isnan.(Delta0)
+                # fit gap values
+                p0 = convert(Vector{Float64}, [maximum(Delta0[nnanDelta]), 1, minimum(Delta0[nnanDelta])])
+                try
+                    fit = curve_fit(m, inp.temps[nnanDelta], Delta0[nnanDelta], p0)
+                    par = fit.param
+
+                    # find root
+                    m2(x) = m(x, par)
+                    itemp = floor(find_zero(m2, par[2]))
+   
+                catch                   
+                    # expansion to third order --> analytical formula for root (only one real root)
+                    a=p0[1]
+                    c=p0[3]
+                    itemp = -c / 2
+                    itemp += -(3 * c^2) / (2 * (5 * c^3 + 12 * a * c^3 + 
+                                2 * sqrt(13 * c^6 + 30 * a * c^6 + 36 * a^2 * c^6))^(1/3))
+                    itemp += 0.5 * (5 * c^3 + 12 * a * c^3 + 
+                                2 * sqrt(13 * c^6 + 30 * a * c^6 + 36 * a^2 * c^6))^(1/3)
+                    itemp = round(itemp)
+                    # formula works only if a,c are far from the Tc
+                    # if a,c close to Tc the estimated T will be too small but this case is caputred by the sanity check
+                end
+
+                # sanity check
+                if length(Delta0) == 2  # no nans
+                    if itemp < maximum(inp.temps)       # error in fit
+                        itemp = ceil(maximum(inp.temps)*3/2)
+                    elseif itemp == maximum(inp.temps)  # fit equals highest converged value
+                        itemp += maximum([2, round(itemp/10)])
+                    end
+                elseif length(Delta0) >= 2
+                    # prevent search below converged T, above not converged T
+                    if itemp <= maximum(inp.temps[nnanDelta]) || itemp >= minimum(inp.temps[isnan.(Delta0)])
+                        itemp = ceil((maximum(inp.temps[nnanDelta]) + minimum(inp.temps[isnan.(Delta0)]))/2)
+                    end
+
+                end
+            else
+                # search around fit value
+                if any(isnan.(Delta0)) 
+                    itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
+                else
+                    itemp += maximum([2, round(itemp/5)])
+                end
+            end
+            
+        end
+
+    else    # given temperatures
         for iT in 1:nT
             itemp = inp.temps[iT]
 
@@ -420,122 +530,6 @@ function findTc(inp, console, matval, ML_Tc, log_file)
             Tc[1] = inp.temps[end]
         end
 
-    elseif inp.TcSearchMode_flag == 1
-
-        # initial guess, Machine learning Tc           
-        itemp = round(ML_Tc)
-        # rewrite s.t. user can specify array of temps which are all used for fitting ?
-
-        # expansion of a + b*log(c-x) at x = 0, use other function instead??
-        m(x, p) = p[1] + log(p[3]) .- p[2] * x ./ p[3] .- p[2] * x .^ 2 / (2 * p[3]^2) .- p[2] * x .^ 3 / (3 * p[3]^3) .- p[2] * x .^ 4 / (4 * p[3]^4) .- p[2] * x .^ 5 / (5 * p[3]^5)
-        inp.temps = Vector{Float64}()
-        fitFlag = true
-        while true
-            # save iterations
-            inp.temps = push!(inp.temps, itemp)
-
-            # solve Eliashberg equations
-            data = solve_eliashberg(itemp, inp, console, matval, log_file)
-            if inp.cDOS_flag == 0
-                Znorm0 = push!(Znorm0, data[1])
-                Delta0 = push!(Delta0, data[2])
-                Shift0 = push!(Shift0, data[3])
-                EfMu = push!(EfMu, data[4])
-            elseif inp.cDOS_flag == 1
-                Znorm0 = push!(Znorm0, data[1])
-                Delta0 = push!(Delta0, data[2])
-            end
-
-
-            # Escape
-            if itemp < 1 && isnan(Delta0[end])
-                # log file
-                print(log_file, "\nTemperature already below 1 K. Material is most likely not a superconductor!\n")
-
-
-                print("\nTemperature already below 1 K. Material is most likely not a superconductor!\n")
-
-                break
-            elseif length(inp.temps) > 500
-                # log file
-                print(log_file, "Couldn't find a Tc! \n")
-
-
-                print("Couldn't find a Tc! \n")
-
-                break
-            end
-
-            order = sortperm(inp.temps)
-            if length(Delta0) >= 2 && any(diff(inp.temps[order]) .<= 1 .& (.~isnan.(Delta0[order][1:end-1]) .& isnan.(Delta0[order][2:end])))
-                # converged and sort
-                inp.temps = inp.temps[order]
-                Delta0 = Delta0[order]
-                Tc = [maximum(inp.temps[.~isnan.(Delta0)]), minimum(inp.temps[isnan.(Delta0)])]
-                break
-
-            elseif all(isnan.(Delta0))
-                # temperature too high
-                if itemp > 1
-                    itemp = ceil(itemp / 2)
-                else
-                    # lowest T
-                    itemp = 1/2 
-                end
-
-            elseif sum(.~isnan.(Delta0)) == 1 
-                # get a second gap value
-                if length(Delta0) == 1
-                    itemp = itemp + round(maximum([itemp / 3, 2]))
-                else
-                    itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
-                end
-
-            elseif sum(.~isnan.(Delta0)) == 2 && fitFlag
-                # fit only once
-                fitFlag = false
-
-                nnanDelta = .~isnan.(Delta0)
-                try
-                    # fit gap values
-                    p0 = convert(Vector{Float64}, [maximum(Delta0[nnanDelta]), 1, minimum(Delta0[nnanDelta])])
-                    fit = curve_fit(m, inp.temps[nnanDelta], Delta0[nnanDelta], p0)
-                    par = fit.param
-
-                    # find root
-                    m2(x) = m(x, par)
-                    itemp = floor(find_zero(m2, par[2]))
-                catch
-                    itemp = maximum(inp.temps[nnanDelta]) + sum(inp.temps[nnanDelta]) / 2
-                end
-
-                # sanity check
-                if length(Delta0) == 2  # no nans
-                    if itemp < maximum(inp.temps)       # error in fit
-                        itemp = ceil(maximum(inp.temps)*3/2)
-                    elseif itemp == maximum(inp.temps)  # fit equals highest value
-                        itemp += maximum([2, round(itemp/10)])
-                    end
-                elseif length(Delta0) >= 2
-                    # prevent search below converged T, above not converged T
-                    if itemp <= maximum(inp.temps[.~isnan.(Delta0)]) || itemp >= minimum(inp.temps[isnan.(Delta0)])
-                        itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
-                    end
-
-                end
-            else
-                # search around fit value
-                if any(isnan.(Delta0)) 
-                    itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
-                else
-                    itemp += maximum([2, round(itemp/10)])
-                end
-            end
-            
-        end
-
-    else
-        error("Unknown Tc search mode! Please change the TcSearchMode_flag to an valid value!")
     end
 
     printTextCentered("Stopping now!", console["partingLine"], file = log_file, bold = true)

@@ -2,7 +2,7 @@
 
 using IsoME
 
-case = 1
+case = 5
 # 1: cDOS + μ* Tc search
 # 2: cDOS + μ* explicit temperatures
 # 3: vDOS + μ* Tc search

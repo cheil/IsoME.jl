@@ -20,7 +20,6 @@ elseif case == 2
     inp = arguments(
         a2f_file    = joinpath(@__DIR__, "Nb.a2F"),
         outdir      = joinpath(@__DIR__, "output"),
-        TcSearchMode_flag = 0,
         temps       = collect(2:2:20) 
     )
 

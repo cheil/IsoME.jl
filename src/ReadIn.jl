@@ -542,8 +542,8 @@ function extractFermiEnergy(header, unit, file=nothing; outdir = "./", logFile =
         logNums = isa.(header, Number)
         if sum(logNums) == 1 
             ef = Float64(only(header[logNums]))
-        elseif sum(logNums[2:end] .& (header[1:end-1] .== "=" )) == 1 
-            ef = Float64(only(header[2:end][logNums[2:end] .& (header[1:end-1] .== "=" )]))
+        elseif sum(logNums[:, 2:end] .& (header[:, 1:end-1] .== "=" )) == 1 
+            ef = Float64(only(header[:, 2:end][logNums[:, 2:end] .& (header[:, 1:end-1] .== "=" )]))
         else
             nameFermi = ["efermi", "ef", "fermi", "e_fermi"]
             lcHeader = map(x -> isa(x, AbstractString) ? lowercase(x) : x, header)

@@ -2,7 +2,7 @@
 
 using IsoME
 
-case = 5
+case = 2
 # 1: cDOS + μ* Tc search
 # 2: cDOS + μ* explicit temperatures
 # 3: vDOS + μ* Tc search
@@ -20,7 +20,7 @@ elseif case == 2
     inp = arguments(
         a2f_file    = joinpath(@__DIR__, "Nb.a2F"),
         outdir      = joinpath(@__DIR__, "output"),
-        temps       = collect(2:2:20) 
+        temps       = collect(4:2:20) 
     )
 
 elseif case == 3

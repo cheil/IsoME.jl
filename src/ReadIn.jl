@@ -547,7 +547,7 @@ function extractFermiEnergy(header, unit, file=nothing; outdir = "./", logFile =
         else
             nameFermi = ["efermi", "ef", "fermi", "e_fermi"]
             lcHeader = map(x -> isa(x, AbstractString) ? lowercase(x) : x, header)
-            ef = -2
+
             for name in nameFermi
                 if any(lcHeader .== name)
                     idx = findall(lcHeader .== name)

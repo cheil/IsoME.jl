@@ -465,86 +465,61 @@ end
 
 
 """
-    writeToOutFile(Tc ,inp, out_vars, header)
+    writeInputFlags(Tc ,inp, out_vars, header)
 
 Save results of each iteration and input parameters in a file Summary.txt
 """
-function writeToOutFile(Tc ,inp, out_vars, header)
+function createInfoFile(inp)
     # write to output file
-    name = ""
-    #if inp.material != "Material"
-    #    name = name*inp.material*"_"
-    #end
-    name = name*"Summary.txt"
+    name = "Info.txt"
 
     if isfile(inp.outdir*name)
         rm(inp.outdir*name)
     end
     outfile = open(inp.outdir*name, "w")
     
-    ### write Tc
-    out = ""
-    if isnan(Tc[1])
-        out = out * "Tc < " * string(Tc[2]) *" K"
-    elseif isnan(Tc[2])
-        out = out * "Tc > " * string(Tc[1]) * " K"
-    else
-        out = out * "Tc = " * string(round((Tc[2]+Tc[1])/2, digits=2)) * " (±"* string(round((Tc[2]-Tc[1])/2, digits=2)) *")" * " K!"
-    end
-    out = out*"\n\n"
-
-    ### calc width of each column
-    width = minimum([length.(header) .+ 2])
-    width[width .< 12] .= 12
-    header = formatTableHeader(header, width)
-
-    ### Define boundary ###
-    tableHline = ""
-    for w in width
-        tableHline = tableHline*"."*"-"^w
-    end
-    tableHline = tableHline*"."
-
-    ### Define table header ###
-    delimiter = "|"
-    out = out*tableHline*"\n"*delimiter
-    for k in eachindex(header)
-        value = header[k]
-
-        out = out*string(value)*delimiter
-    end
-
-    ### parting line ###
-    out = out*"\n"*replace(tableHline, "." => "|")*"\n"
-
-    ### write to outfile ###
-    print(outfile, out)
-
-    ### write values to out file ###
-    for i in axes(out_vars, 1)
-        var = out_vars[i,:]
-        precision = [1; Int64.(2*ones(length(var)-1,1))]
-        var, strFormat, format = formatTableRow(var, width, precision, false)
-        for j in eachindex(var)
-            # print
-            if isnan(var[j])
-                print(outfile, strFormat[j])
-            else
-                Printf.format(outfile, Printf.Format(strFormat[j]), format[j, 1], " ", format[j, 2], format[j, 3], var[j], format[j, 4], " ")
-            end
-        end
-    end
-
-    print(outfile, replace(tableHline, "." => " ")*"\n")
-
     ### Input parameters ###
-    print(outfile, replace(replace(replace("\n\n"*join(inp.all, "\n"), "-1.0"=>"-"), "Number[-1]"=>"-"), "-1"=>"-"))
+    print(outfile, replace(replace(replace(join(inp.all, "\n"), "-1.0"=>"-"), "Number[-1]"=>"-"), "-1"=>"-"))
 
     close(outfile)
 end
 
 
-function createFigures(inp, matval, Delta0, temps, log_file)
+"""
+    summarizeResults(Tc, out_vars, header)
+
+Save Delta(0) at each temperature
+"""
+function createSummaryFile(inp, Tc, out_vars, header)
+    # write to summary file
+     name = "Summary.dat"
+
+     if isfile(inp.outdir*name)
+         rm(inp.outdir*name)
+     end
+     outfile = open(inp.outdir*name, "w")
+
+      ### header
+      out = "# "
+      if isnan(Tc[1])
+          out = out * "Tc < " * string(Tc[2]) *" K"
+      elseif isnan(Tc[2])
+          out = out * "Tc > " * string(Tc[1]) * " K"
+      else
+          out = out * "Tc = " * string(round((Tc[2]+Tc[1])/2, digits=2)) * " (±"* string(round((Tc[2]-Tc[1])/2, digits=2)) *")" * " K"
+      end
+      out = out*"\n"*header*"\n"
+      print(outfile, out)
+      
+      # save header & gap
+      #writedlm(outfile, header)
+      writedlm(outfile, round.(out_vars, digits=2), '\t')
+
+      close(outfile)
+
+end
+
+function createFigures(inp, matval, Delta0, temps, Tc, log_file)
 
     # values
     a2f_omega_fine, a2f_fine = matval
@@ -587,8 +562,6 @@ function createFigures(inp, matval, Delta0, temps, log_file)
         temps_plot = temps_plot[order]
         Delta0_plot = Delta0_plot[order]
 
-        plot_font = "Computer Modern"
-
         if maximum(temps_plot) < 10
             xlim_max = round(maximum(temps_plot) * 1.1, RoundUp)
             xtick_val = 0:1:xlim_max
@@ -596,23 +569,73 @@ function createFigures(inp, matval, Delta0, temps, log_file)
             xlim_max = round(maximum(temps_plot) / 10 * 1.01, RoundUp) * 10
             xtick_val = 0:10:xlim_max
         end
+        ylim_max = round(maximum(Delta0_plot)*1.11, RoundUp)
+        
+        # Create a custom gradient
+        my_gradient = cgrad(:coolwarm)  
+        #gradientBlue = cgrad(:Blues, rev=true)
+        #gradientRed = cgrad(:Reds)
+        # Define gradient range
+        max_gradient_val = 77               # Blue Gradient applies up to this value
+        
+        # normalize x 
+        color_values = (temps_plot)/max_gradient_val/2
+        
+        # Map colors: Use blue gradient for values <= max_gradient_val, red gradient for rest
+        marker_colors = [v < 1.0 ? my_gradient[v] : my_gradient[v-1] for v in color_values]
+        
+        h=scatter(temps_plot, Delta0_plot, color=marker_colors, colorbar=false, markerstrokewidth=1, ms=6, xticks=xtick_val)
+        if length(temps_plot) > 1
+            try
+                #p[1] = Delta[1], exp(p[2])+max(temps_plot) = Tc, p[3] = fit parameter adjusting the curvature
+                Delta(T,p) = p[1]* tanh.((π*kb*(exp(p[2])+maximum(temps_plot)))/p[1]*sqrt.(p[3] * ((exp(p[2])+maximum(temps_plot))./T .− 1) ))
+                pGuess = convert(Vector{Float64}, [(Delta0_plot[1]), 0, 1])
+            
+                fit = curve_fit(Delta, temps_plot, Delta0_plot, pGuess)
+                par = fit.param
+                TcFit = exp(par[2])+maximum(temps_plot)
+                Delta0Fit = abs(par[1])     # Delta(T) is symmetric wrt Delta0
+            
+                # second derivative
+                A = π*kb*TcFit/Delta0Fit
+                a = par[3]
+                DeltaSecDer(T) = @. -(a^2 * A * TcFit * sech(A * sqrt(a * (TcFit/T - 1)))^2 * 
+                        (-3*TcFit + 4*T + 2*A * TcFit * sqrt(a * (TcFit - T) / T) * 
+                        tanh(A * sqrt(a * (TcFit/T - 1))))) / 
+                        (4 * (a * (TcFit - T) / T)^(3/2) * T^4)
 
-        if maximum(Delta0_plot) < 10
-            ylim_max = round(maximum(Delta0_plot), RoundUp)
-        else
-            ylim_max = round(maximum(Delta0_plot) / 10, RoundUp) * 10
+                # 
+                temps_fit = collect(range(0.01, TcFit, 100))
+                Delta_fit = Delta(temps_fit, par)
+                
+                # plot if negative curvature
+                if all(DeltaSecDer(temps_fit).<0) && (TcFit > Tc[1]) #&& (TcFit < Tc[2] || isnan(Tc[2])) && TcFit < 1e3 # plot only if TcFit is reasonable ??
+                    plot!(temps_fit, Delta_fit, linestyle=:dash, linewidth=1, color=:gray, z_order=:back)
+            
+                    # adjust limits
+                    xlim_max = maximum([xlim_max, TcFit+1])
+                    ylim_max = maximum([ylim_max, Delta0Fit+1])
+            
+                    if xlim_max < 10
+                        xtick_val = 0:1:xlim_max
+                    elseif xlim_max > 1e3
+                        error("TcFit unreasonbale")
+                    else
+                        xtick_val = 0:10:xlim_max
+                    end
+                end
+            catch  ex
+                #rethrow(ex)
+            end
         end
-
-        plot(temps_plot, Delta0_plot, marker=:circle)
         plot!(xticks=xtick_val)
         xlims!(0, xlim_max)
         ylims!(0, ylim_max)
-        if inp.material != "Material"
-            title!(inp.material)
-        end
-        xlabel!(L"T ~ \mathrm{(K)}")
-        ylabel!(L"\Delta_0 ~ \mathrm{(meV)}")
-
+        xlabel!(L"T ~ [\mathrm{K}]")
+        ylabel!(L"\Delta_0 ~ [\mathrm{meV}]")
+        
+        #display(h)
+        
         namePlot = "Delta0"
         if inp.material != "Material"
             namePlot = namePlot * "_" * inp.material
@@ -649,44 +672,50 @@ function saveSelfEnergyComponents(itemp, inp, iwn, Delta, Z; epsilon=nothing,  c
 
     # Z
     open(folder*"Z_"*string(itemp)*"K.dat", "w") do io
-        write(io, "#  iωₙ  Z(iωₙ) \n")
-        writedlm(io, [iwn Z])
+        write(io, "#  iωₙ / meV      Z(iωₙ) / 1 \n")
+        writedlm(io, [iwn Z], '\t')
     end
 
     # Delta 
     if inp.include_Weep == 1
         open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
-            write(io, "# Δ(ϵ, iωₙ) \n")
-            writedlm(io, Delta)
+            write(io, "# ε / meV      iωₙ / meV      Δ(ϵ, iωₙ) / meV \n")
+            writedlm(io, [repeat(epsilon, inner=length(iwn)) repeat(iwn, length(epsilon)) Delta'[:]], '\t')
         end
+        
+        # w/o epsilon and mat.freqs.
+        #open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
+        #    write(io, "# Δ(ϵ, iωₙ) / meV \n")
+        #    writedlm(io, [Delta], '\t')
+        #end
     elseif inp.include_Weep == 0
         open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
-            write(io, "#  iωₙ  Δ(iωₙ) \n")
-            writedlm(io, [iwn Delta])
+            write(io, "#  iωₙ / meV      Δ(iωₙ) / meV \n")
+            writedlm(io, [iwn Delta], '\t')
         end
      end
 
     # Chi
     if ~isnothing(chi)
         open(folder*"Chi_"*string(itemp)*"K.dat", "w") do io
-            write(io, "#  iωₙ  Χ(iωₙ) \n")
-            writedlm(io, [iwn chi])
+            write(io, "#  iωₙ / meV      Χ(iωₙ) / meV \n")
+            writedlm(io, [iwn chi], '\t')
         end
     end
 
     # Phiph
     if ~isnothing(phiph)
         open(folder*"Phiph_"*string(itemp)*"K.dat", "w") do io
-            write(io, "#  iωₙ  Φp(iωₙ) \n")
-            writedlm(io, [iwn phiph])
+            write(io, "#  iωₙ /meV      Φp(iωₙ) / meV \n")
+            writedlm(io, [iwn phiph], '\t')
         end
     end
 
     # Phic
     if ~isnothing(phic)
         open(folder*"Phic_"*string(itemp)*"K.dat", "w") do io
-            write(io, "#  ϵ  Φc(ϵ) \n")
-            writedlm(io, [epsilon phic])
+            write(io, "#  ϵ / meV      Φc(ϵ) / meV \n")
+            writedlm(io, [epsilon phic], '\t')
         end
     end
 end

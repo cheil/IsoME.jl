@@ -29,12 +29,11 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
     ### Matsubara frequencies ###
     beta = 1 / (kb * itemp)
     M = ceil(Int, (omega_c / (pi * kb * itemp) - 1) / 2)
-    wsi = (2 * collect(1:M+1) .- 1) .* π .* kb .* itemp
+    wsi = collect((2 * (0:M) .+ 1) .* π .* kb .* itemp)
     nsiw = size(wsi, 1)
 
     ### sparse sampling, consider only subset of mat frequencies up to M
-    # only reasonable if T < 1 K
-    if itemp < 5
+    if itemp < 5    # sparseSamplingTemp as input parameter?
         sparse_sampling_flag = 1
         ind_mat_freq = initSparseSampling(beta, omega_c, M)
 
@@ -468,7 +467,7 @@ function findTc(inp, console, matval, ML_Tc, log_file)
                     itemp += 0.5 * (5 * c^3 + 12 * a * c^3 + 
                                 2 * sqrt(13 * c^6 + 30 * a * c^6 + 36 * a^2 * c^6))^(1/3)
                     itemp = round(itemp)
-                    # formula works only if a,c are far from the Tc
+                    # formula works only if a,c are far away from the Tc
                     # if a,c close to Tc the estimated T will be too small but this case is caputred by the sanity check
                 end
 
@@ -550,7 +549,7 @@ function EliashbergSolver(inp::arguments, testFlag=false)
 
         ### Create directory
         inp, log_file = createDirectory(inp::arguments)
-
+        
         ### Check input
         try
             inp = checkInput(inp, log_file)
@@ -587,7 +586,7 @@ function EliashbergSolver(inp::arguments, testFlag=false)
 
             print(log_file, "\nERROR: ")
             showerror(log_file, ex)
-            print(log_file, "\n\nFor further information about the error please refer to the CRASH file\n")
+            print(log_file, "\n\nFor further information please refer to the CRASH file\n")
             close(log_file)
 
             rethrow(ex)
@@ -605,58 +604,61 @@ function EliashbergSolver(inp::arguments, testFlag=false)
             print(crashFile, "\n\n")
             close(crashFile)
 
-            # log file
-            print(log_file, "\nERROR while printing the summary:\n")
-            showerror(log_file, ex)
-            print(log_file, "\n\nFor further information please refer to the CRASH file\n")
-
             # console
-            print(@red "\nERROR")
-            print(" while printing the summary:\n")
+            printTextCentered("Error while creating the Summary-file", console["partingLine"], file=log_file)
             showerror(stdout, ex)
-            print("\nßnFor further information please refer to the CRASH file\n")
+            print("\n\nFor further information please refer to the CRASH file\n")
+            println(console["partingLine"])
         end
 
-        ### write output-file
-        header = ["T / K", "Δ(0) / meV", "Z(0) / 1"]
+        ### save inputs
+        try
+            createInfoFile(inp)
+        catch
+             # crash file
+             crashFile = open(inp.outdir * "CRASH", "a")
+             print(crashFile, current_exceptions())
+             print(crashFile, "\n\n")
+             close(crashFile)
+ 
+             # console
+             printTextCentered("Error while creating the Info-file", console["partingLine"], file=log_file)
+             showerror(stdout, ex)
+             print("\n\nFor further information please refer to the CRASH file\n")
+             println(console["partingLine"])
+ 
+        end
+
+        ### create Summary file
+        header = "# T/K  Δ(0)/meV  Z(0)/1"
         out_vars = zeros(size(Delta0, 1), 3)
         out_vars[:, 1] = temps
         out_vars[:, 2] = Delta0
         out_vars[:, 3] = Znorm0
         if inp.cDOS_flag == 0
-            header = push!(header, "χ(0) / meV", "ϵ_F - μ / meV")
+            header = header * "χ(0)/meV  ϵ_F-μ/meV"
             out_vars = hcat(out_vars, Shift0, EfMu)
         end
         try
-            writeToOutFile(Tc, inp, out_vars, header)
+            createSummaryFile(inp, Tc, out_vars, header)
         catch ex
-
             # crash file
             crashFile = open(inp.outdir * "CRASH", "a")
             print(crashFile, current_exceptions())
             print(crashFile, "\n\n")
             close(crashFile)
 
-            # log file
-            print(log_file, "\nERROR while creating the summary file:\n")
-            showerror(log_file, ex)
-            print(log_file, "\n\nFor further information please refer to the CRASH file\n")
-
             # console
-            print(@red "\nERROR")
-            print(" while creating the summary file:\n\n")
+            printTextCentered("Error while creating the summary file", console["partingLine"], file=log_file)
             showerror(stdout, ex)
-            #println(current_exceptions())  
             print("\n\nFor further information please refer to the CRASH file\n")
-
-            #
-
+            println(console["partingLine"])
         end
 
         ### figures
         if inp.flag_figure == 1
             try
-                createFigures(inp, matval, Delta0, temps, log_file)
+                createFigures(inp, matval, Delta0, temps, Tc, log_file)
             catch ex
                 
                 # crash file
@@ -665,16 +667,12 @@ function EliashbergSolver(inp::arguments, testFlag=false)
                 print(crashFile, "\n\n")
                 close(crashFile)
 
-                # log file
-                print(log_file, "\nERROR while plotting: \n")
-                showerror(log_file, ex)
-                print(log_file, "\n\nFor further information please refer to the CRASH file\n")
-
                 # console
-                print(@red "\nERROR")
-                print(" while plotting: ßn")
+                printTextCentered("Error while plotting", console["partingLine"], file = log_file)
                 showerror(stdout, ex)
                 print("\n\nFor further information please refer to the CRASH file\n")
+                println(console["partingLine"])
+
             end
         end
     end

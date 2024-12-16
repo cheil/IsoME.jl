@@ -24,7 +24,7 @@ Solve the eliashberg eq. self-consistently for a fixed temperature
 function solve_eliashberg(itemp, inp, console, matval, log_file)
     # destruct inputs
     (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxEncut) = matval
-    (; cDOS_flag, include_Weep, omega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag, outdir) = inp
+    (; cDOS_flag, include_Weep, omega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag, outdir, sparseSamplingTemp) = inp
 
     ### Matsubara frequencies ###
     beta = 1 / (kb * itemp)
@@ -33,7 +33,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
     nsiw = size(wsi, 1)
 
     ### sparse sampling, consider only subset of mat frequencies up to M
-    if itemp < 5    # sparseSamplingTemp as input parameter?
+    if itemp < sparseSamplingTemp    
         sparse_sampling_flag = 1
         ind_mat_freq = initSparseSampling(beta, omega_c, M)
 
@@ -363,8 +363,12 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
     end
 end
 
+ 
+"""
+    solve_eliashberg(itemp, inp, console, matval)
 
-# For each temperature solve eliashberg equations
+Start the Tc search mode or solve the eliashberg equations for each temperature
+"""
 function findTc(inp, console, matval, ML_Tc, log_file)
     inp.temps = sort(inp.temps)
     nT = size(inp.temps, 1)
@@ -539,11 +543,11 @@ end
 
 
 """
-    EliashbergSolver(arguments)
+    EliashbergSolver(inp)
 
 Main function. User has to pass the input arguments and it returns the Tc.
 """
-function EliashbergSolver(inp::arguments, testFlag=false)
+function EliashbergSolver(inp::arguments)
 
     dt = @elapsed begin
 
@@ -686,14 +690,7 @@ function EliashbergSolver(inp::arguments, testFlag=false)
     # close & save
     close(log_file)
 
-
-    ### !!! Better solution for runtest !!!
-    if testFlag
-        if all(isnan.(Delta0))
-            Tc = NaN
-        else
-            Tc = maximum(temps[.~isnan.(Delta0)])
-        end
+    if inp.returnTc
         return Tc
     end
 end

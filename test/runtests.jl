@@ -1,47 +1,81 @@
 # !!! Automatic test - Do not change !!!
-# What to do with outdir
-# testFlag
 
 using IsoME
 using Test
 
 
 @testset "IsoME.jl" begin
-    ### Nb ###
+
+    outdir  = "test/Nb/output/"
+
+    ### 1.TEST: Nb cDOS mu* ###
     inp = arguments(
-                    cDOS_flag = 1,
-                    include_Weep = 0,
                     a2f_file = "test/Nb/Nb.a2F",
                     dos_file = "test/Nb/Nb.dos",
                     Weep_file = "test/Nb/Weep.dat",
                     Wen_file = "test/Nb/Wen.dat",
                     flag_figure = 0,
-                    TcSearchMode_flag = 1
+                    returnTc    = true,
+                    outdir = outdir*"cDOS_mu/",
                     )
 
-    @test 1 == 1
-#=
-    Tc = EliashbergSolver(inp, true)
-    @test Tc == 12
-       
-    ### USE CORRECT Tc VALUES !!! ###
-    inp.cDOS_flag = 0
-    inp.temps = [23,24,25]
-    Tc = EliashbergSolver(inp, true)
-    @test Tc == 13
+    Tc = EliashbergSolver(inp)
+    @test Tc == [13,14]
 
-    inp.cDOS_flag = 1
-    inp.include_Weep = 1
-    inp.temps = [26,27,28]
-    Tc = EliashbergSolver(inp, true)
-    @test Tc == 13
 
-    inp.cDOS_flag = 0
-    inp.temps = [23,24,25]
-    Tc = EliashbergSolver(inp, true)
-    @test Tc == 13
-=#
-    
+    ### 2.TEST: Nb vDOS mu* ###
+    inp = arguments(
+                    a2f_file = "test/Nb/Nb.a2F",
+                    dos_file = "test/Nb/Nb.dos",
+                    Weep_file = "test/Nb/Weep.dat",
+                    Wen_file = "test/Nb/Wen.dat",
+                    flag_figure = 0,
+                    returnTc    = true,
+                    outdir = outdir*"vDOS_mu/",
+                    cDOS_flag   = 0,
+                    )
+
+    Tc = EliashbergSolver(inp)
+    @test Tc == [12, 13]
+
+
+    ### 3.TEST: Nb cDOS W ###
+    inp = arguments(
+        a2f_file="test/Nb/Nb.a2F",
+        dos_file="test/Nb/Nb.dos",
+        Weep_file="test/Nb/Weep.dat",
+        Wen_file="test/Nb/Wen.dat",
+        flag_figure=0,
+        returnTc=true,
+        outdir=outdir * "cDOS_W/",
+        cDOS_flag = 1,
+        include_Weep = 1,
+    )
+
+    Tc = EliashbergSolver(inp)
+    @test Tc == [13, 14]
+
+
+    ### 4.TEST: Nb vDOS W ###
+    inp = arguments(
+        a2f_file="test/Nb/Nb.a2F",
+        dos_file="test/Nb/Nb.dos",
+        Weep_file="test/Nb/Weep.dat",
+        Wen_file="test/Nb/Wen.dat",
+        flag_figure=0,
+        returnTc=true,
+        outdir=outdir * "vDOS_W/",
+        cDOS_flag = 0,
+        include_Weep = 1,
+    )
+
+    Tc = EliashbergSolver(inp)
+    @test Tc == [13, 14]
+
+
+    # remove outdir
+    rm(outdir, recursive=true)
+
 end
 
 

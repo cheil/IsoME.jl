@@ -163,7 +163,7 @@ function printSummary(inp, Tc, log_file)
         text = text * "\n - Tc > " * string(Tc[1]) * " K"
     else
         text = text * "\n - " * inp.material * " is a superconductor"
-        text = text * "\n - Tc = " * string(round((Tc[2]+Tc[1])/2, digits=2)) * " (±"* string(round((Tc[2]-Tc[1])/2, digits=2)) *")" * " K!"
+        text = text * "\n - Tc = " * string(round((Tc[2]+Tc[1])/2, digits=2)) * " (±"* string(round((Tc[2]-Tc[1])/2, digits=2)) *")" * " K"
     end
 
     printstyled("\nSummary:", bold=true)

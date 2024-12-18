@@ -79,30 +79,24 @@ function InputParser(inp::arguments, log_file::IOStream)
         #dos, dos_en = discardZeros(dos, dos_en)
 
         # Wcut in meV
-        if inp.Wcut != -1
-            if (inp.Wcut) > dos_en[end] || (inp.Wcut) < dos_en[1]
-                print(@info "Info: ")
-                println("Wcut larger than given energy interval!")
-
-                println(log_file, "Info: Wcut larger than given energy interval!")
-            else
-                logWcut = (dos_en .> (inp.Wcut)) .& (dos_en .< (inp.Wcut))
-                dos      = dos[logWcut]
-                dos_en   = dos_en[logWcut]
-            end
+        if inp.Wcut != -1 && ((inp.Wcut) > dos_en[end] || (inp.Wcut) < dos_en[1])
+            logWcut = (dos_en .> (inp.Wcut)) .& (dos_en .< (inp.Wcut))
+            dos = dos[logWcut]
+            dos_en = dos_en[logWcut]
         end
 
 
-        if inp.include_Weep == 1
+        if inp.include_Weep == 1 || (isfile(inp.Weep_file) && inp.mu == -1)
             # read Weep + energy grid points
-            Weep, W_en, inp.efW, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, outdir = inp.outdir, logFile = log_file)
-            #W_en, inp.efW = readIn_Wen(inp.Wen_file, inp.efW, inp.colFermi_Wen, inp.Wen_unit, inp.nheader_Wen, inp.nfooter_Wen)  
+            Weep, Wen, inp.efW, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, outdir = inp.outdir, logFile = log_file)
 
             ### Interpolate Weep & Dos onto non-uniform grid
-            bndItp = [1000, 500]
+            #bndItp = [1000, 500]
+            bndItp = inp.itpBounds
             en_range = minimum([abs(dos_en[1]), abs(dos_en[end])])
-            en_interval = [W_en[findfirst(W_en .> -en_range)], -bndItp[1], -bndItp[2], bndItp[2], bndItp[1],  W_en[findlast(W_en .< en_range)]]  
-            gridSpecs = [("step", 50), ("step", 5), ("step", 1), ("step", 5), ("step", 50)]
+            en_interval = [Wen[findfirst(Wen .> -en_range)], -bndItp[1], -bndItp[2], bndItp[2], bndItp[1],  Wen[findlast(Wen .< en_range)]]  
+            #gridSpecs = [("step", 50), ("step", 5), ("step", 1), ("step", 5), ("step", 50)]
+            gridSpecs = [("step", inp.itpStepSize[3]), ("step", inp.itpStepSize[2]), ("step", inp.itpStepSize[1]), ("step", inp.itpStepSize[2]), ("step", inp.itpStepSize[3])]
                         
             # check if energy window < bndItp
             logBnd = (en_interval[1] .<= en_interval) .& (en_interval[end] .>= en_interval)
@@ -111,20 +105,27 @@ function InputParser(inp::arguments, log_file::IOStream)
           
             # interpolate 
             dos_en, dos = interpolateDos(dos_en, dos, en_interval, gridSpecs)
-            Weep = interpolateWeep(W_en, Weep, en_interval, gridSpecs)
+            Weep = interpolateWeep(Wen, Weep, en_interval, gridSpecs)
 
             # idx encut
             idxEncut = [findfirst(dos_en .> -inp.encut), findlast(dos_en .< inp.encut)]
+
+            # mu
+            (inp.mu != -1) || (idxWef = findmin(abs.(dos_en))[2]; inp.mu = dos[idxWef].*Weep[idxWef,idxWef])
+
         else
             # no Weep
             Weep = nothing
-            W_en = nothing
+            Wen = nothing
 
             # Interpolation Dos
-            bndItp = [1000, 500]
+            #bndItp = [1000, 500]
+            bndItp = inp.itpBounds
             en_range = minimum([abs(dos_en[1]), abs(dos_en[end])])
             en_interval = [-en_range, -bndItp[1], -bndItp[2], bndItp[2], bndItp[1],  en_range]  
-            gridSpecs = [("step", 50), ("step", 5), ("step", 1), ("step", 5), ("step", 50)] 
+            #gridSpecs = [("step", 50), ("step", 5), ("step", 1), ("step", 5), ("step", 50)] 
+            gridSpecs = [("step", inp.itpStepSize[3]), ("step", inp.itpStepSize[2]), ("step", inp.itpStepSize[1]), ("step", inp.itpStepSize[2]), ("step", inp.itpStepSize[3])]
+            
             # check if energy window < bndItp
             logBnd = (en_interval[1] .<= en_interval) .& (en_interval[end] .>= en_interval)
             en_interval = en_interval[logBnd]
@@ -137,62 +138,13 @@ function InputParser(inp::arguments, log_file::IOStream)
             idxEncut = [findfirst(dos_en .> -inp.encut), findlast(dos_en .< inp.encut)]
         end
     else
+        # default values
         dos = []
         dos_en = []
         ef = nothing
         idxEncut = -1
         Weep = nothing
-        W_en = nothing
-    end
-
-    ### calc mu*'s
-    if inp.include_Weep == 0
-        if inp.mu != -1
-            if isnothing(ef) || ef == -1 || ef == 0
-                print(@yellow "WARNING: ")
-                print("Unable to calculate μ* from μ without the fermi-energy! Either provide a dos-file or set the fermi-energy directly in the input structure.\n\n")
-            
-                # log file
-                print(log_file, "WARNING: Unable to calculate μ* from μ without the fermi-energy! Either provide a dos-file or set the fermi-energy directly in the input structure.\n\n")
-            else
-                # ensure μ*_ME < 4*μ --> reasonable ??
-                if inp.omega_c > ef*exp(3/(4*inp.mu))
-                    inp.omega_c = ef*exp(3/(4*inp.mu))
-
-                    print(@yellow "WARNING: ")
-                    print("Matsubara cutoff would lead to μ*_ME > 4*μ. omega_c has been set to a smaller value.\n\n")
-            
-                    # log file
-                    print(log_file, "WARNING: Matsubara cutoff would lead to μ*_ME > 4*μ. omega_c has been set to a smaller value.\n\n")
-                end
-
-                inp.muc_AD = inp.mu / (1 + inp.mu*log(ef/maximum(a2f_omega[a2f .> 0.01])))
-                inp.muc_ME = inp.mu / (1 + inp.mu*log(ef/inp.omega_c))
-            end
-        elseif inp.muc_ME == -1
-            inp.muc_ME = inp.muc_AD / (1 + inp.muc_AD*log(maximum(a2f_omega[a2f .> 0.01])/inp.omega_c))
-
-            if inp.muc_ME < 0 || inp.muc_ME > 0.8 || inp.muc_ME > 3*inp.muc_AD                 
-                inp.muc_ME = minimum([3*inp.muc_AD, 0.8])
-
-                print(@yellow "WARNING: ")
-                print("Couldn't calculate a reasonable μ*_ME from μ*_AD.\n Using μ*_ME = minimum(3*μ*_AD, 0.8) instead.\n Consider setting it manually! \n\n")
-            
-                # log file
-                print(log_file, "WARNING: Couldn't find a reasonable μ*_ME from μ*_AD.\n Using μ*_ME = minimum(3*μ*_AD, 0.8) instead.\n Consider setting it manually! \n\n")
-            end
-        end
-    end
-
-    # restrict Dos/Weep to a subset of grid points
-    if inp.Nrestrict != -1
-        if inp.include_Weep == 1
-            # call restrict function
-            Weep, dos, dos_en = restrictInput(inp.Nrestrict, inp.wndRestrict, dos, dos_en, Weep)
-        else
-            # call restrict function
-            dos, dos_en = restrictInput(inp.Nrestrict, inp.wndRestrict, dos, dos_en)
-        end
+        Wen = nothing
     end
 
 
@@ -211,6 +163,41 @@ function InputParser(inp::arguments, log_file::IOStream)
 
         # dos at ef
         dosef = dos[idx_ef]
+    end
+
+    ### calc mu*'s
+    if inp.mu == -1 && inp.muc_ME == -1 && inp.muc_AD == -1
+        # defaut value
+        inp.muc_AD = 0.12
+        calcMucME(inp, console, a2f, a2f_omega, log_file)
+
+    elseif inp.muc_AD == -1 && inp.muc_ME == -1
+        if isnothing(ef) || ef == -1 || ef == 0
+            if inp.efW == -1 || inp.efW == 0
+                printTextCentered("WARNING", console["partingLine"], file=log_file, newline="")
+                printTextCentered("Unable to calculate μ* from μ without the fermi-energy!", console["partingLine"], file=log_file, delimiter=" ", newline="")
+                printTextCentered("Consider shifting the dos-energies by ef and specifing a fermi-energy.", console["partingLine"], file=log_file, delimiter=" ", newline="")
+                printTextCentered("Using μ*_AD = 0.12 instead", console["partingLine"], file=log_file, delimiter=" ", newline="")
+                print(console["partingLine"] * "\n\n")
+                print(log_file, console["partingLine"] * "\n\n")
+
+                inp.muc_AD = 0.12
+                calcMucME(inp, console, a2f, a2f_omega, log_file)
+            else
+                calcMucs(inp, inp.efW, a2f, a2f_omega)
+            end
+        else
+            calcMucs(inp, ef, a2f, a2f_omega)
+        end
+
+    elseif  inp.include_Weep == 0 && inp.muc_AD != -1
+        calcMucME(inp, console, a2f, a2f_omega, log_file)
+
+    elseif  inp.include_Weep == 0 && inp.muc_ME != -1
+        calcMucAD(inp, a2f, a2f_omega)
+
+    else
+
     end
 
     ### determine superconducting properties from Allen-Dynes McMillan equation based on interpolated a2F
@@ -495,7 +482,7 @@ function readIn_Weep(Weep_file, Wen_file, Weep_col=3, ef=-1, unit = "", nheader=
         Wen = Wen.*Ry2meV
     elseif  "Ha" == unit     # Hartree
         Weep = Weep.*Ry2meV*2
-        Wen = Wen.+Ry2meV*2
+        Wen = Wen.*Ry2meV*2
     else
         error("Invalid Unit! Consider setting the unit manually (Weep_unit) or check the header of the Weep-file and try again!")
     end
@@ -522,9 +509,9 @@ function readIn_Wen(Wen_file, nheader=-1, nfooter=-1)
     (nfooter != -1) || (nfooter = size(Wen_data, 1) - findlast(isa.(Wen_data[:, 1], Number)))
 
     ### Remove header & footer
-    W_en = Float64.(Wen_data[nheader+1:end-nfooter, 1])
+    Wen = Float64.(Wen_data[nheader+1:end-nfooter, 1])
 
-    return W_en
+    return Wen
 
 end
 
@@ -720,3 +707,68 @@ function restrictInput(n::Int, enWndw::Any, Dos::Vector{Float64}, energies::Vect
 end
 
 
+"""
+    calcMucME(inp, console, a2f_omega, log_file))
+
+Calculate μ*_ME from μ*_AD using formula as in 
+Pellegrini, Ab initio methods for superconductivity 
+DOI: 10.1038/s42254-024-00738-9
+"""
+function calcMucME(inp, console, a2f, a2f_omega, log_file)
+    inp.muc_ME = inp.muc_AD / (1 + inp.muc_AD * log(maximum(a2f_omega[a2f.>0.01]) / inp.omega_c))
+
+    if inp.muc_ME < 0 || inp.muc_ME > 0.8 || inp.muc_ME > 3 * inp.muc_AD
+        inp.muc_ME = minimum([3 * inp.muc_AD, 0.8])
+
+        #print(@yellow "WARNING: ")
+        #print("Couldn't calculate a reasonable μ*_ME from μ*_AD.\n Using μ*_ME = minimum(3*μ*_AD, 0.8) instead.\n Consider setting it manually! \n\n")
+        printTextCentered("WARNING", console["partingLine"], file = log_file, newline="")
+        printTextCentered("Couldn't calculate a reasonable μ*_ME from μ*_AD.", console["partingLine"], file = log_file, delimiter=" ", newline="")
+        printTextCentered("Using μ*_ME = minimum(3*μ*_AD, 0.8) instead.", console["partingLine"], file = log_file, delimiter=" ", newline="")
+        printTextCentered("Consider setting it manually!", console["partingLine"], file = log_file, delimiter=" ", newline="")
+        #print(console["partingLine"] * "\n\n")
+        print(log_file, console["partingLine"] * "\n\n")
+    end
+end
+
+
+"""
+    calcMucAD(inp, console, a2f_omega, log_file))
+
+Calculate μ*_AD from μ*_ME using formula (30) in
+Pellegrini, Ab initio methods for superconductivity 
+DOI: 10.1038/s42254-024-00738-9
+"""
+function calcMucAD(inp, a2f, a2f_omega)
+    inp.muc_AD = inp.muc_ME / (1 - inp.muc_ME * log(maximum(a2f_omega[a2f.>0.01]) / inp.omega_c))
+
+    if inp.muc_AD < 0 || inp.muc_AD > 0.2 
+        inp.muc_AD = 0.12   # default
+    end
+end
+
+
+"""
+    calcMucME(inp, console, a2f_omega, log_file))
+
+Calculate μ*_ME and μ*_AD from μ using formulas as in 
+Pellegrini, Ab initio methods for superconductivity 
+DOI: 10.1038/s42254-024-00738-9
+"""
+function calcMucs(inp, ef, a2f, a2f_omega)
+    # ensure μ*_ME < 4*μ --> reasonable ??
+    if inp.omega_c > ef * exp(3 / (4 * inp.mu))
+        inp.omega_c = ef * exp(3 / (4 * inp.mu))
+
+        printTextCentered("WARNING", console["partingLine"], file = log_file, newline="")
+        printTextCentered("Matsubara cutoff would lead to μ*_ME > 4*μ.", console["partingLine"], file = log_file, delimiter=" ", newline="")
+        printTextCentered("omega_c has been set to a smaller value.", console["partingLine"], file = log_file, delimiter=" ", newline="")
+        print(console["partingLine"] * "\n\n")
+        print(log_file, console["partingLine"] * "\n\n")
+    end
+
+    inp.muc_AD = inp.mu / (1 + inp.mu * log(ef / maximum(a2f_omega[a2f.>0.01])))
+    if inp.include_Weep == 0
+        inp.muc_ME = inp.mu / (1 + inp.mu * log(ef / inp.omega_c))
+    end
+end

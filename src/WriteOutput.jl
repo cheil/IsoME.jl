@@ -181,12 +181,12 @@ end
 
 print a text centered within a line consisting of delimiters
 """
-function printTextCentered(text, hline; file = nothing, bold = false, blanks=3, delimiter = "-")
+function printTextCentered(text, hline; file = nothing, bold = false, blanks=3, delimiter = "-", newline = "\n")
 
     lenLeft = Int(ceil((length(hline) - length(text))/2) - blanks)
     lenRight = Int(floor((length(hline) - length(text))/2) - blanks)
 
-    print("\n"*delimiter^lenLeft*" "^blanks)
+    print(newline*delimiter^lenLeft*" "^blanks)
     if bold
         print(@bold text)
     else

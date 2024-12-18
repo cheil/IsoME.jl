@@ -50,7 +50,7 @@ const kb = 0.08617333262; # meV/K
 @kwdef mutable struct arguments
     # Parameters
     temps::Vector{Number}   = [-1]        
-    muc_AD::Float64         = 0.12
+    muc_AD::Float64         = -1
     omega_c::Float64        = 7000.0
     muc_ME::Float64         = -1
     mu::Float64             = -1  
@@ -61,9 +61,13 @@ const kb = 0.08617333262; # meV/K
     conv_thr::Float64       = 1e-4
     minGap::Float64         = 0.1
     N_it::Int64             = 5000   
-    Wcut::Float64           = -1        # Wencut, cutoff Wenergies
+    Wcut::Float64           = -1        # outer cutoff energies
     encut::Float64          = 2000      # cutoff shift & Ne
-    sparseSamplingTemp::Float64 = 5     
+    sparseSamplingTemp::Float64 = 5   
+    
+    # interpolation
+    itpStepSize::Vector{Int64}  = [1, 5, 50]
+    itpBounds::Vector{Float64}  = [500, 1000]
 
     # mode
     cDOS_flag::Int64    = 1
@@ -103,9 +107,6 @@ const kb = 0.08617333262; # meV/K
     material::String    = "Material"
     returnTc::Bool     = false
 
-    # Restrict Weep
-    Nrestrict::Int64 = -1
-    wndRestrict::Vector{Number} = [-1]
 end
 
 

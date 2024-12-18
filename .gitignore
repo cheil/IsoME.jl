@@ -1,8 +1,8 @@
 /Manifest.toml
 /docs/build/
+/test/Nb/output/ 
 /docs/src/Presi.md
 /plotDos.jl
 /userFcn/
 /docs/Manifest.toml
 /.vscode
-/test/Nb/output/ 

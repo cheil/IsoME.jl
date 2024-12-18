@@ -195,9 +195,6 @@ function InputParser(inp::arguments, log_file::IOStream)
 
     elseif  inp.include_Weep == 0 && inp.muc_ME != -1
         calcMucAD(inp, a2f, a2f_omega)
-
-    else
-
     end
 
     ### determine superconducting properties from Allen-Dynes McMillan equation based on interpolated a2F

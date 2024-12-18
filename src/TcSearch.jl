@@ -289,6 +289,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             # save Z, Delta, chi, phi
             if inp.flag_writeSelfEnergy == 1
                 try 
+                    error("a")
                     if include_Weep == 1
                         if inp.cDOS_flag == 0
                             saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi, epsilon=dos_en, chi=shifti, phiph=phiphi, phic=phici)
@@ -309,22 +310,27 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
                     error_msg = sprint(showerror, ex)
                     st = sprint((io,v) -> show(io, "text/plain", v), stacktrace(catch_backtrace()))
                     print(crashFile, error_msg*"\n"*st)
-                    print("\n\n")
+                    print(crashFile, "\n\n")
                     close(crashFile)
         
                     # log file
-                    print(log_file, "\n\nERROR while saving self energy components: ")
+                    printTextCentered("Error while saving self energy", console["partingLine"], file=log_file)
                     showerror(log_file, ex)
-                    print(log_file, "\n\nFor further information please refer to the CRASH file\n\n")
-        
-                    # console
-                    print(@red "\n\nERROR")
-                    print(" while saving self energy components: ")
                     showerror(stdout, ex)
-                    print("\n\nFor further information please refer to the CRASH file\n\n")
+                    print("\n\nFor further information please refer to the CRASH file\n")
+                    print(console["partingLine"]*"\n")
+                    print(log_file, "\n\nFor further information please refer to the CRASH file\n")
+                    print(log_file, console["partingLine"]*"\n")
                 end
             end
-            
+
+            ### Analytic Continuation ###
+            flag_acon = 1
+            if flag_acon == 1
+                acon(wsi, deltai, znormi, shifti, idx_ef)
+            end #acon
+
+
             return data
             break
         end

@@ -20,16 +20,17 @@ Start message
 function printStartMessage(console, log_file)
 
     strIsoMe = "\n\n"
-    strIsoMe = strIsoMe*"   _                  __  __   ______ \n"
-    strIsoMe = strIsoMe*"  | |                |  \\/  | |  ____|\n"
-    strIsoMe = strIsoMe*"  | |   ___    ___   | \\  / | | |__   \n"
+    strIsoMe = strIsoMe*"   _                 __  __   ______ \n"
+    strIsoMe = strIsoMe*"  | |               |  \\/  | |  ____|\n"
+    strIsoMe = strIsoMe*"  | |  ___    ___   | \\  / | | |__   \n"
     strIsoMe = strIsoMe*"  | | / __|  / _ \\  | |\\/| | |  __|  \n"
     strIsoMe = strIsoMe*"  | | \\__ \\ | (_) | | |  | | | |____ \n"
     strIsoMe = strIsoMe*"  |_| |___/  \\___/  |_|  |_| |______|\n\n"
 
     strLine = "-"^(sum(console["width"])+length(console["width"])+1)
 
-    strAuthors = "  Authors: Christoph Heil, Eva Kogler, Dominik Spath\n\n"
+    strAuthors = "  Authors: Christoph Heil, Eva Kogler,\n"
+    strAuthors = " "^(length("  Authors:"))*" Dominik Spath, Daniel Khodachenko\n\n"
 
     strEliash = "Eliashberg Solver started"
 

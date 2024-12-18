@@ -20,9 +20,9 @@ Start message
 function printStartMessage(console, log_file)
 
     strIsoMe = "\n\n"
-    strIsoMe = strIsoMe*"   _                  __  __   ______ \n"
-    strIsoMe = strIsoMe*"  | |                |  \\/  | |  ____|\n"
-    strIsoMe = strIsoMe*"  | |   ___    ___   | \\  / | | |__   \n"
+    strIsoMe = strIsoMe*"   _                 __  __   ______ \n"
+    strIsoMe = strIsoMe*"  | |               |  \\/  | |  ____|\n"
+    strIsoMe = strIsoMe*"  | |  ___    ___   | \\  / | | |__   \n"
     strIsoMe = strIsoMe*"  | | / __|  / _ \\  | |\\/| | |  __|  \n"
     strIsoMe = strIsoMe*"  | | \\__ \\ | (_) | | |  | | | |____ \n"
     strIsoMe = strIsoMe*"  |_| |___/  \\___/  |_|  |_| |______|\n\n"
@@ -180,12 +180,12 @@ end
 
 print a text centered within a line consisting of delimiters
 """
-function printTextCentered(text, hline; file = nothing, bold = false, blanks=3, delimiter = "-")
+function printTextCentered(text, hline; file = nothing, bold = false, blanks=3, delimiter = "-", newline = "\n")
 
     lenLeft = Int(ceil((length(hline) - length(text))/2) - blanks)
     lenRight = Int(floor((length(hline) - length(text))/2) - blanks)
 
-    print("\n"*delimiter^lenLeft*" "^blanks)
+    print(newline*delimiter^lenLeft*" "^blanks)
     if bold
         print(@bold text)
     else

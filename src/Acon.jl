@@ -11,10 +11,20 @@
 
 """
 
+# TODO:
+#   - flags as input
+#   - ral_c as input
+function acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file; idx_ef=-1, shifti = 0)
+    printTextCentered("Analytic Continuation started", console["partingLine"], file = log_file)
+    real_c = 500.0
 
-function acon(wsi, deltai, znormi, shifti, idx_ef)
-    println("Analytic Continuation started")
-    g11i, gauxi = calcGF(wsi, deltai[idx_ef, :], znormi, shifti)
+    # sinnvoller machen
+    if inp.include_Weep == 1
+        deltai = deltai[idx_ef, :]
+    end
+
+    g11i, gauxi = calcGF(wsi, deltai, znormi, shifti)
+    lneva = 1
     if lneva == 1
         ws, g11, gaux = NAC(wsi, real_c, g11i, gauxi)
         g12 = anomalousGF(g11, gaux)
@@ -52,10 +62,10 @@ function acon(wsi, deltai, znormi, shifti, idx_ef)
             plot(ws, A11)
             xlims!(-xlim_max, xlim_max)
             ylims!(0, ylim_max)
-            title!(material)
+            title!(inp.material)
             xlabel!(L"\omega ~ \mathrm{(meV)}")
             ylabel!(L"\mathrm{A}^{\textrm{11}}(\omega) \;\;\; [\mathrm{eV^{-1}}]")
-            savefig(outdir * "/A11_neva_T" * string(itemp) * ".pdf")
+            savefig(inp.outdir * "/A11_neva_T" * string(itemp) * ".pdf")
 
             A12 = -imag.(g12) / pi
             ylim_min = round(minimum(A12), RoundUp)
@@ -64,10 +74,10 @@ function acon(wsi, deltai, znormi, shifti, idx_ef)
             plot(ws, A12)
             xlims!(-xlim_max, xlim_max)
             ylims!(ylim_min, ylim_max)
-            title!(material)
+            title!(inp.material)
             xlabel!(L"\omega ~ \mathrm{(meV)}")
             ylabel!(L"\mathrm{A}^{\textrm{an}}(\omega) \;\;\; [\mathrm{eV^{-1}}]")
-            savefig(outdir * "/A12_neva_T" * string(itemp) * ".pdf")
+            savefig(inp.outdir * "/A12_neva_T" * string(itemp) * ".pdf")
         end
 
         # Pade
@@ -83,10 +93,10 @@ function acon(wsi, deltai, znormi, shifti, idx_ef)
             plot(ws_pade, A11_pade)
             xlims!(-xlim_max, xlim_max)
             ylims!(ylim_min, ylim_max)
-            title!(material)
+            title!(inp.material)
             xlabel!(L"\omega ~ \mathrm{(meV)}")
             ylabel!(L"\mathrm{A}^{\textrm{11}}(\omega) \;\;\; [\mathrm{eV^{-1}}]")
-            savefig(outdir * "/A11_pade_T" * string(itemp) * ".pdf")
+            savefig(inp.outdir * "/A11_pade_T" * string(itemp) * ".pdf")
 
             A12_pade = -imag.(g12_pade) / pi   # this should be -imag.(g11)/pi, there is some sign issue...
             xlim_max = round(maximum(ws_pade), RoundUp)
@@ -97,13 +107,14 @@ function acon(wsi, deltai, znormi, shifti, idx_ef)
             plot(ws_pade, A12_pade)
             xlims!(-xlim_max, xlim_max)
             ylims!(ylim_min, ylim_max)
-            title!(material)
+            title!(inp.material)
             xlabel!(L"\omega ~ \mathrm{(meV)}")
             ylabel!(L"\mathrm{A}^{\textrm{an}}(\omega) \;\;\; [\mathrm{eV^{-1}}]")
-            savefig(outdir * "/A12_pade_T" * string(itemp) * ".pdf")
+            savefig(inp.outdir * "/A12_pade_T" * string(itemp) * ".pdf")
         end
     end
 
+    flag_qdos_figure = 1
     if flag_qdos_figure == 1
         plot_font = "Computer Modern"
         default(
@@ -124,10 +135,10 @@ function acon(wsi, deltai, znormi, shifti, idx_ef)
             plot(ws, dos_qp)
             xlims!(0, xlim_max)
             ylims!(0, ylim_max)
-            title!(material)
+            title!(inp.material)
             xlabel!(L"\omega ~ \mathrm{(meV)}")
             ylabel!(L"\mathrm{N}_{\mathrm{S}}(\omega)/\mathrm{N}_{\mathrm{F}}")
-            savefig(outdir * "/qdos_neva_T" * string(itemp) * ".pdf")
+            savefig(inp.outdir * "/qdos_neva_T" * string(itemp) * ".pdf")
         end
 
         # Pade
@@ -140,10 +151,10 @@ function acon(wsi, deltai, znormi, shifti, idx_ef)
             plot(ws_pade, dos_qp_pade)
             xlims!(0, xlim_max)
             ylims!(0, ylim_max)
-            title!(material)
+            title!(inp.material)
             xlabel!(L"\omega ~ \mathrm{(meV)}")
             ylabel!(L"\mathrm{N}_{\mathrm{S}}(\omega)/\mathrm{N}_{\mathrm{F}}")
-            savefig(outdir * "/qdos_pade_T" * string(itemp) * ".pdf")
+            savefig(inp.outdir * "/qdos_pade_T" * string(itemp) * ".pdf")
         end
     end
 end

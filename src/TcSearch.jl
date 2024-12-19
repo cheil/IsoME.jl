@@ -289,7 +289,6 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             # save Z, Delta, chi, phi
             if inp.flag_writeSelfEnergy == 1
                 try 
-                    error("a")
                     if include_Weep == 1
                         if inp.cDOS_flag == 0
                             saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi, epsilon=dos_en, chi=shifti, phiph=phiphi, phic=phici)
@@ -314,12 +313,14 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
                     close(crashFile)
         
                     # log file
-                    printTextCentered("Error while saving self energy", console["partingLine"], file=log_file)
+                    printTextCentered("ERROR", console["partingLine"], file=log_file)
+                    printTextCentered("while saving self energy", console["partingLine"], delimiter = "", file = log_file)
                     showerror(log_file, ex)
                     showerror(stdout, ex)
-                    print("\n\nFor further information please refer to the CRASH file\n")
+                    print("\n\n")
+                    print(log_file, "\n\n")
+                    printTextCentered("For further information please refer to the CRASH file", console["partingLine"], delimiter = "", file = log_file)
                     print(console["partingLine"]*"\n")
-                    print(log_file, "\n\nFor further information please refer to the CRASH file\n")
                     print(log_file, console["partingLine"]*"\n")
                 end
             end
@@ -327,8 +328,20 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             ### Analytic Continuation ###
             flag_acon = 1
             if flag_acon == 1
-                acon(wsi, deltai, znormi, shifti, idx_ef)
-            end #acon
+                if include_Weep == 1
+                    if inp.cDOS_flag == 0
+                        acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file; idx_ef, shifti = shifti)
+                    elseif inp.cDOS_flag == 1
+                        acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file; idx_ef)
+                    end
+                elseif inp.include_Weep == 0
+                    if inp.cDOS_flag == 0
+                        acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file)                     
+                    elseif inp.cDOS_flag == 1
+                        acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file)          
+                    end
+                end
+            end 
 
 
             return data

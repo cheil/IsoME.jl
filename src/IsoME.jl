@@ -36,6 +36,7 @@ using SparseIR              # Intermediate basis
 using LsqFit                # Fitting 
 using Roots                 # Root finding
 using Term                  # styled text terminal
+using Logging, LoggingExtras
 using Revise                # !!! REMOVE before publishing
 
 
@@ -62,7 +63,8 @@ const kb = 0.08617333262; # meV/K
     N_it::Int64             = 5000   
     Wcut::Float64           = -1        # outer cutoff energies
     encut::Float64          = 2000      # cutoff shift & Ne
-    sparseSamplingTemp::Float64 = 5   
+    sparseSamplingTemp::Float64 = 5  
+    typEl::Float64          = -1 
     
     # interpolation
     itpStepSize::Vector{Int64}  = [1, 5, 50]

@@ -57,7 +57,7 @@ function InputParser(inp::arguments, log_file::IOStream)
         console["precision"] = [0, 4, 4, 5]
 
     else
-        @error "Unkwon mode! Check if the cDOS_flag and include_Weep flag are set correctly!"
+        error("Unkwon mode! Check if the cDOS_flag and include_Weep flag are set correctly!")
     end
     console = formatTableHeader(console)
 
@@ -221,7 +221,7 @@ end
 
 Check which input files (a2f, dos, weep) exist. Overwrite flags if neccessary.
 """
-function createDirectory(inp::arguments)
+function createDirectory(inp::arguments, strIsoME::String)
 
     # create output directory
     if isempty(inp.outdir) 
@@ -249,7 +249,7 @@ function createDirectory(inp::arguments)
     end
 
     log_file = open(inp.outdir * "log.txt", "w")
-    print(log_file)
+    print(log_file, strIsoME)
 
     return inp, log_file
 

@@ -570,23 +570,53 @@ function EliashbergSolver(inp::arguments)
 
     dt = @elapsed begin
 
+        strIsoME = printIsoME()
+
         ### Create directory
-        inp, log_file = createDirectory(inp::arguments)
+        inp, log_file = createDirectory(inp, strIsoME)
         
         ### Check input
         try
             inp = checkInput(inp, log_file)
         catch ex
-            crashFile = open(inp.outdir * "CRASH", "a")
-            showerror(crashFile, ex)
-            print("\n\n")
-            close(crashFile)
+            # crash file
+            writeToCrashFile(inp)
+
+            # console / log file
+            temp = Dict()
+            temp["partingLine"] = "--------------------------------------------------"
+            printError("in input structure", ex, temp; file=log_file, consoleFlag=false)
+            printTextCentered("ERROR", temp["partingLine"])
+            printTextCentered("in input structure", temp["partingLine"], newline="", delimiter=" ")
+            printTextCentered("Stopping now!", temp["partingLine"], bold=true)
+            print("\n")
+            close(log_file)
 
             rethrow(ex)
         end
 
         ### read inputs
-        inp, console, matval, ML_Tc = InputParser(inp, log_file)
+        matval = ()
+        ML_Tc = NaN
+        console = Dict()
+        try
+            inp, console, matval, ML_Tc = InputParser(inp, log_file)
+        catch ex
+            # crash file
+            writeToCrashFile(inp)
+
+            # console / log file
+            temp = Dict()
+            temp["partingLine"] = "--------------------------------------------------"
+            printError("while reading inputs", ex, temp; file=log_file, consoleFlag=false)
+            printTextCentered("ERROR", temp["partingLine"])
+            printTextCentered("while reading inputs", temp["partingLine"], newline="", delimiter=" ")
+            printTextCentered("Stopping now!", temp["partingLine"], bold=true)
+            print("\n")
+            close(log_file)
+
+            rethrow(ex)
+        end
 
         ### Print to console ###
         printFlagsAsText(inp, log_file)
@@ -601,17 +631,17 @@ function EliashbergSolver(inp::arguments)
         try
             Tc, temps, Znorm0, Delta0, Shift0, EfMu = findTc(inp, console, matval, ML_Tc, log_file)
         catch ex
+            # crash file
+            writeToCrashFile(inp)
 
-            crashFile = open(inp.outdir * "CRASH", "a")
-            print(crashFile, current_exceptions())
-            print(crashFile, "\n\n")
-            close(crashFile)
-
-            print(log_file, "\nERROR: ")
-            showerror(log_file, ex)
-            print(log_file, "\n\nFor further information please refer to the CRASH file\n")
+            # console / log file
+            printError("in EliashbergSolver()", ex, console; file = log_file, consoleFlag = false)
+            printTextCentered("ERROR", console["partingLine"])
+            printTextCentered("in EliashbergSolver()", console["partingLine"], newline="", delimiter= " ")
+            printTextCentered("Stopping now!", console["partingLine"], bold = true)
+            print("\n")
             close(log_file)
-
+ 
             rethrow(ex)
         end
     
@@ -620,36 +650,22 @@ function EliashbergSolver(inp::arguments)
         try
             printSummary(inp, Tc, log_file)
         catch ex
-
             # crash file
-            crashFile = open(inp.outdir * "CRASH", "a")
-            print(crashFile, current_exceptions())
-            print(crashFile, "\n\n")
-            close(crashFile)
+            writeToCrashFile(inp)
 
-            # console
-            printTextCentered("Error while creating the Summary-file", console["partingLine"], file=log_file)
-            showerror(stdout, ex)
-            print("\n\nFor further information please refer to the CRASH file\n")
-            println(console["partingLine"])
+            # console / log file
+            printError("while printing the summary", ex, console; file = log_file)
         end
 
         ### save inputs
         try
             createInfoFile(inp)
-        catch
-             # crash file
-             crashFile = open(inp.outdir * "CRASH", "a")
-             print(crashFile, current_exceptions())
-             print(crashFile, "\n\n")
-             close(crashFile)
+        catch ex
+            # crash file
+            writeToCrashFile(inp)
  
-             # console
-             printTextCentered("Error while creating the Info-file", console["partingLine"], file=log_file)
-             showerror(stdout, ex)
-             print("\n\nFor further information please refer to the CRASH file\n")
-             println(console["partingLine"])
- 
+            # console / log file
+            printError("while creating the Info-file", ex, console; file = log_file)
         end
 
         ### create Summary file
@@ -666,16 +682,10 @@ function EliashbergSolver(inp::arguments)
             createSummaryFile(inp, Tc, out_vars, header)
         catch ex
             # crash file
-            crashFile = open(inp.outdir * "CRASH", "a")
-            print(crashFile, current_exceptions())
-            print(crashFile, "\n\n")
-            close(crashFile)
+            writeToCrashFile(inp)
 
-            # console
-            printTextCentered("Error while creating the summary file", console["partingLine"], file=log_file)
-            showerror(stdout, ex)
-            print("\n\nFor further information please refer to the CRASH file\n")
-            println(console["partingLine"])
+            # console / log file
+            printError("while creating the Summary.dat file", ex, console; file = log_file)
         end
 
         ### figures
@@ -683,19 +693,15 @@ function EliashbergSolver(inp::arguments)
             try
                 createFigures(inp, matval, Delta0, temps, Tc, log_file)
             catch ex
-                
                 # crash file
-                crashFile = open(inp.outdir * "CRASH", "a")
-                print(crashFile, current_exceptions())
-                print(crashFile, "\n\n")
-                close(crashFile)
+                writeToCrashFile(inp)
 
-                # console
-                printTextCentered("Error while plotting", console["partingLine"], file = log_file)
-                showerror(stdout, ex)
-                print("\n\nFor further information please refer to the CRASH file\n")
-                println(console["partingLine"])
+                # console / log file
+                printError("while plotting", ex, console; file = log_file)
 
+                printTextCentered("ERROR", console["partingLine"])
+                @error "While Plotting" exception = ex
+                printTextCentered("Continue execution!", console["partingLine"], newline="")
             end
         end
     end

@@ -483,27 +483,29 @@ end
 
 
 """
+"""
+function printTee(log_file, text)
+    print(text)
+    print(log_file, text)
+end
+
+"""
     printError(message, ex; file = "", consoleFlag = true)
 
 print a formatted error message
 """
-function printError(text, ex, console; file = "", consoleFlag = true)
+function printError(text, ex, log_file, errorLogger)
 
-    printTextCentered("ERROR", console["partingLine"], file=file, consoleFlag=consoleFlag)
-    printTextCentered(text, console["partingLine"], delimiter=" ", newline="", file=file, consoleFlag=consoleFlag)
-
-    crashText = "\n\nFor further information please refer to the CRASH file\n"
-    if consoleFlag
-        showerror(stdout, ex)
-        print(crashText)
-        println(console["partingLine"])
+    print(log_file, "\n")
+    with_logger(errorLogger) do
+        @error text exception = ex
     end
+    print(log_file, "\nFor further information please refer to the CRASH file\n\n")
+    flush(log_file)
+    close(log_file) 
 
-    if isfile(file)
-        showerror(file, ex)
-        print(file, crashText)
-        println(file, console["partingLine"])
-    end
+    print("\n")
+    rethrow(ex)
 
 end
 
@@ -513,22 +515,11 @@ end
 
 print a formatted error message
 """
-function printWarning(text, ex, console; file = "", consoleFlag = true)
+function printWarning(text, ex)
 
-    printTextCentered("WARNING", console["partingLine"], file=log_file, consoleFlag=consoleFlag)
-    printTextCentered(text, console["partingLine"], delimiter="", file=log_file, consoleFlag=consoleFlag)
-
-    if consoleFlag
-        showerror(stdout, ex)
-        print("\n\nFor further information please refer to the CRASH file\n")
-        println(console["partingLine"])
-    end
-
-    if isfile(file)
-        showerror(file, ex)
-        print(file, "\n\nFor further information please refer to the CRASH file\n")
-        println(file, console["partingLine"])
-    end
+    printTee(log_file, "\n")
+    @warn text exception = ex
+    printTee(log_file, "\n")
 
 end
 

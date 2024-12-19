@@ -554,7 +554,7 @@ function EliashbergSolver(inp::arguments)
         strIsoME = printIsoME()
 
         ### Create directory
-        inp, log_file = createDirectory(inp, strIsoME)
+        inp, log_file, errorLogger = createDirectory(inp, strIsoME)
         
         ### Check input
         try
@@ -564,15 +564,8 @@ function EliashbergSolver(inp::arguments)
             writeToCrashFile(inp)
 
             # console / log file
-            temp = Dict()
-            temp["partingLine"] = "--------------------------------------------------"
-            printError("in input structure", ex, temp; file=log_file, consoleFlag=false)
-            printTextCentered("ERROR", temp["partingLine"])
-            printTextCentered("in input structure", temp["partingLine"], newline="", delimiter=" ")
-            printTextCentered("Stopping now!", temp["partingLine"], bold=true)
-            print("\n")
-            close(log_file)
-
+            printError("in input structure. Stopping now!", ex, log_file, errorLogger)
+ 
             rethrow(ex)
         end
 
@@ -587,15 +580,8 @@ function EliashbergSolver(inp::arguments)
             writeToCrashFile(inp)
 
             # console / log file
-            temp = Dict()
-            temp["partingLine"] = "--------------------------------------------------"
-            printError("while reading inputs", ex, temp; file=log_file, consoleFlag=false)
-            printTextCentered("ERROR", temp["partingLine"])
-            printTextCentered("while reading inputs", temp["partingLine"], newline="", delimiter=" ")
-            printTextCentered("Stopping now!", temp["partingLine"], bold=true)
-            print("\n")
-            close(log_file)
-
+            printError("while reading the inputs. Stopping now!", ex, log_file, errorLogger)
+ 
             rethrow(ex)
         end
 
@@ -610,32 +596,27 @@ function EliashbergSolver(inp::arguments)
         Znorm0 = Vector{Float64}()
         EfMu = Vector{Float64}()
         try
+            error("a)2")
             Tc, temps, Znorm0, Delta0, Shift0, EfMu = findTc(inp, console, matval, ML_Tc, log_file)
         catch ex
             # crash file
             writeToCrashFile(inp)
 
             # console / log file
-            printError("in EliashbergSolver()", ex, console; file = log_file, consoleFlag = false)
-            printTextCentered("ERROR", console["partingLine"])
-            printTextCentered("in EliashbergSolver()", console["partingLine"], newline="", delimiter= " ")
-            printTextCentered("Stopping now!", console["partingLine"], bold = true)
-            print("\n")
-            close(log_file)
- 
-            rethrow(ex)
+            printError("while solving the Eliashberg equations. Stopping now!", ex, log_file, errorLogger)
         end
     
 
         ### write Tc to console
         try
+            error("sa")
             printSummary(inp, Tc, log_file)
         catch ex
             # crash file
             writeToCrashFile(inp)
 
             # console / log file
-            printError("while printing the summary", ex, console; file = log_file)
+            printWarning("Error while printing the summary.", ex)
         end
 
         ### save inputs
@@ -646,7 +627,7 @@ function EliashbergSolver(inp::arguments)
             writeToCrashFile(inp)
  
             # console / log file
-            printError("while creating the Info-file", ex, console; file = log_file)
+            printWarning("Error while creating the Info file.", ex)
         end
 
         ### create Summary file
@@ -666,7 +647,7 @@ function EliashbergSolver(inp::arguments)
             writeToCrashFile(inp)
 
             # console / log file
-            printError("while creating the Summary.dat file", ex, console; file = log_file)
+            printWarning("Error while creating the Summary.dat file.", ex)
         end
 
         ### figures
@@ -678,11 +659,7 @@ function EliashbergSolver(inp::arguments)
                 writeToCrashFile(inp)
 
                 # console / log file
-                printError("while plotting", ex, console; file = log_file)
-
-                printTextCentered("ERROR", console["partingLine"])
-                @error "While Plotting" exception = ex
-                printTextCentered("Continue execution!", console["partingLine"], newline="")
+                printWarning("Error while plotting. Skipping plots.", ex)
             end
         end
     end

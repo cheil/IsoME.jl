@@ -257,11 +257,12 @@ function createDirectory(inp::arguments, strIsoME::String)
     print(log_file, strIsoME)
 
     # logging to console and log-file (@warn,...)
+    errorLogger = SimpleLogger(log_file, Logging.Error)
     file_logger = SimpleLogger(log_file)
     tee_logger = TeeLogger(ConsoleLogger(), file_logger)
     global_logger(tee_logger)
 
-    return inp, log_file
+    return inp, log_file, errorLogger
 
 end
 

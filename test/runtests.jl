@@ -10,10 +10,9 @@ using Test
 
     ### 1.TEST: Nb cDOS mu* ###
     inp = arguments(
-                    a2f_file = "test/Nb/Nb.a2F",
-                    dos_file = "test/Nb/Nb.dos",
-                    Weep_file = "test/Nb/Weep.dat",
-                    Wen_file = "test/Nb/Wen.dat",
+                    a2f_file = joinpath(@__DIR__, "Nb/Nb.a2F"),
+                    dos_file = joinpath(@__DIR__, "Nb/Nb.dos"),
+                    Weep_file = joinpath(@__DIR__, "Nb/Weep.dat"),
                     flag_figure = 0,
                     returnTc    = true,
                     outdir = outdir*"cDOS_mu/",

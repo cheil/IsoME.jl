@@ -288,7 +288,6 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             # save Z, Delta, chi, phi
             if inp.flag_writeSelfEnergy == 1
                 try 
-                    error("a")
                     if include_Weep == 1
                         if inp.cDOS_flag == 0
                             saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi, epsilon=dos_en, chi=shifti, phiph=phiphi, phic=phici)

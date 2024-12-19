@@ -173,7 +173,10 @@ function InputParser(inp::arguments, log_file::IOStream)
 
     elseif inp.muc_AD == -1 && inp.muc_ME == -1
         if isnothing(ef) || ef == -1 || ef == 0
-            if inp.efW == -1 || inp.efW == 0
+            if inp.typEl != -1
+                calcMucs(inp, inp.typEl, a2f, a2f_omega)
+
+            elseif inp.efW == -1 || inp.efW == 0
                 printTextCentered("WARNING", console["partingLine"], file=log_file, newline="")
                 printTextCentered("Unable to calculate μ* from μ without the fermi-energy!", console["partingLine"], file=log_file, delimiter=" ", newline="")
                 printTextCentered("Consider shifting the dos-energies by ef and specifing a fermi-energy.", console["partingLine"], file=log_file, delimiter=" ", newline="")
@@ -184,10 +187,12 @@ function InputParser(inp::arguments, log_file::IOStream)
                 inp.muc_AD = 0.12
                 calcMucME(inp, console, a2f, a2f_omega, log_file)
             else
-                calcMucs(inp, inp.efW, a2f, a2f_omega)
+                inp.typEl = inp.efW
+                calcMucs(inp, inp.typEl, a2f, a2f_omega)
             end
         else
-            calcMucs(inp, ef, a2f, a2f_omega)
+            inp.typEl = ef
+            calcMucs(inp, inp.typEl, a2f, a2f_omega)
         end
 
     elseif  inp.include_Weep == 0 && inp.muc_AD != -1
@@ -250,6 +255,11 @@ function createDirectory(inp::arguments, strIsoME::String)
 
     log_file = open(inp.outdir * "log.txt", "w")
     print(log_file, strIsoME)
+
+    # logging to console and log-file (@warn,...)
+    file_logger = SimpleLogger(log_file)
+    tee_logger = TeeLogger(ConsoleLogger(), file_logger)
+    global_logger(tee_logger)
 
     return inp, log_file
 

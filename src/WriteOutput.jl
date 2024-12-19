@@ -12,6 +12,27 @@ Comments:
 
 """
 
+
+"""
+    printAsciiArt()
+
+print IsoME as Ascii art
+"""
+function printIsoME()
+    strIsoME = "\n\n"
+    strIsoME = strIsoME*"   _                 __  __   ______ \n"
+    strIsoME = strIsoME*"  | |               |  \\/  | |  ____|\n"
+    strIsoME = strIsoME*"  | |  ___    ___   | \\  / | | |__   \n"
+    strIsoME = strIsoME*"  | | / __|  / _ \\  | |\\/| | |  __|  \n"
+    strIsoME = strIsoME*"  | | \\__ \\ | (_) | | |  | | | |____ \n"
+    strIsoME = strIsoME*"  |_| |___/  \\___/  |_|  |_| |______|\n\n"
+
+    print(strIsoME)
+
+    return strIsoME
+end
+
+
 """
     printStartMessage(console)
 
@@ -19,26 +40,16 @@ Start message
 """
 function printStartMessage(console, log_file)
 
-    strIsoMe = "\n\n"
-    strIsoMe = strIsoMe*"   _                 __  __   ______ \n"
-    strIsoMe = strIsoMe*"  | |               |  \\/  | |  ____|\n"
-    strIsoMe = strIsoMe*"  | |  ___    ___   | \\  / | | |__   \n"
-    strIsoMe = strIsoMe*"  | | / __|  / _ \\  | |\\/| | |  __|  \n"
-    strIsoMe = strIsoMe*"  | | \\__ \\ | (_) | | |  | | | |____ \n"
-    strIsoMe = strIsoMe*"  |_| |___/  \\___/  |_|  |_| |______|\n\n"
-
     strLine = "-"^(sum(console["width"])+length(console["width"])+1)
 
     strAuthors = "  Authors: Christoph Heil, Eva Kogler, Dominik Spath\n\n"
 
     strEliash = "Eliashberg Solver started"
 
-    print(strIsoMe)
     #printTextCentered(log_file, "Version 1.0", strLine, false)
     print(strAuthors)
     print(strLine)
     # log file
-    print(log_file, strIsoMe)
     print(log_file, strAuthors)
     print(log_file, strLine)
 
@@ -180,23 +191,30 @@ end
 
 print a text centered within a line consisting of delimiters
 """
-function printTextCentered(text, hline; file = nothing, bold = false, blanks=3, delimiter = "-", newline = "\n")
+function printTextCentered(text, hline; file = "", bold = false, blanks=3, delimiter = "-", newline = "\n", consoleFlag = true)
 
     lenLeft = Int(ceil((length(hline) - length(text))/2) - blanks)
     lenRight = Int(floor((length(hline) - length(text))/2) - blanks)
 
-    print(newline*delimiter^lenLeft*" "^blanks)
-    if bold
-        print(@bold text)
-    else
-        print(text)
-    end
-    print(" "^blanks * delimiter^lenRight*"\n")
+    leftText = newline*delimiter^lenLeft*" "^blanks
+    rightText = " "^blanks * delimiter^lenRight*"\n"
 
-    if ~isnothing(file)
-        print(file, "\n"*"-"^lenLeft*" "^blanks)
+    # print to console
+    if consoleFlag
+        print(leftText)
+        if bold
+            print(@bold text)
+        else
+            print(text)
+        end
+        print(rightText)
+    end
+
+    # print to file
+    if isfile(file)
+        print(file, leftText)
         print(file, text)
-        print(file, " "^blanks * "-"^lenRight*"\n")
+        print(file, rightText)
     end
 
 end
@@ -465,6 +483,70 @@ end
 
 
 """
+    printError(message, ex; file = "", consoleFlag = true)
+
+print a formatted error message
+"""
+function printError(text, ex, console; file = "", consoleFlag = true)
+
+    printTextCentered("ERROR", console["partingLine"], file=file, consoleFlag=consoleFlag)
+    printTextCentered(text, console["partingLine"], delimiter=" ", newline="", file=file, consoleFlag=consoleFlag)
+
+    crashText = "\n\nFor further information please refer to the CRASH file\n"
+    if consoleFlag
+        showerror(stdout, ex)
+        print(crashText)
+        println(console["partingLine"])
+    end
+
+    if isfile(file)
+        showerror(file, ex)
+        print(file, crashText)
+        println(file, console["partingLine"])
+    end
+
+end
+
+
+"""
+    printWarning(message, ex; file = "", consoleFlag = true)
+
+print a formatted error message
+"""
+function printWarning(text, ex, console; file = "", consoleFlag = true)
+
+    printTextCentered("WARNING", console["partingLine"], file=log_file, consoleFlag=consoleFlag)
+    printTextCentered(text, console["partingLine"], delimiter="", file=log_file, consoleFlag=consoleFlag)
+
+    if consoleFlag
+        showerror(stdout, ex)
+        print("\n\nFor further information please refer to the CRASH file\n")
+        println(console["partingLine"])
+    end
+
+    if isfile(file)
+        showerror(file, ex)
+        print(file, "\n\nFor further information please refer to the CRASH file\n")
+        println(file, console["partingLine"])
+    end
+
+end
+
+
+"""
+    writeToCrashFile(inp)
+
+Save exception in CRASH file
+"""
+function writeToCrashFile(inp)
+    crashFile = open(inp.outdir * "CRASH", "a")
+    print(crashFile, current_exceptions())
+    print(crashFile, "\n\n")
+    close(crashFile)
+end
+
+
+"""
     writeInputFlags(Tc ,inp, out_vars, header)
 
 Save results of each iteration and input parameters in a file Summary.txt
@@ -539,7 +621,7 @@ function createFigures(inp, matval, Delta0, temps, Tc, log_file)
     xtick_val = 0:10:xlim_max
     ylim_max = round(maximum(a2f_fine), RoundUp)
 
-    plot(a2f_omega_fine, a2f_fine)
+    plot(a2f_omega_fine, a2f_fine,1)
     xlims!(0, xlim_max)
     ylims!(0, ylim_max)
     if inp.material != "Material"
@@ -565,6 +647,9 @@ function createFigures(inp, matval, Delta0, temps, Tc, log_file)
         if maximum(temps_plot) < 10
             xlim_max = round(maximum(temps_plot) * 1.1, RoundUp)
             xtick_val = 0:1:xlim_max
+        elseif maximum(temps_plot) < 20
+            xlim_max = round(maximum(temps_plot) * 1.1, RoundUp)
+            xtick_val = 0:2:xlim_max
         else
             xlim_max = round(maximum(temps_plot) / 10 * 1.01, RoundUp) * 10
             xtick_val = 0:10:xlim_max
@@ -616,10 +701,12 @@ function createFigures(inp, matval, Delta0, temps, Tc, log_file)
                     xlim_max = maximum([xlim_max, TcFit+1])
                     ylim_max = maximum([ylim_max, Delta0Fit+1])
             
-                    if xlim_max < 10
+                    if xlim_max <= 10
                         xtick_val = 0:1:xlim_max
                     elseif xlim_max > 1e3
                         error("TcFit unreasonbale")
+                    elseif xlim_max <= 20
+                        xtick_val = 0:2:xlim_max
                     else
                         xtick_val = 0:10:xlim_max
                     end

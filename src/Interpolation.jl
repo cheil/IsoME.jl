@@ -13,14 +13,14 @@
 
 
 """
-    interpolateDos(epsilon, dos, interval, grid=[("", 1000)])
+    interpolateWeep(epsilon, Weep,  en_range, bndItp, step)
 
 Linear interpolation of Weep. 
 Piecewise interpolation between interval[i] and interval[i+1] 
 with grid specifications grid[i].
 In grid specify either the step size or the number of grid points.
 """
-function interpolateWeep(epsilon, Weep, interval, grid=[("", 1000)])
+function interpolateWeep(epsilon, Weep,  en_range, bndItp, step)
 
     ### check input
     if length(interval)-1 != length(grid)
@@ -34,15 +34,8 @@ function interpolateWeep(epsilon, Weep, interval, grid=[("", 1000)])
     itp_Weep = scale(interpolate(Weep, BSpline(Constant())), (epsilonItp, epsilonItp)) 
     
     # define new grid
-    epsilon = Vector{Float64}()
-    for k in eachindex(grid)
-        if isempty(grid[k][1]) || grid[k][1] == "N" || grid[k][1] == "length"
-            # define epsilon
-            append!(epsilon, collect(range(interval[k], interval[k+1], length=grid[k][2])))
-        elseif grid[k][1] == "de" || grid[k][1] == "step"
-            append!(epsilon, collect(range(interval[k], interval[k+1], step = grid[k][2])))
-        end
-    end
+    epsilon = append!(reverse(collect(range(-bndItp-step[2], en_range[1], step = -step[2]))), collect(range(-bndItp, bndItp, step = step[1])),
+                    collect(range(bndItp+step[2], en_range[2], step = step[2])))
 
 
     # Calculate Weep at zeros of Legendre Polynoms
@@ -61,36 +54,51 @@ Piecewise interpolation between interval[i] and interval[i+1]
 with grid specifications grid[i].
 In grid specify either the step size or the number of grid points.
 """
-function interpolateDos(epsilon, dos, interval, grid=[("", 1000)])
-
-    ### check input
-    if length(interval) - 1 != length(grid)
-        error("Number of intervals and grid specifications do not match!")
-    end
-    
+function interpolateDos(epsilon, dos, en_range, bndItp, step)    
     
     ### Interpolation ###
     # Interpolation Object DoS
     epsilonItp = range(epsilon[1], epsilon[end], length(epsilon))       # interpolation vector must be of the form a:b
-    #itp_dos = linear_interpolation(epsilonItp, dos)  
     itp_dos = scale(interpolate(dos, BSpline(Cubic())), epsilonItp) 
-    # define new grid
-
    
-    epsilon = Vector{Float64}()
-    for k in eachindex(grid)
-        if isempty(grid[k][1]) || grid[k][1] == "N" || grid[k][1] == "length"
-            # define epsilon
-            append!(epsilon, collect(range(interval[k], interval[k+1], length=grid[k][2])))
-        elseif grid[k][1] == "de" || grid[k][1] == "step"
-            append!(epsilon, collect(range(interval[k], interval[k+1], step = grid[k][2])))
-        end
-    end
-
+    # define new grid
+    epsilon = append!(reverse(collect(range(-bndItp-step[2], en_range[1], step = -step[2]))), collect(range(-bndItp, bndItp, step = step[1])),
+                    collect(range(bndItp+step[2], en_range[2], step = step[2])))
 
     # Calculate DoS at energy grid points
     dos = itp_dos(epsilon)
 
     return epsilon, dos
+end
+
+
+"""
+     nonUniformGrid(start_point, end_point; density_factor=1.01, min_step=1, max_step=50)
+
+
+"""
+function nonUniformGrid(start_point, end_point; density_factor=1.01, min_step=1, max_step=50)
+
+# Initialize the grid
+grid = [start_point]
+current_point = start_point
+step = min_step  # Start with the minimum step size
+
+# Generate the grid with increasing spacing
+while current_point < end_point
+    step = min(step * density_factor, max_step)  # Increment step size but cap it at max_step
+    current_point += step
+    if current_point <= end_point
+        push!(grid, current_point)
+    end
+end
+
+# Ensure the grid ends exactly at the end_point
+if grid[end] < end_point
+    push!(grid, end_point)
+end
+
+return grid
+
 end
 

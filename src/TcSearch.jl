@@ -654,7 +654,7 @@ function EliashbergSolver(inp::arguments)
         out_vars[:, 2] = Delta0
         out_vars[:, 3] = Znorm0
         if inp.cDOS_flag == 0
-            header = header * "χ(0)/meV  ϵ_F-μ/meV"
+            header = header * "  χ(0)/meV  ϵ_F-μ/meV"
             out_vars = hcat(out_vars, Shift0, EfMu)
         end
         try

@@ -28,7 +28,7 @@ function InputParser(inp::arguments, log_file::IOStream)
         # header table
         console["header"] = ["it", "phic", "phiph", "znormi", "shifti", "ef-mu", "deltai", "err_delta"]
         # width table
-        console["width"] = [8, 10, 10, 10, 10, 10, 10, 12]
+        console["width"] = [8, 10, 10, 10, 10, 10, 10, 11]
         # precision data
         console["precision"] = [0, 2, 2, 2, 2, 2, 2, 5]
 
@@ -36,7 +36,7 @@ function InputParser(inp::arguments, log_file::IOStream)
         # header table
         console["header"] = ["it", "phic", "phiph", "znormi", "deltai", "err_delta"]
         #width table
-        console["width"] = [8, 10, 10, 10, 10, 12]
+        console["width"] = [8, 10, 10, 10, 10, 11]
         # precision data
         console["precision"] = [0, 2, 2, 2, 2, 5]
 
@@ -44,7 +44,7 @@ function InputParser(inp::arguments, log_file::IOStream)
         # header table
         console["header"] = ["it", "znormi", "shifti", "ef-mu", "deltai", "err_delta"]
         #width table
-        console["width"] = [8, 10, 10, 11, 10, 12]
+        console["width"] = [8, 10, 10, 11, 10, 11]
         # precision data
         console["precision"] = [0, 2, 2, 2, 2, 5]
 
@@ -92,13 +92,17 @@ function InputParser(inp::arguments, log_file::IOStream)
 
             ### Interpolate Weep & Dos onto non-uniform grid
             # Interpolation Dos
-            bndItp = inp.itpBounds
-            #en_range = minimum([abs(dos_en[1]), abs(dos_en[end])])
             en_range = [Wen[findfirst(Wen .> dos_en[1])],  Wen[findlast(Wen .< dos_en[end])]]
+            bndItp = inp.itpBounds
+            lowerBound = maximum([-bndItp, en_range[1]])
+            upperBound = minimum([bndItp, en_range[2]])
+
+            # (start, stop, step)
+            en_interval = [(lowerBound, en_range[1], -inp.itpStepSize[2]), (lowerBound, upperBound, inp.itpStepSize[1]), (upperBound, en_range[2], inp.itpStepSize[2])]
 
             # interpolate 
-            dos_en, dos = interpolateDos(dos_en, dos, en_range, bndItp, inp.itpStepSize)
-            Weep = interpolateWeep(Wen, Weep,  en_range, bndItp, inp.itpStepSize)
+            dos_en, dos = interpolateDos(dos_en, dos, en_interval)
+            Weep = interpolateWeep(Wen, Weep, en_interval)
 
             # idx encut
             idxEncut = [findfirst(dos_en .> -inp.encut), findlast(dos_en .< inp.encut)]
@@ -114,9 +118,14 @@ function InputParser(inp::arguments, log_file::IOStream)
             # Interpolation Dos
             bndItp = inp.itpBounds
             en_range = [dos_en[1], dos_en[end]]
-            
+            lowerBound = maximum([-bndItp, en_range[1]])
+            upperBound = minimum([bndItp, en_range[2]])
+
+            # (start, stop, step)
+            en_interval = [(lowerBound, en_range[1], -inp.itpStepSize[2]), (lowerBound, upperBound, inp.itpStepSize[1]), (upperBound, en_range[2], inp.itpStepSize[2])]
+
             # interpolate 
-            dos_en, dos = interpolateDos(dos_en, dos, en_range, bndItp, inp.itpStepSize)
+            dos_en, dos = interpolateDos(dos_en, dos, en_interval)
 
             # idx encut
             idxEncut = [findfirst(dos_en .> -inp.encut), findlast(dos_en .< inp.encut)]

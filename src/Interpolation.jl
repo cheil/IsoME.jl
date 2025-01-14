@@ -20,12 +20,7 @@ Piecewise interpolation between interval[i] and interval[i+1]
 with grid specifications grid[i].
 In grid specify either the step size or the number of grid points.
 """
-function interpolateWeep(epsilon, Weep,  en_range, bndItp, step)
-
-    ### check input
-    if length(interval)-1 != length(grid)
-        error("Number of intervals and grid specifications do not match!")
-    end
+function interpolateWeep(epsilon, Weep, en_range, bndItp, step)
 
     ### Interpolation ###
     # Interpolation Object Weep
@@ -36,7 +31,6 @@ function interpolateWeep(epsilon, Weep,  en_range, bndItp, step)
     # define new grid
     epsilon = append!(reverse(collect(range(-bndItp-step[2], en_range[1], step = -step[2]))), collect(range(-bndItp, bndItp, step = step[1])),
                     collect(range(bndItp+step[2], en_range[2], step = step[2])))
-
 
     # Calculate Weep at zeros of Legendre Polynoms
     Weep = itp_Weep(epsilon, epsilon)

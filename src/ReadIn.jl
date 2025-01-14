@@ -94,11 +94,11 @@ function InputParser(inp::arguments, log_file::IOStream)
             # Interpolation Dos
             bndItp = inp.itpBounds
             #en_range = minimum([abs(dos_en[1]), abs(dos_en[end])])
-            en_range = [dos_en[1], dos_en[end]]
+            en_range = [Wen[findfirst(Wen .> dos_en[1])],  Wen[findlast(Wen .< dos_en[end])]]
 
             # interpolate 
             dos_en, dos = interpolateDos(dos_en, dos, en_range, bndItp, inp.itpStepSize)
-            Weep = interpolateWeep(epsilon, Weep,  en_range, bndItp, step)
+            Weep = interpolateWeep(Wen, Weep,  en_range, bndItp, inp.itpStepSize)
 
             # idx encut
             idxEncut = [findfirst(dos_en .> -inp.encut), findlast(dos_en .< inp.encut)]
@@ -118,7 +118,6 @@ function InputParser(inp::arguments, log_file::IOStream)
             # interpolate 
             dos_en, dos = interpolateDos(dos_en, dos, en_range, bndItp, inp.itpStepSize)
 
-      
             # idx encut
             idxEncut = [findfirst(dos_en .> -inp.encut), findlast(dos_en .< inp.encut)]
         end

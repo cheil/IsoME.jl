@@ -540,7 +540,7 @@ end
 """
     writeInputFlags(Tc ,inp, out_vars, header)
 
-Save results of each iteration and input parameters in a file Summary.txt
+Save results of each iteration and input parameters in a file Info.txt
 """
 function createInfoFile(inp)
     # write to output file

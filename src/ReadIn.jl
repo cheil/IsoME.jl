@@ -76,7 +76,7 @@ function InputParser(inp::arguments, log_file::IOStream)
         inp.ef = ef
 
         # remove zeros at begining/end of dos
-        #dos, dos_en = discardZeros(dos, dos_en)
+        dos, dos_en = discardZeros(dos, dos_en)
 
         # Wcut in meV
         if inp.Wcut != -1 && ((inp.Wcut) > dos_en[end] || (inp.Wcut) < dos_en[1])
@@ -94,15 +94,15 @@ function InputParser(inp::arguments, log_file::IOStream)
             #bndItp = [1000, 500]
             bndItp = inp.itpBounds
             en_range = minimum([abs(dos_en[1]), abs(dos_en[end])])
-            en_interval = [Wen[findfirst(Wen .> -en_range)], -bndItp[1], -bndItp[2], bndItp[2], bndItp[1],  Wen[findlast(Wen .< en_range)]]  
+            en_interval = [Wen[findfirst(Wen .> -en_range)], -bndItp[2], -bndItp[1], bndItp[1], bndItp[2],  Wen[findlast(Wen .< en_range)]]  
             #gridSpecs = [("step", 50), ("step", 5), ("step", 1), ("step", 5), ("step", 50)]
             gridSpecs = [("step", inp.itpStepSize[3]), ("step", inp.itpStepSize[2]), ("step", inp.itpStepSize[1]), ("step", inp.itpStepSize[2]), ("step", inp.itpStepSize[3])]
-                        
+                      
             # check if energy window < bndItp
             logBnd = (en_interval[1] .<= en_interval) .& (en_interval[end] .>= en_interval)
             en_interval = en_interval[logBnd]
             gridSpecs   = gridSpecs[append!(logBnd[2:3], [true], logBnd[4:5])]
-          
+
             # interpolate 
             dos_en, dos = interpolateDos(dos_en, dos, en_interval, gridSpecs)
             Weep = interpolateWeep(Wen, Weep, en_interval, gridSpecs)
@@ -119,20 +119,24 @@ function InputParser(inp::arguments, log_file::IOStream)
             Wen = nothing
 
             # Interpolation Dos
-            #bndItp = [1000, 500]
             bndItp = inp.itpBounds
-            en_range = minimum([abs(dos_en[1]), abs(dos_en[end])])
-            en_interval = [-en_range, -bndItp[1], -bndItp[2], bndItp[2], bndItp[1],  en_range]  
+            #en_range = minimum([abs(dos_en[1]), abs(dos_en[end])])
+            en_range = [dos_en[1], dos_en[end]]
+            en_interval = [en_range[1], -bndItp[2], -bndItp[1], bndItp[1], bndItp[2],  en_range[2]]  
             #gridSpecs = [("step", 50), ("step", 5), ("step", 1), ("step", 5), ("step", 50)] 
             gridSpecs = [("step", inp.itpStepSize[3]), ("step", inp.itpStepSize[2]), ("step", inp.itpStepSize[1]), ("step", inp.itpStepSize[2]), ("step", inp.itpStepSize[3])]
             
             # check if energy window < bndItp
-            logBnd = (en_interval[1] .<= en_interval) .& (en_interval[end] .>= en_interval)
+            logBnd = append!(en_interval[1:2] .< en_interval[2:3] , en_interval[4:5] .< en_interval[5:6])
+            #logBnd = (en_interval[1] .<= en_interval) .& (en_interval[end] .>= en_interval)
             en_interval = en_interval[logBnd]
             gridSpecs   = gridSpecs[append!(logBnd[2:3], [true], logBnd[4:5])]
           
             # interpolate 
             dos_en, dos = interpolateDos(dos_en, dos, en_interval, gridSpecs)
+
+            println(unique(dos_en))
+            error("a")
 
             # idx encut
             idxEncut = [findfirst(dos_en .> -inp.encut), findlast(dos_en .< inp.encut)]
@@ -172,27 +176,25 @@ function InputParser(inp::arguments, log_file::IOStream)
         calcMucME(inp, console, a2f, a2f_omega, log_file)
 
     elseif inp.muc_AD == -1 && inp.muc_ME == -1
-        if isnothing(ef) || ef == -1 || ef == 0
-            if inp.typEl != -1
-                calcMucs(inp, inp.typEl, a2f, a2f_omega)
-
-            elseif inp.efW == -1 || inp.efW == 0
-                printTextCentered("WARNING", console["partingLine"], file=log_file, newline="")
-                printTextCentered("Unable to calculate μ* from μ without the fermi-energy!", console["partingLine"], file=log_file, delimiter=" ", newline="")
-                printTextCentered("Consider shifting the dos-energies by ef and specifing a fermi-energy.", console["partingLine"], file=log_file, delimiter=" ", newline="")
-                printTextCentered("Using μ*_AD = 0.12 instead", console["partingLine"], file=log_file, delimiter=" ", newline="")
-                print(console["partingLine"] * "\n\n")
-                print(log_file, console["partingLine"] * "\n\n")
-
-                inp.muc_AD = 0.12
-                calcMucME(inp, console, a2f, a2f_omega, log_file)
-            else
-                inp.typEl = inp.efW
-                calcMucs(inp, inp.typEl, a2f, a2f_omega)
-            end
-        else
+        if inp.typEl != -1
+            calcMucs(inp, inp.typEl, a2f, a2f_omega)
+        
+        elseif ~(isnothing(ef) || ef == -1 || ef == 0)
             inp.typEl = ef
             calcMucs(inp, inp.typEl, a2f, a2f_omega)
+
+        elseif ~(inp.efW == -1 || inp.efW == 0)
+            inp.typEl = inp.efW
+            calcMucs(inp, inp.typEl, a2f, a2f_omega)
+
+        else
+            text = "Unable to calculate μ* from μ without a typical electron energy!"
+            text *= "\nConsider setting either typEl, ef or efW."
+            text *= "\nUsing μ*_AD = 0.12 instead"
+            printWarning(text, ex, log_file)
+
+            inp.muc_AD = 0.12
+            calcMucME(inp, console, a2f, a2f_omega, log_file)
         end
 
     elseif  inp.include_Weep == 0 && inp.muc_AD != -1

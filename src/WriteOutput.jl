@@ -491,9 +491,9 @@ function printTee(log_file, text)
 end
 
 """
-    printError(message, ex; file = "", consoleFlag = true)
+    printError(text, ex, log_file, errorLogger)
 
-print a formatted error message
+print a formatted error message to the console and log_file
 """
 function printError(text, ex, log_file, errorLogger)
 
@@ -512,15 +512,15 @@ end
 
 
 """
-    printWarning(message, ex; file = "", consoleFlag = true)
+    printWarning(text, ex, log_file)
 
-print a formatted error message
+print a formatted warning message to the console and log_file
 """
-function printWarning(text, ex)
+function printWarning(text, ex, log_file)
 
     printTee(log_file, "\n")
     @warn text exception = ex
-    printTee(log_file, "\n")
+    printTee(log_file, "For further information please refer to the CRASH file\n")
 
 end
 

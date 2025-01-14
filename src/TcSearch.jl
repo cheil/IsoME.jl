@@ -400,7 +400,7 @@ function findTc(inp, console, matval, ML_Tc, log_file)
 
     if inp.temps == [-1]    # Tc search mode
         # initial guess, Machine learning Tc           
-        itemp = round(ML_Tc)
+        itemp = maximum([1.0, round(ML_Tc)])
 
         # expansion of a + b*log(c-x) at x = 0, a=Delta(T2), b=1, c=Delta(T1) - use other function instead??
         m(x, p) = p[1] + log(p[3]) .- p[2] * x ./ p[3] .- p[2] * x .^ 2 / (2 * p[3]^2) .- p[2] * x .^ 3 / (3 * p[3]^3) .- p[2] * x .^ 4 / (4 * p[3]^4) .- p[2] * x .^ 5 / (5 * p[3]^5)
@@ -615,7 +615,6 @@ function EliashbergSolver(inp::arguments)
         Znorm0 = Vector{Float64}()
         EfMu = Vector{Float64}()
         try
-            error("a)2")
             Tc, temps, Znorm0, Delta0, Shift0, EfMu = findTc(inp, console, matval, ML_Tc, log_file)
         catch ex
             # crash file
@@ -628,14 +627,13 @@ function EliashbergSolver(inp::arguments)
 
         ### write Tc to console
         try
-            error("sa")
             printSummary(inp, Tc, log_file)
         catch ex
             # crash file
             writeToCrashFile(inp)
 
             # console / log file
-            printWarning("Error while printing the summary.", ex)
+            printWarning("Error while printing the summary.", ex, log_file)
         end
 
         ### save inputs
@@ -646,7 +644,7 @@ function EliashbergSolver(inp::arguments)
             writeToCrashFile(inp)
  
             # console / log file
-            printWarning("Error while creating the Info file.", ex)
+            printWarning("Error while creating the Info file.", ex, log_file)
         end
 
         ### create Summary file
@@ -666,7 +664,7 @@ function EliashbergSolver(inp::arguments)
             writeToCrashFile(inp)
 
             # console / log file
-            printWarning("Error while creating the Summary.dat file.", ex)
+            printWarning("Error while creating the Summary.dat file.", ex, log_file)
         end
 
         ### figures
@@ -678,7 +676,7 @@ function EliashbergSolver(inp::arguments)
                 writeToCrashFile(inp)
 
                 # console / log file
-                printWarning("Error while plotting. Skipping plots.", ex)
+                printWarning("Error while plotting. Skipping plots.", ex, log_file)
             end
         end
     end

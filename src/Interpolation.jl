@@ -11,33 +11,16 @@
 
 """
 
-########### Interpolate Weep ###########
+
+"""
+    interpolateDos(epsilon, dos, interval, grid=[("", 1000)])
+
+Linear interpolation of Weep. 
+Piecewise interpolation between interval[i] and interval[i+1] 
+with grid specifications grid[i].
+In grid specify either the step size or the number of grid points.
+"""
 function interpolateWeep(epsilon, Weep, interval, grid=[("", 1000)])
-    """    
-    Interpolate Weep matrix 
-
-    -------------------------------------------------------------------
-    Input:
-        epsilon:    energy grid
-        Weep:       coulomb interaction W(e,e')
-        interval:   width energy grid, 
-                    - [interval[1], interval[2]] --> uniform grid
-                    - interval[1],...,interval[n] --> non-uniform grid
-        grid:       specifications if grid non-uniform
-        
-
-    --------------------------------------------------------------------
-    Output:
-        epsilon:    energies on integration grid
-        dos:        dos at epsilon
-        Weep:       Coulomb interaction W(e,e')
-    
-    --------------------------------------------------------------------
-    Comments:
-        - 
-    --------------------------------------------------------------------
-    """
-
 
     ### check input
     if length(interval)-1 != length(grid)
@@ -70,34 +53,15 @@ function interpolateWeep(epsilon, Weep, interval, grid=[("", 1000)])
 end
 
 
-########### Interpolate Dos ###########
+"""
+    interpolateDos(epsilon, dos, interval, grid=[("", 1000)])
+
+Linear interpolation of dos and energies. 
+Piecewise interpolation between interval[i] and interval[i+1] 
+with grid specifications grid[i].
+In grid specify either the step size or the number of grid points.
+"""
 function interpolateDos(epsilon, dos, interval, grid=[("", 1000)])
-    """
-    Read in Weep file to solve the isotropic Migdal-Eliashberg equations
-
-    -------------------------------------------------------------------
-    Input:
-        epsilon:    energy grid 
-        dos:        dos at epsilon
-        interval:   new energy grid, [interval[1], interval[2]]
-        intFlag:    specify integration method
-                        - 0: Gauss-Quadrature
-                        - 1: Simpson-Rule
-        Nint:      Number of grid points considered in integration scheme
-        
-
-    --------------------------------------------------------------------
-    Output:
-        epsilon:    energies on integration grid
-        dos:        dos at epsilon
-        roots:      roots used in Gauss-Quadrature 
-        weights:    weights used in Gauss-Quadrature
-    
-    --------------------------------------------------------------------
-    Comments:
-        -
-    --------------------------------------------------------------------
-    """
 
     ### check input
     if length(interval) - 1 != length(grid)

@@ -91,21 +91,14 @@ function InputParser(inp::arguments, log_file::IOStream)
             Weep, Wen, inp.efW, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, outdir = inp.outdir, logFile = log_file)
 
             ### Interpolate Weep & Dos onto non-uniform grid
-            #bndItp = [1000, 500]
+            # Interpolation Dos
             bndItp = inp.itpBounds
-            en_range = minimum([abs(dos_en[1]), abs(dos_en[end])])
-            en_interval = [Wen[findfirst(Wen .> -en_range)], -bndItp[2], -bndItp[1], bndItp[1], bndItp[2],  Wen[findlast(Wen .< en_range)]]  
-            #gridSpecs = [("step", 50), ("step", 5), ("step", 1), ("step", 5), ("step", 50)]
-            gridSpecs = [("step", inp.itpStepSize[3]), ("step", inp.itpStepSize[2]), ("step", inp.itpStepSize[1]), ("step", inp.itpStepSize[2]), ("step", inp.itpStepSize[3])]
-                      
-            # check if energy window < bndItp
-            logBnd = (en_interval[1] .<= en_interval) .& (en_interval[end] .>= en_interval)
-            en_interval = en_interval[logBnd]
-            gridSpecs   = gridSpecs[append!(logBnd[2:3], [true], logBnd[4:5])]
+            #en_range = minimum([abs(dos_en[1]), abs(dos_en[end])])
+            en_range = [dos_en[1], dos_en[end]]
 
             # interpolate 
-            dos_en, dos = interpolateDos(dos_en, dos, en_interval, gridSpecs)
-            Weep = interpolateWeep(Wen, Weep, en_interval, gridSpecs)
+            dos_en, dos = interpolateDos(dos_en, dos, en_range, bndItp, inp.itpStepSize)
+            Weep = interpolateWeep(epsilon, Weep,  en_range, bndItp, step)
 
             # idx encut
             idxEncut = [findfirst(dos_en .> -inp.encut), findlast(dos_en .< inp.encut)]
@@ -120,24 +113,12 @@ function InputParser(inp::arguments, log_file::IOStream)
 
             # Interpolation Dos
             bndItp = inp.itpBounds
-            #en_range = minimum([abs(dos_en[1]), abs(dos_en[end])])
             en_range = [dos_en[1], dos_en[end]]
-            en_interval = [en_range[1], -bndItp[2], -bndItp[1], bndItp[1], bndItp[2],  en_range[2]]  
-            #gridSpecs = [("step", 50), ("step", 5), ("step", 1), ("step", 5), ("step", 50)] 
-            gridSpecs = [("step", inp.itpStepSize[3]), ("step", inp.itpStepSize[2]), ("step", inp.itpStepSize[1]), ("step", inp.itpStepSize[2]), ("step", inp.itpStepSize[3])]
             
-            # check if energy window < bndItp
-            logBnd = append!(en_interval[1:2] .< en_interval[2:3] , en_interval[4:5] .< en_interval[5:6])
-            #logBnd = (en_interval[1] .<= en_interval) .& (en_interval[end] .>= en_interval)
-            en_interval = en_interval[logBnd]
-            gridSpecs   = gridSpecs[append!(logBnd[2:3], [true], logBnd[4:5])]
-          
             # interpolate 
-            dos_en, dos = interpolateDos(dos_en, dos, en_interval, gridSpecs)
+            dos_en, dos = interpolateDos(dos_en, dos, en_range, bndItp, inp.itpStepSize)
 
-            println(unique(dos_en))
-            error("a")
-
+      
             # idx encut
             idxEncut = [findfirst(dos_en .> -inp.encut), findlast(dos_en .< inp.encut)]
         end

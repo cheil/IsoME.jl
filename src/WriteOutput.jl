@@ -507,7 +507,6 @@ function printError(text, ex, log_file, errorLogger)
 
     print("\n")
     rethrow(ex)
-
 end
 
 
@@ -519,7 +518,11 @@ print a formatted warning message to the console and log_file
 function printWarning(text, ex, log_file)
 
     printTee(log_file, "\n")
-    @warn text exception = ex
+    if isempty(ex)
+        @warn text
+    else
+        @warn text exception = ex
+    end
     printTee(log_file, "For further information please refer to the CRASH file\n")
 
 end

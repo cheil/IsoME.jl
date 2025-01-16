@@ -166,7 +166,7 @@ function InputParser(inp::arguments, log_file::IOStream)
     if inp.mu == -1 && inp.muc_ME == -1 && inp.muc_AD == -1
         # defaut value
         inp.muc_AD = 0.12
-        calcMucME(inp, console, a2f, a2f_omega, log_file)
+        calcMucME(inp, a2f, a2f_omega, log_file)
 
     elseif inp.muc_AD == -1 && inp.muc_ME == -1
         if inp.typEl != -1
@@ -182,16 +182,16 @@ function InputParser(inp::arguments, log_file::IOStream)
 
         else
             text = "Unable to calculate μ* from μ without a typical electron energy!"
-            text *= "\nConsider setting either typEl, ef or efW."
+            text *= "\nConsider setting typEl, ef or efW manually."
             text *= "\nUsing μ*_AD = 0.12 instead"
-            printWarning(text, ex, log_file)
+            printWarning(text, "", log_file)
 
             inp.muc_AD = 0.12
-            calcMucME(inp, console, a2f, a2f_omega, log_file)
+            calcMucME(inp, a2f, a2f_omega, log_file)
         end
 
     elseif  inp.include_Weep == 0 && inp.muc_AD != -1
-        calcMucME(inp, console, a2f, a2f_omega, log_file)
+        calcMucME(inp, a2f, a2f_omega, log_file)
 
     elseif  inp.include_Weep == 0 && inp.muc_ME != -1
         calcMucAD(inp, a2f, a2f_omega)
@@ -240,7 +240,7 @@ function createDirectory(inp::arguments, strIsoME::String)
     try
         mkpath(inp.outdir)   # mkpath
     catch ex
-        error("Couldn't write into " * inp.outdir * "! Outdir may not writable or an invalid path.\n\n"*"Exception: "*ex.msg)
+        error("Couldn't write into " * inp.outdir * "! Outdir may not writable or an invalid path.\n\n")
     end
 
     # open log file
@@ -563,24 +563,9 @@ function extractFermiEnergy(header, unit, file=nothing; outdir = "./", logFile =
         end
 
     catch ex
-        # log file
-        if ~isnothing(logFile)
-            print(logFile, "\nERROR while reading the fermi energy from the "*file*"-file:")
-            showerror(logFile, ex)
-            print(logFile, "\n\nCosnider setting the fermi-energy manually (ef or efW) or check the header of the "*file*"-file")
-            print(logFile, "\n\nFor further information please refer to the CRASH file\n")
-            close(logFile)
-        end
-
-        # crash file
-        crashFile = open(outdir * "CRASH", "a")
-        print(crashFile, "ERROR while reading the fermi energy from the "*file*"-file:\n")
-        print(crashFile, current_exceptions())
-        print(crashFile, "\n\nCosnider setting the fermi-energy manually (ef or efW) or check the header of the "*file*"-file\n\n")
-        close(crashFile)
-
-        # Stop
-        rethrow(ex)
+        text = "Error while reading the fermi energy from the " * file * "-file."
+        text *= "\nConsider setting the fermi-energy manually (ef or efW) or check the header of the " * file * "-file\n\n"
+        error(text)
     end
 
     return ef
@@ -717,20 +702,16 @@ Calculate μ*_ME from μ*_AD using formula as in
 Pellegrini, Ab initio methods for superconductivity 
 DOI: 10.1038/s42254-024-00738-9
 """
-function calcMucME(inp, console, a2f, a2f_omega, log_file)
+function calcMucME(inp, a2f, a2f_omega, log_file)
     inp.muc_ME = inp.muc_AD / (1 + inp.muc_AD * log(maximum(a2f_omega[a2f.>0.01]) / inp.omega_c))
 
     if inp.muc_ME < 0 || inp.muc_ME > 0.8 || inp.muc_ME > 3 * inp.muc_AD
         inp.muc_ME = minimum([3 * inp.muc_AD, 0.8])
 
-        #print(@yellow "WARNING: ")
-        #print("Couldn't calculate a reasonable μ*_ME from μ*_AD.\n Using μ*_ME = minimum(3*μ*_AD, 0.8) instead.\n Consider setting it manually! \n\n")
-        printTextCentered("WARNING", console["partingLine"], file = log_file, newline="")
-        printTextCentered("Couldn't calculate a reasonable μ*_ME from μ*_AD.", console["partingLine"], file = log_file, delimiter=" ", newline="")
-        printTextCentered("Using μ*_ME = minimum(3*μ*_AD, 0.8) instead.", console["partingLine"], file = log_file, delimiter=" ", newline="")
-        printTextCentered("Consider setting it manually!", console["partingLine"], file = log_file, delimiter=" ", newline="")
-        #print(console["partingLine"] * "\n\n")
-        print(log_file, console["partingLine"] * "\n\n")
+        text = "Couldn't calculate a reasonable μ*_ME from μ*_AD."
+        text *= "\nUsing μ*_ME = minimum(3*μ*_AD, 0.8) instead."
+        text *= "\nConsider setting it manually!"
+        printWarning(text, "", log_file)
     end
 end
 
@@ -763,11 +744,9 @@ function calcMucs(inp, ef, a2f, a2f_omega)
     if inp.omega_c > ef * exp(3 / (4 * inp.mu))
         inp.omega_c = ef * exp(3 / (4 * inp.mu))
 
-        printTextCentered("WARNING", console["partingLine"], file = log_file, newline="")
-        printTextCentered("Matsubara cutoff would lead to μ*_ME > 4*μ.", console["partingLine"], file = log_file, delimiter=" ", newline="")
-        printTextCentered("omega_c has been set to a smaller value.", console["partingLine"], file = log_file, delimiter=" ", newline="")
-        print(console["partingLine"] * "\n\n")
-        print(log_file, console["partingLine"] * "\n\n")
+        text = "Matsubara cutoff would lead to μ*_ME > 4*μ."
+        text *= "\nomega_c has been set to a smaller value."
+        printWarning(text, "", log_file)
     end
 
     inp.muc_AD = inp.mu / (1 + inp.mu * log(ef / maximum(a2f_omega[a2f.>0.01])))

@@ -59,6 +59,7 @@ function interpolateDos(epsilon, dos, interval) #en_range, bndItp, step)
     epsilon = Vector{Float64}()
     for (start, stop, step) in interval
         append!(epsilon, uniformGrid(start, stop, step))
+        #append!(epsilon, nonUniformGrid(start, stop; density_factor=1.05, min_step=step, max_step=50*step))
     end
     epsilon = unique(epsilon)
 
@@ -83,18 +84,22 @@ end
 
 
 """
-function nonUniformGrid(start, stop; density_factor=1.01, min_step=1, max_step=50)
+function nonUniformGrid(start, stop; density_factor=1.05, min_step=1, max_step=50)
 
 # Initialize the grid
-grid = [start]
+grid = Vector{Float64}([start])
 current_point = start
 step = min_step  # Start with the minimum step size
 
 # Generate the grid with increasing spacing
-while current_point < stop
-    step = min(step * density_factor, max_step)  # Increment step size but cap it at max_step
+while abs(current_point) < abs(stop)
+    if step <0
+        step = max(step * density_factor, max_step)  # Increment step size but cap it at max_step
+    else
+        step = min(step * density_factor, max_step)  # Increment step size but cap it at max_step
+    end
     current_point += step
-    if current_point <= stop
+    if abs(current_point) <= abs(stop)
         push!(grid, current_point)
     end
 end
@@ -104,7 +109,11 @@ if grid[end] < stop
     push!(grid, stop)
 end
 
-return grid
+if step < 0
+    return reverse(round.(grid))
+else
+    return round.(grid)
+end
 
 end
 

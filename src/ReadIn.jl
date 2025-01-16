@@ -92,19 +92,21 @@ function InputParser(inp::arguments, log_file::IOStream)
 
             ### Interpolate Weep & Dos onto non-uniform grid
             # Interpolation Dos
-            en_range = [Wen[findfirst(Wen .> dos_en[1])],  Wen[findlast(Wen .< dos_en[end])]]
-            bndItp = inp.itpBounds
-            lowerBound = maximum([-bndItp, en_range[1]])
-            upperBound = minimum([bndItp, en_range[2]])
+            bndItp = abs.(inp.itpBounds)
+            steps = append!(-reverse(inp.itpStepSize), inp.itpStepSize)
+            en_range = [Wen[findfirst(Wen .> dos_en[1])], -bndItp[2], -bndItp[1], 0, 0, bndItp[1], bndItp[2],  Wen[findlast(Wen .< dos_en[end])]]
+            lenRange = length(en_range)
+            [(en_range[i] > en_range[i-1]) || (en_range[i]=en_range[i-1]) for i in 2:3]
+            [(en_range[i] < en_range[i+1]) || (en_range[i]=en_range[i+1]) for i in lenRange-1:-1:lenRange-2]
 
             # (start, stop, step)
-            en_interval = [(lowerBound, en_range[1], -inp.itpStepSize[2]), (lowerBound, upperBound, inp.itpStepSize[1]), (upperBound, en_range[2], inp.itpStepSize[2])]
+            en_interval = tuple.(en_range[2:end-1], en_range[vcat(1:3,6:8)], steps)
 
             # interpolate 
             dos_en, dos = interpolateDos(dos_en, dos, en_interval)
             Weep = interpolateWeep(Wen, Weep, en_interval)
 
-            # idx encut
+            # idx 
             idxEncut = [findfirst(dos_en .> -inp.encut), findlast(dos_en .< inp.encut)]
 
             # mu
@@ -116,17 +118,19 @@ function InputParser(inp::arguments, log_file::IOStream)
             Wen = nothing
 
             # Interpolation Dos
-            bndItp = inp.itpBounds
-            en_range = [dos_en[1], dos_en[end]]
-            lowerBound = maximum([-bndItp, en_range[1]])
-            upperBound = minimum([bndItp, en_range[2]])
+            bndItp = abs.(inp.itpBounds)
+            steps = append!(-reverse(inp.itpStepSize), inp.itpStepSize)
+            en_range = [dos_en[1], -bndItp[2], -bndItp[1], 0, 0, bndItp[1], bndItp[2],  dos_en[end]]
+            lenRange = length(en_range)
+            [(en_range[i] > en_range[i-1]) || (en_range[i]=en_range[i-1]) for i in 2:3]
+            [(en_range[i] < en_range[i+1]) || (en_range[i]=en_range[i+1]) for i in lenRange-1:-1:lenRange-2]
 
             # (start, stop, step)
-            en_interval = [(lowerBound, en_range[1], -inp.itpStepSize[2]), (lowerBound, upperBound, inp.itpStepSize[1]), (upperBound, en_range[2], inp.itpStepSize[2])]
+            en_interval = tuple.(en_range[2:end-1], en_range[vcat(1:3,6:8)], steps)
 
             # interpolate 
             dos_en, dos = interpolateDos(dos_en, dos, en_interval)
-
+println(dos_en)
             # idx encut
             idxEncut = [findfirst(dos_en .> -inp.encut), findlast(dos_en .< inp.encut)]
         end

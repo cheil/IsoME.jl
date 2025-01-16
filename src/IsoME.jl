@@ -69,7 +69,7 @@ const kb = 0.08617333262; # meV/K
     
     # interpolation
     itpStepSize::Vector{Int64}  = [1, 5, 50]
-    itpBounds::Vector{Int64}  = [50, 200]
+    itpBounds::Vector{Float64}  = [50, 200]
 
     # mode
     cDOS_flag::Int64    = 1

@@ -130,7 +130,7 @@ function InputParser(inp::arguments, log_file::IOStream)
 
             # interpolate 
             dos_en, dos = interpolateDos(dos_en, dos, en_interval)
-println(dos_en)
+
             # idx encut
             idxEncut = [findfirst(dos_en .> -inp.encut), findlast(dos_en .< inp.encut)]
         end

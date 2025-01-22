@@ -78,37 +78,31 @@ function InputParser(inp::arguments, log_file::IOStream)
         # remove zeros at begining/end of dos
         dos, dos_en = discardZeros(dos, dos_en)
 
+        ### Interpolation ###
+        # Interpolation Object DoS
+        epsilonItp = range(dos_en[1], dos_en[end], length(dos_en))       # interpolation vector must be of the form a:b
+        itpDos = scale(interpolate(dos, BSpline(Cubic())), epsilonItp) 
+
         # encut in meV
-        if inp.encut != -1 
-            if (inp.encut > dos_en[end]) || (-inp.encut < dos_en[1])
-                text = "Energy cutoff exceeds range of DOS!"
-                text *= "\nUsing the full DOS."
-                printWarning(text, log_file)
-            end
-            logWcut = (dos_en .> (-inp.encut)) .& (dos_en .< (inp.encut))
-            dos = dos[logWcut]
-            dos_en = dos_en[logWcut]
+        if (inp.encut > dos_en[end]) || (-inp.encut < dos_en[1])
+            inp.encut = -1
+
+            text = "Energy cutoff exceeds range of DOS!"
+            text *= "\nUsing the full DOS."
+            printWarning(text, log_file)
         end
 
         if inp.include_Weep == 1 || (isfile(inp.Weep_file) && inp.mu == -1)
             # read Weep + energy grid points
             Weep, Wen, inp.efW, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, outdir = inp.outdir, logFile = log_file)
 
-            ### Interpolate Weep & Dos onto non-uniform grid
-            # Interpolation Dos
-            bndItp = abs.(inp.itpBounds)
-            steps = append!(-reverse(inp.itpStepSize), inp.itpStepSize)
-            en_range = [Wen[findfirst(Wen .> dos_en[1])], -bndItp[2], -bndItp[1], 0, 0, bndItp[1], bndItp[2],  Wen[findlast(Wen .< dos_en[end])]]
-            lenRange = length(en_range)
-            [(en_range[i] > en_range[i-1]) || (en_range[i]=en_range[i-1]) for i in 2:3]
-            [(en_range[i] < en_range[i+1]) || (en_range[i]=en_range[i+1]) for i in lenRange-1:-1:lenRange-2]
-
-            # (start, stop, step)
-            en_interval = tuple.(en_range[2:end-1], en_range[vcat(1:3,6:8)], steps)
+            ### Interpolation ###
+            # Interpolation Object Weep
+            epsilonItp = range(Wen[1], Wen[end], length(Wen))       # interpolation vector must be of the form a:b
+            itpWeep = scale(interpolate(Weep, BSpline(Constant())), (epsilonItp, epsilonItp)) 
 
             # interpolate 
-            dos_en, dos = interpolateDos(dos_en, dos, en_interval)
-            Weep = interpolateWeep(Wen, Weep, en_interval)
+            dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut, itpWeep = itpWeep, Wen = Wen)
 
             # idx 
             idxShiftcut = [findfirst(dos_en .> -inp.shiftcut), findlast(dos_en .< inp.shiftcut)]
@@ -117,23 +111,8 @@ function InputParser(inp::arguments, log_file::IOStream)
             (inp.mu != -1) || (idxWef = findmin(abs.(dos_en))[2]; inp.mu = dos[idxWef].*Weep[idxWef,idxWef])
 
         else
-            # no Weep
-            Weep = nothing
-            Wen = nothing
-
-            # Interpolation Dos
-            bndItp = abs.(inp.itpBounds)
-            steps = append!(-reverse(inp.itpStepSize), inp.itpStepSize)
-            en_range = [dos_en[1], -bndItp[2], -bndItp[1], 0, 0, bndItp[1], bndItp[2],  dos_en[end]]
-            lenRange = length(en_range)
-            [(en_range[i] > en_range[i-1]) || (en_range[i]=en_range[i-1]) for i in 2:3]
-            [(en_range[i] < en_range[i+1]) || (en_range[i]=en_range[i+1]) for i in lenRange-1:-1:lenRange-2]
-
-            # (start, stop, step)
-            en_interval = tuple.(en_range[2:end-1], en_range[vcat(1:3,6:8)], steps)
-
             # interpolate 
-            dos_en, dos = interpolateDos(dos_en, dos, en_interval)
+            dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut)
 
             # idx shiftcut
             idxShiftcut = [findfirst(dos_en .> -inp.shiftcut), findlast(dos_en .< inp.shiftcut)]
@@ -145,9 +124,8 @@ function InputParser(inp::arguments, log_file::IOStream)
         ef = nothing
         idxShiftcut = -1
         Weep = nothing
-        Wen = nothing
     end
-
+    
     if inp.include_Weep == 0 && inp.cDOS_flag == 1
         # default values in case no dos-file is given
         ndos = -1

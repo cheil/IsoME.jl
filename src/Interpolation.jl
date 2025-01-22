@@ -48,7 +48,7 @@ Piecewise interpolation between interval[i] and interval[i+1]
 with grid specifications grid[i].
 In grid specify either the step size or the number of grid points.
 """
-function interpolateDos(epsilon, dos, interval) #en_range, bndItp, step)    
+function interpolateDos(epsilon, dos, interval)  
     
     ### Interpolation ###
     # Interpolation Object DoS

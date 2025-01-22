@@ -70,7 +70,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
                         sparse_sampling_flag::Int64, lambdai::Vector{Float64}, dosef::Float64, ndos::Int64, 
                         dos_en::Vector{Float64}, dos::Vector{Float64}, Weep::Matrix{Float64}, znormip::Vector{Float64}, 
                         phiphip::Vector{Float64}, phicip::Vector{Float64}, shiftip::Vector{Float64}, wgCoulomb::Float64, 
-                        muintr::Float64, idxEncut::Vector{Int64})
+                        muintr::Float64, idxShiftcut::Vector{Int64})
     """
     Evaluate the Isotropic Eliashberg equations for
         - variable Dos
@@ -132,12 +132,12 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     # ph kernel, NxM
     phkernel = dos .* theta_inv .* (phiphip' .+ phicip)
     # shift kernel, NxM
-    shkernel = dos[idxEncut[1]:idxEncut[2]] .* theta_inv[idxEncut[1]:idxEncut[2],:] .* (dos_en[idxEncut[1]:idxEncut[2]] .- muintr .+ shiftip')
+    shkernel = dos[idxShiftcut[1]:idxShiftcut[2]] .* theta_inv[idxShiftcut[1]:idxShiftcut[2],:] .* (dos_en[idxShiftcut[1]:idxShiftcut[2]] .- muintr .+ shiftip')
 
     # integrate over energy, gives vector of matsubara summands, Mx1
     ziwp = trapz(dos_en, zkernel')
     phiwp = trapz(dos_en, phkernel')
-    shiwp = trapz(dos_en[idxEncut[1]:idxEncut[2]], shkernel')
+    shiwp = trapz(dos_en[idxShiftcut[1]:idxShiftcut[2]], shkernel')
 
     for iw in ind_mat_freq # loop over omega
         # Eq. (4.4) in Picket, PRB 26, 1186 (1982)
@@ -296,7 +296,7 @@ Evaluate the isotropic Eliashberg equations, variable dos, mu*
 function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_mat_freq::Vector{Int64}, 
                         sparse_sampling_flag::Int64, lambdai::Vector{Float64}, dos_en::Vector{Float64}, 
                         dos::Vector{Float64}, dosef::Float64, znormip::Vector{Float64}, deltaip::Vector{Float64}, 
-                        shiftip::Vector{Float64}, muc::Float64, muintr::Float64, wgCoulomb::Float64, idxEncut::Vector{Int64})
+                        shiftip::Vector{Float64}, muc::Float64, muintr::Float64, wgCoulomb::Float64, idxShiftcut::Vector{Int64})
     """
     Evaluate the Isotropic Eliashberg equations for
         - Variable Dos
@@ -342,11 +342,11 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     theta_inv = 1 ./ (znormip' .^ 2 .* (wsi' .^ 2 .+ deltaip' .^ 2) .+ (dos_en .- muintr .+ shiftip') .^ 2)
     zkernel = dos .* theta_inv .* wsi' .* znormip'
     dekernel = dos .* theta_inv .* deltaip' .* znormip'
-    shkernel = dos[idxEncut[1]:idxEncut[2]] .* theta_inv[idxEncut[1]:idxEncut[2],:] .* (dos_en[idxEncut[1]:idxEncut[2]] .- muintr .+ shiftip')
+    shkernel = dos[idxShiftcut[1]:idxShiftcut[2]] .* theta_inv[idxShiftcut[1]:idxShiftcut[2],:] .* (dos_en[idxShiftcut[1]:idxShiftcut[2]] .- muintr .+ shiftip')
 
     ziwp = trapz(dos_en, zkernel') 
     deiwp = trapz(dos_en, dekernel') 
-    shiwp = trapz(dos_en[idxEncut[1]:idxEncut[2]], shkernel') 
+    shiwp = trapz(dos_en[idxShiftcut[1]:idxShiftcut[2]], shkernel') 
 
 
     for iw in ind_mat_freq # loop over omega

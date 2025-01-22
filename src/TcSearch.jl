@@ -23,7 +23,7 @@ Solve the eliashberg eq. self-consistently for a fixed temperature
 """
 function solve_eliashberg(itemp, inp, console, matval, log_file)
     # destruct inputs
-    (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxEncut) = matval
+    (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxShiftcut) = matval
     (; cDOS_flag, include_Weep, omega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag, outdir, sparseSamplingTemp) = inp
 
     ### Matsubara frequencies ###
@@ -180,10 +180,10 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             if cDOS_flag == 0
                 ### mu update 
                 if mu_flag == 1 && i_it > 1
-                    muintr = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxEncut, outdir)
+                    muintr = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, outdir)
                 end
 
-                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb, muintr, idxEncut)
+                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb, muintr, idxShiftcut)
                 shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[4]
 
                 ### Constant DoS ###
@@ -226,10 +226,10 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             if cDOS_flag == 0
                 ### mu update
                 if mu_flag == 1 && i_it > 1
-                    muintr = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxEncut, outdir)
+                    muintr = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, outdir)
                 end
 
-                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, muintr, wgCoulomb, idxEncut)
+                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, muintr, wgCoulomb, idxShiftcut)
                 shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[3]
 
             elseif cDOS_flag == 1
@@ -614,7 +614,7 @@ function EliashbergSolver(inp::arguments)
             writeToCrashFile(inp)
 
             # console / log file
-            printWarning("Error while printing the summary.", ex, log_file)
+            printWarning("Error while printing the summary.", log_file, ex = ex)
         end
 
         ### save inputs
@@ -625,7 +625,7 @@ function EliashbergSolver(inp::arguments)
             writeToCrashFile(inp)
  
             # console / log file
-            printWarning("Error while creating the Info file.", ex, log_file)
+            printWarning("Error while creating the Info file.", log_file, ex = ex)
         end
 
         ### create Summary file
@@ -645,7 +645,7 @@ function EliashbergSolver(inp::arguments)
             writeToCrashFile(inp)
 
             # console / log file
-            printWarning("Error while creating the Summary.dat file.", ex, log_file)
+            printWarning("Error while creating the Summary.dat file.", log_file, ex = ex)
         end
 
         ### figures
@@ -657,7 +657,7 @@ function EliashbergSolver(inp::arguments)
                 writeToCrashFile(inp)
 
                 # console / log file
-                printWarning("Error while plotting. Skipping plots.", ex, log_file)
+                printWarning("Error while plotting. Skipping plots.", log_file, ex = ex)
             end
         end
     end

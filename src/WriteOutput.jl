@@ -444,12 +444,21 @@ function printFlagsAsText(inp, log_file)
     # cut off
     text *= " - Matsubara cutoff: "*string(inp.omega_c)*" meV\n"
 
-    # Wcut
+    # encut
     if inp.cDOS_flag == 0 
         if inp.encut == -1
             text *= " - encut: full dos\n"
         else
             text *= " - encut: "*string(inp.encut)*" meV\n"
+        end
+    end
+
+    # shiftcut
+    if inp.cDOS_flag == 0 
+        if inp.shiftcut == -1
+            text *= " - shiftcut: full dos\n"
+        else
+            text *= " - shiftcut: "*string(inp.shiftcut)*" meV\n"
         end
     end
     
@@ -514,15 +523,16 @@ end
 
 print a formatted warning message to the console and log_file
 """
-function printWarning(text, ex, log_file)
+function printWarning(text, log_file; ex = nothing)
 
     printTee(log_file, "\n")
-    if isempty(ex)
+    if isnothing(ex)
         @warn text
+        printTee(log_file, "\n")
     else
         @warn text exception = ex
+        printTee(log_file, "For further information please refer to the CRASH file\n")
     end
-    printTee(log_file, "For further information please refer to the CRASH file\n")
 
 end
 

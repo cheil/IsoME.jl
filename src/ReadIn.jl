@@ -78,13 +78,17 @@ function InputParser(inp::arguments, log_file::IOStream)
         # remove zeros at begining/end of dos
         dos, dos_en = discardZeros(dos, dos_en)
 
-        # Wcut in meV
-        if inp.Wcut != -1 && ((inp.Wcut) > dos_en[end] || (inp.Wcut) < dos_en[1])
-            logWcut = (dos_en .> (inp.Wcut)) .& (dos_en .< (inp.Wcut))
+        # encut in meV
+        if inp.encut != -1 
+            if (inp.encut > dos_en[end]) || (-inp.encut < dos_en[1])
+                text = "Energy cutoff exceeds range of DOS!"
+                text *= "\nUsing the full DOS."
+                printWarning(text, log_file)
+            end
+            logWcut = (dos_en .> (-inp.encut)) .& (dos_en .< (inp.encut))
             dos = dos[logWcut]
             dos_en = dos_en[logWcut]
         end
-
 
         if inp.include_Weep == 1 || (isfile(inp.Weep_file) && inp.mu == -1)
             # read Weep + energy grid points
@@ -107,7 +111,7 @@ function InputParser(inp::arguments, log_file::IOStream)
             Weep = interpolateWeep(Wen, Weep, en_interval)
 
             # idx 
-            idxEncut = [findfirst(dos_en .> -inp.encut), findlast(dos_en .< inp.encut)]
+            idxShiftcut = [findfirst(dos_en .> -inp.shiftcut), findlast(dos_en .< inp.shiftcut)]
 
             # mu
             (inp.mu != -1) || (idxWef = findmin(abs.(dos_en))[2]; inp.mu = dos[idxWef].*Weep[idxWef,idxWef])
@@ -131,19 +135,18 @@ function InputParser(inp::arguments, log_file::IOStream)
             # interpolate 
             dos_en, dos = interpolateDos(dos_en, dos, en_interval)
 
-            # idx encut
-            idxEncut = [findfirst(dos_en .> -inp.encut), findlast(dos_en .< inp.encut)]
+            # idx shiftcut
+            idxShiftcut = [findfirst(dos_en .> -inp.shiftcut), findlast(dos_en .< inp.shiftcut)]
         end
     else
         # default values
         dos = []
         dos_en = []
         ef = nothing
-        idxEncut = -1
+        idxShiftcut = -1
         Weep = nothing
         Wen = nothing
     end
-
 
     if inp.include_Weep == 0 && inp.cDOS_flag == 1
         # default values in case no dos-file is given
@@ -184,7 +187,7 @@ function InputParser(inp::arguments, log_file::IOStream)
             text = "Unable to calculate μ* from μ without a typical electron energy!"
             text *= "\nConsider setting typEl, ef or efW manually."
             text *= "\nUsing μ*_AD = 0.12 instead"
-            printWarning(text, "", log_file)
+            printWarning(text, log_file)
 
             inp.muc_AD = 0.12
             calcMucME(inp, a2f, a2f_omega, log_file)
@@ -210,7 +213,7 @@ function InputParser(inp::arguments, log_file::IOStream)
     
 
     # material specific values
-    matval = (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxEncut)
+    matval = (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxShiftcut)
 
     return inp, console, matval, ML_Tc
 end
@@ -711,7 +714,7 @@ function calcMucME(inp, a2f, a2f_omega, log_file)
         text = "Couldn't calculate a reasonable μ*_ME from μ*_AD."
         text *= "\nUsing μ*_ME = minimum(3*μ*_AD, 0.8) instead."
         text *= "\nConsider setting it manually!"
-        printWarning(text, "", log_file)
+        printWarning(text, log_file)
     end
 end
 
@@ -746,7 +749,7 @@ function calcMucs(inp, ef, a2f, a2f_omega)
 
         text = "Matsubara cutoff would lead to μ*_ME > 4*μ."
         text *= "\nomega_c has been set to a smaller value."
-        printWarning(text, "", log_file)
+        printWarning(text, log_file)
     end
 
     inp.muc_AD = inp.mu / (1 + inp.mu * log(ef / maximum(a2f_omega[a2f.>0.01])))

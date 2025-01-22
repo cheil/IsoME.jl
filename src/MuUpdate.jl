@@ -77,20 +77,20 @@ Routine to update chemical potential s.t. the number of electrons stays fixed
 The routine uses the bisection method to find a value for the chemical potential
 where the amount of electrons in the SC state is equal to the normal state
 """
-function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxEncut, outdir)
+function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, outdir)
 
     # delta as row vector, needed if no weep
     if size(deltaip, 2) == 1
         deltaip = deltaip'
     else
-        deltaip = deltaip[idxEncut[1]:idxEncut[2],:]
+        deltaip = deltaip[idxShiftcut[1]:idxShiftcut[2],:]
     end
 
     ### Calculate N_e in the non-SC state
-    Ne_nsc = trapz(dos_en[idxEncut[1]:idxEncut[2]], 2 .* fermiFcn(dos_en[idxEncut[1]:idxEncut[2]], 0.0, itemp) .* dos[idxEncut[1]:idxEncut[2]])   
+    Ne_nsc = trapz(dos_en[idxShiftcut[1]:idxShiftcut[2]], 2 .* fermiFcn(dos_en[idxShiftcut[1]:idxShiftcut[2]], 0.0, itemp) .* dos[idxShiftcut[1]:idxShiftcut[2]])   
 
     # call calc_Ne_Sc with first argument unspecified
-    fmu(x) = calc_Ne_Sc(x, Ne_nsc, itemp, wsi, dos_en[idxEncut[1]:idxEncut[2]], dos[idxEncut[1]:idxEncut[2]], znormip, deltaip, shiftip)  
+    fmu(x) = calc_Ne_Sc(x, Ne_nsc, itemp, wsi, dos_en[idxShiftcut[1]:idxShiftcut[2]], dos[idxShiftcut[1]:idxShiftcut[2]], znormip, deltaip, shiftip)  
 
     ### starting values for mu
     mu0 = -100

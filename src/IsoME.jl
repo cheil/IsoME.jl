@@ -61,8 +61,8 @@ const kb = 0.08617333262; # meV/K
     conv_thr::Float64       = 1e-4
     minGap::Float64         = 0.1
     N_it::Int64             = 5000   
-    Wcut::Float64           = -1        # outer cutoff energies
-    encut::Float64          = 2000      # cutoff shift & Ne
+    encut::Float64           = -1        # outer cutoff energies
+    shiftcut::Float64          = 2000      # cutoff shift & Ne
     sparseSamplingTemp::Float64 = 5  
     typEl::Float64          = -1 
     

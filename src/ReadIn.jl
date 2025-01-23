@@ -70,7 +70,7 @@ function InputParser(inp::arguments, log_file::IOStream)
 
 
     ########## Dos and Weep ##########
-    if ~isempty(inp.dos_file) 
+    if isfile(inp.dos_file)     # ~isempty was wrong
         # read dos
         dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.ef, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos, outdir = inp.outdir, logFile = log_file)
         inp.ef = ef
@@ -84,15 +84,12 @@ function InputParser(inp::arguments, log_file::IOStream)
         itpDos = scale(interpolate(dos, BSpline(Cubic())), epsilonItp) 
 
         # encut in meV
-        if (inp.encut > dos_en[end]) || (-inp.encut < dos_en[1])
-            inp.encut = -1
-
+        if (inp.encut > dos_en[end]) || (-inp.encut < dos_en[1])    # DO not set inp.encut=-1 if it exceeds the interval
             text = "Energy cutoff exceeds range of DOS!"
-            text *= "\nUsing the full DOS."
             printWarning(text, log_file)
         end
 
-        if inp.include_Weep == 1 || (isfile(inp.Weep_file) && inp.mu == -1)
+        if inp.include_Weep == 1 || ((isfile(inp.Weep_file) && (isempty(inp.Wen_file) || isfile(inp.Wen_file))) && inp.mu == -1)  # if Wen is given Wen must exist as well
             # read Weep + energy grid points
             Weep, Wen, inp.efW, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, outdir = inp.outdir, logFile = log_file)
 
@@ -104,19 +101,17 @@ function InputParser(inp::arguments, log_file::IOStream)
             # interpolate 
             dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut, itpWeep = itpWeep, Wen = Wen)
 
-            # idx 
-            idxShiftcut = [findfirst(dos_en .> -inp.shiftcut), findlast(dos_en .< inp.shiftcut)]
-
             # mu
             (inp.mu != -1) || (idxWef = findmin(abs.(dos_en))[2]; inp.mu = dos[idxWef].*Weep[idxWef,idxWef])
 
         else
             # interpolate 
             dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut)
-
-            # idx shiftcut
-            idxShiftcut = [findfirst(dos_en .> -inp.shiftcut), findlast(dos_en .< inp.shiftcut)]
         end
+
+        # idx 
+        idxShiftcut = [findfirst(dos_en .> -inp.shiftcut), findlast(dos_en .< inp.shiftcut)]
+
     else
         # default values
         dos = []
@@ -125,7 +120,7 @@ function InputParser(inp::arguments, log_file::IOStream)
         idxShiftcut = -1
         Weep = nothing
     end
-    
+
     if inp.include_Weep == 0 && inp.cDOS_flag == 1
         # default values in case no dos-file is given
         ndos = -1
@@ -171,10 +166,10 @@ function InputParser(inp::arguments, log_file::IOStream)
             calcMucME(inp, a2f, a2f_omega, log_file)
         end
 
-    elseif  inp.include_Weep == 0 && inp.muc_AD != -1
+    elseif  inp.include_Weep == 0 && inp.muc_AD != -1 && inp.muc_ME == -1   
         calcMucME(inp, a2f, a2f_omega, log_file)
 
-    elseif  inp.include_Weep == 0 && inp.muc_ME != -1
+    elseif  inp.muc_ME != -1 && inp.muc_AD == -1 # Wenn nur μ*_ME gegeben wird kein μ*_AD berechnet falls mit W und μ* sollen nur berechnet werden falls -1
         calcMucAD(inp, a2f, a2f_omega)
     end
 
@@ -224,11 +219,6 @@ function createDirectory(inp::arguments, strIsoME::String)
         error("Couldn't write into " * inp.outdir * "! Outdir may not writable or an invalid path.\n\n")
     end
 
-    # open log file
-    if isfile(inp.outdir * "log.txt")   #no longer neccessary
-        rm(inp.outdir * "log.txt")
-    end
-
     log_file = open(inp.outdir * "log.txt", "w")
     print(log_file, strIsoME)
 
@@ -255,21 +245,15 @@ function checkInput(inp::arguments, log_file::IOStream)
         error("Invalid path to a2f-file!")
         
     elseif ~isfile(inp.dos_file) && (inp.cDOS_flag == 0 || inp.include_Weep == 1)
-        inp.cDOS_flag = 1 
-        inp.include_Weep = 0
-        print(@yellow "WARNING: ")
-        print("No valid Dos-file specified! Calculating Tc within constant Dos approximation using Anderson-pseudopotential instead\n\n")
+
+        text = "Invalid path to Dos-file!\n\n"
+        @error text
     
-        # log file
-        print(log_file, "WARNING: No valid Dos-file specified! Calculating Tc within constant Dos approximation using Anderson-pseudopotential instead\n\n")
-    
-    elseif (~(isfile(inp.Weep_file) || ~isfile(inp.Wen_file))) && inp.include_Weep == 1
-        inp.include_Weep = 0
-        print(@yellow "WARNING: ")
-        print("No valid Weep-files specified! Calculating Tc using Anderson-pseudopotential instead\n\n")
-    
-        # log file
-        print(log_file, "WARNING: No valid Weep-files specified! Calculating Tc using Anderson-pseudopotential instead\n\n")
+    elseif inp.include_Weep == 1 && ((~isfile(inp.Weep_file)) || (~isempty(inp.Wen_file) && ~isfile(inp.Wen_file)))
+        
+        text = "Invalid path to Weep or Wen-file!\n\n"
+        @error text
+
     end
 
     return inp
@@ -531,7 +515,7 @@ function extractFermiEnergy(header, unit, file=nothing; outdir = "./", logFile =
         end
 
         ### Convert ###
-        if "meV" == unit    # meV
+        if "meV" == unit # meV
             ef = ef
         elseif "eV" == unit     # eV
             ef = ef .* 1000
@@ -546,7 +530,7 @@ function extractFermiEnergy(header, unit, file=nothing; outdir = "./", logFile =
     catch ex
         text = "Error while reading the fermi energy from the " * file * "-file."
         text *= "\nConsider setting the fermi-energy manually (ef or efW) or check the header of the " * file * "-file\n\n"
-        error(text)
+        @error text
     end
 
     return ef
@@ -602,77 +586,6 @@ function discardZeros(Dos::Vector{Float64}, energies::Vector{Float64})
     idxUpper = findlast(Dos .!= 0)
 
     return     Dos[idxLower:idxUpper], energies[idxLower:idxUpper]
-end
-
-
-
-"""
-    restrictInput(n, enWndw, ef, Dos, energies[, Weep])
-
-Restrict the input (Weep, Dos and energies) to a energy window around the fermi energy and a subset of grid points
-
-# Examples
-```julia-repl
-julia> restrictInput(30, [2,3], [10], [pi.*sqrt.(range(5,15,200))], [range(5,15,200)])
-```
-"""
-function restrictInput(n::Int, enWndw::Any, Dos::Vector{Float64}, energies::Vector{Float64}, Weep::Matrix{Float64})
-
-    (~isnothing(enWndw)) || (enWndw = [ -energies[1], energies[end]])
-  
-
-    idxLower = findfirst(- enWndw[1] .<= energies)
-    idxUpper = findlast(enWndw[2] .>= energies)
-
-    # total grid points
-    N = idxUpper - idxLower
-
-    if n > N
-        Weep     = Weep[idxLower:idxUpper, idxLower:idxUpper]
-        Dos      = Dos[idxLower:idxUpper] 
-        energies = energies[idxLower:idxUpper]
-
-    else
-        Ninterval = N / n
-        rngRed = Int.(round.(collect(idxLower:Ninterval:idxUpper)))
-
-        Weep = Weep[rngRed, rngRed]
-        Dos = Dos[rngRed]
-        energies = energies[rngRed]
-
-    end
-
-    return Weep, Dos, energies
-
-end
-
-
-function restrictInput(n::Int, enWndw::Any, Dos::Vector{Float64}, energies::Vector{Float64})
- 
-    (~isnothing(enWndw)) || (enWndw = [-energies[1], energies[end]])
-  
-
-    idxLower = findfirst(-enWndw[1] .<= energies)
-    idxUpper = findlast(enWndw[2] .>= energies)
-
-    # total grid points
-    N = idxUpper - idxLower
-
-    if n > N
-        Dos      = Dos[idxLower:idxUpper] 
-        energies = energies[idxLower:idxUpper]
-
-    else
-        Ninterval = N / n
-        rngRed = Int.(round.(collect(idxLower:Ninterval:idxUpper)))
-
-        Dos = Dos[rngRed]
-        energies = energies[rngRed]
-
-    end
-
-    return Dos, energies
-
 end
 
 

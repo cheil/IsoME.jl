@@ -445,15 +445,6 @@ function printFlagsAsText(inp, log_file)
     # cut off
     text *= " - Matsubara cutoff: "*string(inp.omega_c)*" meV\n"
 
-    # encut
-    if inp.cDOS_flag == 0 
-        if inp.encut == -1
-            text *= " - encut: full dos\n"
-        else
-            text *= " - encut: "*string(inp.encut)*" meV\n"
-        end
-    end
-    
     # cDos
     if inp.cDOS_flag == 0
         if inp.mu_flag == 1

@@ -130,7 +130,6 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
         end
 
     else
-        print(log_file, "ERROR: Unkwon mode! Check if the cDOS_flag and include_Weep flag are set correctly!")
         @error "Unkwon mode! Check if the cDOS_flag and include_Weep flag are set correctly!"
     end
 
@@ -303,25 +302,11 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
                         end
                     end
                 catch ex
-
                     # crash file
-                    crashFile = open(inp.outdir * "CRASH", "a")
-                    error_msg = sprint(showerror, ex)
-                    st = sprint((io,v) -> show(io, "text/plain", v), stacktrace(catch_backtrace()))
-                    print(crashFile, error_msg*"\n"*st)
-                    print("\n\n")
-                    close(crashFile)
-        
-                    # log file
-                    print(log_file, "\n\nERROR while saving self energy components: ")
-                    showerror(log_file, ex)
-                    print(log_file, "\n\nFor further information please refer to the CRASH file\n\n")
-        
-                    # console
-                    print(@red "\n\nERROR")
-                    print(" while saving self energy components: ")
-                    showerror(stdout, ex)
-                    print("\n\nFor further information please refer to the CRASH file\n\n")
+                    writeToCrashFile(inp)
+
+                    # console / log file
+                    printWarning("Error while saving self energy components.", log_file, ex=ex)
                 end
             end
             
@@ -397,7 +382,7 @@ function findTc(inp, console, matval, ML_Tc, log_file)
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
                 Shift0 = push!(Shift0, data[3])
-                EfMu = push!(EfMu, data[4])
+                EfMu   = push!(EfMu, data[4])
             elseif inp.cDOS_flag == 1
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])

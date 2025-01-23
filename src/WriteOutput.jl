@@ -452,15 +452,6 @@ function printFlagsAsText(inp, log_file)
             text *= " - encut: "*string(inp.encut)*" meV\n"
         end
     end
-
-    # shiftcut
-    if inp.cDOS_flag == 0 
-        if inp.shiftcut == -1
-            text *= " - shiftcut: full dos\n"
-        else
-            text *= " - shiftcut: "*string(inp.shiftcut)*" meV\n"
-        end
-    end
     
     # cDos
     if inp.cDOS_flag == 0

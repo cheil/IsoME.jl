@@ -12,6 +12,12 @@
 """
 
 
+"""
+    interpolateInputs(itpDos, dos_en, itpStepSize, itpBounds, encut; itpWeep=nothing, Wen=nothing)
+
+Linear interpolation of inputs (energies, dos, Weep). 
+Piecewise interpolation for intervals in itpBounds with steps itpStepSize
+"""
 function interpolateInputs(itpDos, dos_en, itpStepSize, itpBounds, encut; itpWeep=nothing, Wen=nothing)
 
     if (length(itpStepSize)-1) != length(itpBounds)

@@ -22,7 +22,7 @@ General input parameters are:
 | colFermi_dos | Int64 |      1    |  0 = last column ``\\`` 1 = second to last column ``\\`` 2 = ... |       column the fermi energy is in starting from the right |
 | spinDos   | Int64    |      2    |  1 = spin not considered ``\\`` 2 = spin considered  | Does the dos consider spin | 
 | dos_unit   |  String |     ""    |  Is extracted from the header of the dos-file if not set ``\\`` Currently supported: meV, eV, THz, Ry | units in dos file | 
-| mu      | Float64        |   -1  | Measure for Coulomb strength (This is not the chemical potential!) ``\\`` If specified muc_AD & muc_ME are calculated based on mu | ``\mu=N(e_f)*W(e_f,e_f)`` ``\\``  cite paper with formula |
+| mu      | Float64        |   -1  | Measure for the Coulomb strength (This is not the chemical potential!) ``\\`` If muc_AD & muc_ME are unspecified they are calculated based on mu | ``\mu=N(e_f)*W(e_f,e_f)`` ``\\``  cite paper with formula |
 | muc_AD     | Float64     |  0.12 | Morel-Anderson Pseudopotential Allen-Dynes ``\mu^*_{AD}`` | cite paper with formula |
 | muc_ME  | Float64        | ``{\mu^*_{AD}}/({1 + \mu^*_{AD} \ln(\omega_{ph}/\omega_c)})`` | Morel-Anderson Pseudopotential Migdal-Eliashberg ``\mu^*_{ME}`` | cite paper with formula |
 | nItFullCoul | Number     |  5    | First iteration in which full coulomb interaction is used , dampens oscillations |  |
@@ -36,15 +36,43 @@ General input parameters are:
 | Weep_col  |   Int64  |     3     |                               | Column of the W-data in the Weep-file  | 
 | outdir | String |  pwd() | Path to the output directory |  |
 | flag_figure | Int64 |  1 | 0: no figures are plotted ``\\`` 1: plot gap and a2f-values |  |
-| flag_writeSelfEnergy | Int64 | 0  | 0: Don't save the self-energy components 1: save the self-energy components at each temperature  | Should the self-energy components be saved |
-| material | String | "Material" | Will be used in plots, summary, ... | Name of compound  |    
-| encut  | Float64 | 2000 meV  | in meV | Considered energy window around fermi energy |
-| Wcut  | Float64 |  -1 (full window is used) | in meV | Considered energy window around fermi energy used in integration of phic |
+| flag_writeSelfEnergy | Int64 | 0  | 0: Don't save the self-energy components 1: save the self-energy components at each temperature  | Specify if the self-energy components should be saved |
+| material | String | "Material" | Title used in plots, summary, ... | Name of compound  |    
+| encut  | Float64 |  -1 (full window is used) | in meV | Considered energy window around the fermi energy used in the integration of phic |
+| shiftcut  | Float64 | 2000 meV  | in meV | Considered energy window around the fermi energy used in the integration of the shift. Alwas smaller than encut|
 
 
+### ``\mu, \mu^*_{AD} \& \mu^*_{ME}``
+``\mu`` measures the strength of the Coulomb interaction at the fermi-surface: ``\mu=W(\varepsilon_F,\varepsilon_F)``   
+It is connected to the pseudopotentials via:   
+``\mu*_{AD}=\frac{\mu}{1+\mu \text{ ln}\left(\frac{\varepsilon_{el}}{\hbar \omega_{ph}}\right)}``
+where ``\omega_{ph}`` is a characteristic cutoff frequency for the phonon-induced interaction and ``\varepsilon_{el}`` is a characteristic electronic energy scale.   
+A different phonon cutoff has to be used for the Allen-Dynes and Migdal-Eliashberg pseuodpotential.   
+If the user does specify one of the ``\mu's`` all other will be calculated based on it, but the code will never overwrite an user input.  
+Furthermore, if none of the ``\mu's`` is specified but a Weep-file exists, the ``\mu`` will be calculated from the ``W``.   
+If the user specifies nothing, a default value of ``\mu^*_{AD}=0.12`` will be used. 
+For the conversion the user can specify the typical electronic energy explicitly (input: typEl), otherwise the fermi energy (input: ef or efW)  will be used. For the characteristic phonon cutoff the Matsubara cutoff  or the maximum given phonon frequency will be used in case of ME or AD, respectively.
+
+## Expert user input parameters
+It should not be necessary to change any of the following input parameters during a normal execution of the code.
+They are only relevant if you encounter any problems.
+|     Name     |  Type  |  Default  |          Comment          |                Description              | 
+|--------------|--------|:---------:|---------------------------|-----------------------------------------|
+| nsmear       | Int64  |    -1     | Auto-recognition if unset | number of smearings in the a2f-file     |
+| nheader_a2f  | Int64  |    -1     | Auto-recognition if unset | number of header lines in a2f_file      | 
+| nheader_a2f  | Int64  |    -1     | Auto-recognition if unset | number of footer lines in a2f_fi        |
+| nheader_dos  | Int64  |    -1     | Auto-recognition if unset | number of header lines in dos-file      |
+| nfooter_dos  | Int64  |    -1     | Auto-recognition if unset | number of footer lines in dos-file      | 
+| nheader_Weep | Int64  |    -1     | Auto-recognition if unset | number of header lines in the Weep-file |
+| nfooter_Weep | Int64  |    -1     | Auto-recognition if unset | number of footer lines in the Weep-file |          
+| nheader_Wen  | Int64  |    -1     | Auto-recognition if unset | number of header lines in the Wen-file  |
+| nfooter_Wen  | Int64  |    -1     | Auto-recognition if unset | number of footer lines in the Wen-file  |
+
+
+## Input files
 Depending on the mode chosen, the following input files may be needed.
 
-## ``\alpha^2F``
+### ``\alpha^2F``
 A file containing the Eliashberg spectral function ``\alpha^2F(\omega)`` is required for all calculations.  
 It must obey the following structure:
 - **header:** Optional. If the unit (meV, THz, Ry) is available it will be extraced automatically, otherwise set the unit via dos_unit. 
@@ -98,7 +126,7 @@ The number of header/footer lines and smearing values should be recognized autom
 > | nothing   | Auto-recognition |
 </details>                    
 
-## ``N(\epsilon)``
+### ``N(\epsilon)``
 For a full bandwidth calculation a file containing the dos is required.  
 It must obey the following structure:
 - **header:** It is assumed that the fermi energy is the second to last entry of the first line as in a QE Dos-file. If this is not the case, specify the position of the fermi-energy via colFermi_dos starting from the right with 0 for the last column. Furthermore, it is assumed that the header contains the unit. If not, the unit has to be specified via dos_unit
@@ -157,7 +185,7 @@ It must obey the following structure:
 > | nothing   | Auto-recognition |
 </details>
 
-## Weep
+### Weep
 For a calculation using the full screened Coulomb interaction two files containing ``W(\epsilon,\epsilon')`` and the energy grid ``\epsilon``, respectively are needed in addition to the dos-file.  
 The ``W``-file must obey the following structure:
 - **header:** It is assumed that the header contains the unit. If not, the unit has to be specified via Weep_unit
@@ -222,24 +250,6 @@ The energy-file must obey the following structure:
 </details>
 </br>
 
-
-## Expert user input parameters
-It should not be necessary to change any of the following input parameters during a normal execution of the code.
-They are only relevant if you encounter any problems.
-|     Name     |  Type  |  Default  |          Comment          |                Description              | 
-|--------------|--------|:---------:|---------------------------|-----------------------------------------|
-| nsmear       | Int64  |    -1     | Auto-recognition if unset | number of smearings in the a2f-file     |
-| nheader_a2f  | Int64  |    -1     | Auto-recognition if unset | number of header lines in a2f_file      | 
-| nheader_a2f  | Int64  |    -1     | Auto-recognition if unset | number of footer lines in a2f_fi        |
-| nheader_dos  | Int64  |    -1     | Auto-recognition if unset | number of header lines in dos-file      |
-| nfooter_dos  | Int64  |    -1     | Auto-recognition if unset | number of footer lines in dos-file      | 
-| nheader_Weep | Int64  |    -1     | Auto-recognition if unset | number of header lines in the Weep-file |
-| nfooter_Weep | Int64  |    -1     | Auto-recognition if unset | number of footer lines in the Weep-file |          
-| nheader_Wen  | Int64  |    -1     | Auto-recognition if unset | number of header lines in the Wen-file  |
-| nfooter_Wen  | Int64  |    -1     | Auto-recognition if unset | number of footer lines in the Wen-file  |
-| Nrestrict    | Int64  |    -1     |                           | restrict weep to a subset of points     |
-| wndRestrict  |Vector{Number} | [-1] |                         | restrict weep to a smaller window       |
- 
 
 
 # Version

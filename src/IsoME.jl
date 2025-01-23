@@ -1,8 +1,8 @@
 #
 #
 #  _                 __  __   ______ 
-# (_)               |  \/  | |  ____|
-#  _   ___    ___   | \  / | | |__   
+# | |               |  \/  | |  ____|
+# | |  ___    ___   | \  / | | |__   
 # | | / __|  / _ \  | |\/| | |  __|  
 # | | \__ \ | (_) | | |  | | | |____ 
 # |_| |___/  \___/  |_|  |_| |______|
@@ -16,10 +16,6 @@
 
 
 module IsoME
-
-# ToDo:
-# Remove revise before making module public
-# error handle
 
 
 export EliashbergSolver, arguments
@@ -37,7 +33,6 @@ using LsqFit                # Fitting
 using Roots                 # Root finding
 using Term                  # styled text terminal
 using Logging, LoggingExtras
-using Revise                # !!! REMOVE before publishing
 
 
 ### defining constants ###
@@ -120,7 +115,6 @@ include("AllenDynes.jl")
 include("MuUpdate.jl")
 include("WriteOutput.jl")
 include("EliashbergEq.jl")
-include("Integration.jl")
 
 
 end

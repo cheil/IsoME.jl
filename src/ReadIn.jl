@@ -101,7 +101,7 @@ function InputParser(inp::arguments, log_file::IOStream)
             # interpolate 
             dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut, itpWeep = itpWeep, Wen = Wen)
 
-            # mu
+            # mu, idxWef = idx_ef
             (inp.mu != -1) || (idxWef = findmin(abs.(dos_en))[2]; inp.mu = dos[idxWef].*Weep[idxWef,idxWef])
 
         else
@@ -183,7 +183,6 @@ function InputParser(inp::arguments, log_file::IOStream)
 
     # print Allen-Dynes
     printADtable(console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log, log_file)
-    
 
     # material specific values
     matval = (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxShiftcut)

@@ -179,7 +179,7 @@ function printSummary(inp, Tc, log_file)
     end
 
     printstyled("\nSummary:", bold=true)
-    println(text)
+    println(text*"\n")
 
     # log file
     print(log_file, "\nSummary:"*text*"\n")

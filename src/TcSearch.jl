@@ -415,6 +415,7 @@ function findTc(inp, console, matval, ML_Tc, log_file)
 
                 print("Lowest temperature of Tc search mode reached. If you want to search at even lower temperatures consider setting them manually!\n")
 
+                Tc = [NaN, 0.5]
                 break
             elseif length(inp.temps) > 500
                 # log file

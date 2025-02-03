@@ -58,7 +58,7 @@ const kb = 0.08617333262; # meV/K
     N_it::Int64             = 5000   
     encut::Float64           = -1        # outer cutoff energies
     shiftcut::Float64          = 2000      # cutoff shift & Ne
-    sparseSamplingTemp::Float64 = 5  
+    sparseSamplingTemp::Float64 = 2  
     typEl::Float64          = -1 
     
     # interpolation

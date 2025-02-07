@@ -3,7 +3,7 @@ name: Documentation
 on:
   push:
     branches:
-      - master
+      - main
     tags: '*'
   pull_request:
 
@@ -28,3 +28,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # If authenticating with GitHub Actions token
         run: julia --project=docs/ docs/make.jl
+      - name: Deploy Documentation
+        if: github.ref == 'refs/heads/main'
+        run: julia --project=docs -e 'using Documenter; Documenter.deploydocs()'

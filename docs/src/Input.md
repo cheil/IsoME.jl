@@ -19,7 +19,6 @@ General input parameters are:
 | cDOS_flag | Int64 |  1   |0: variable dos <\br> 1: constant dos  | dos_file has to be specified |
 | dos_file  |  String  |     ""    | Required cDOS_flag = 0| path to the dos-file |  
 | ef        | Float64  |     -1    | Is extracted from the header of the dos-file if not set | Fermi-energy DOS in meV |
-| colFermi_dos | Int64 |      1    |  0 = last column ``\\`` 1 = second to last column ``\\`` 2 = ... |       column the fermi energy is in starting from the right |
 | spinDos   | Int64    |      2    |  1 = spin not considered ``\\`` 2 = spin considered  | Does the dos consider spin | 
 | dos_unit   |  String |     ""    |  Is extracted from the header of the dos-file if not set ``\\`` Currently supported: meV, eV, THz, Ry | units in dos file | 
 | mu      | Float64        |   -1  | Measure for the Coulomb strength (This is not the chemical potential!) ``\\`` If muc_AD & muc_ME are unspecified they are calculated based on mu | ``\mu=N(e_f)*W(e_f,e_f)`` ``\\``  cite paper with formula |

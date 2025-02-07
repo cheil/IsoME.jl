@@ -91,7 +91,7 @@ function InputParser(inp::arguments, log_file::IOStream)
 
         if inp.include_Weep == 1 || ((isfile(inp.Weep_file) && (isempty(inp.Wen_file) || isfile(inp.Wen_file))) && inp.mu == -1)  # if Wen is given Wen must exist as well
             # read Weep + energy grid points
-            Weep, Wen, inp.efW, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, outdir = inp.outdir, logFile = log_file)
+            Weep, Wen, inp.efW, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.Wen_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, outdir = inp.outdir, logFile = log_file)
 
             ### Interpolation ###
             # Interpolation Object Weep
@@ -400,7 +400,7 @@ end
 Read in Weep file containing the sreened coulomb interaction.
 Weep data must be in column 3
 """
-function readIn_Weep(Weep_file, Wen_file, Weep_col=3, ef=-1, unit = "", nheader=-1, nfooter=-1,  nheaderWen=-1, nfooterWen=-1; outdir = "./", logFile = nothing)
+function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=-1, unit = "", nheader=-1, nfooter=-1,  nheaderWen=-1, nfooterWen=-1; outdir = "./", logFile = nothing)
 
     ### Read in Weep file ###
     Weep_data = readdlm(Weep_file);
@@ -430,11 +430,10 @@ function readIn_Weep(Weep_file, Wen_file, Weep_col=3, ef=-1, unit = "", nheader=
 
     ### read in W energies ###
     if isempty(Wen_file)
-        Wen_col = 2     # as input parameter?
         #Wen = Float64.(Weep_data[nheader+1:numWens+nheader, Wen_col])
-        Wen = unique(Float64.(Weep_data[nheader+1:end-nfooter, 1]))
+        Wen = unique(Float64.(Weep_data[nheader+1:end-nfooter, Wen_col]))
     else
-        Wen = readIn_Wen(Wen_file, nheaderWen, nfooterWen)
+        Wen = readIn_Wen(Wen_file, Wen_col, nheaderWen, nfooterWen)
     end
 
     ### Convert ###
@@ -467,7 +466,7 @@ end
 Read in Wen 
 Energy grid for Weep 
 """
-function readIn_Wen(Wen_file, nheader=-1, nfooter=-1)
+function readIn_Wen(Wen_file, Wen_col, nheader=-1, nfooter=-1)
     ### Read in Weep file ###
     Wen_data = readdlm(Wen_file);
 
@@ -476,7 +475,7 @@ function readIn_Wen(Wen_file, nheader=-1, nfooter=-1)
     (nfooter != -1) || (nfooter = size(Wen_data, 1) - findlast(isa.(Wen_data[:, 1], Number)))
 
     ### Remove header & footer
-    Wen = Float64.(Wen_data[nheader+1:end-nfooter, 1])
+    Wen = Float64.(Wen_data[nheader+1:end-nfooter, Wen_col])
 
     return Wen
 

@@ -40,7 +40,6 @@ const Ry2meV = 13605.662285137
 const THz2meV = 4.13566553853599;
 const kb = 0.08617333262; # meV/K
 
-
 ### Define input struct ###
 @kwdef mutable struct arguments
     # Parameters
@@ -58,7 +57,7 @@ const kb = 0.08617333262; # meV/K
     N_it::Int64             = 5000   
     encut::Float64           = -1        # outer cutoff energies
     shiftcut::Float64          = 2000      # cutoff shift & Ne
-    sparseSamplingTemp::Float64 = 5  
+    sparseSamplingTemp::Float64 = 2
     typEl::Float64          = -1 
     
     # interpolation
@@ -91,6 +90,7 @@ const kb = 0.08617333262; # meV/K
     nfooter_Weep::Int64 = -1
     Weep_unit::String   = ""
     Weep_col::Int64     = 3
+    Wen_col::Int64      = 1
     Wen_file::String    = ""
     nheader_Wen::Int64  = -1 
     nfooter_Wen::Int64  = -1

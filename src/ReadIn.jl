@@ -291,6 +291,8 @@ function readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsme
             omega_raw = omega_raw * THz2meV
     elseif "Ry" == unit
         omega_raw = omega_raw * Ry2meV
+    elseif  "Ha" == unit     # Hartree
+        omega_raw = omega_raw .* Ry2meV*2
     else
         error("Invalid Unit! Please check the header of the a2F-file and try again!")
     end
@@ -383,6 +385,9 @@ function readIn_Dos(dos_file, ef =-1, spin=2, unit="", nheader=-1, nfooter=-1; o
     elseif unit == "Ry"
         energies = energies .* Ry2meV
         dos = dos ./ Ry2meV
+    elseif  "Ha" == unit     # Hartree
+        energies = Weep.*Ry2meV*2
+        dos = Wen ./ Ry2meV*2
     else
         error("Invalid Unit! Either set the unit manually via dos_unit or check the header of the Dos-file and try again!")
     end
@@ -449,6 +454,9 @@ function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=-1, unit 
     elseif  "Ha" == unit     # Hartree
         Weep = Weep.*Ry2meV*2
         Wen = Wen.*Ry2meV*2
+    elseif unit == "THz"
+        Weep = Weep .* THz2meV
+        Wen = Wen .* THz2meV
     else
         error("Invalid Unit! Consider setting the unit manually (Weep_unit) or check the header of the Weep-file and try again!")
     end

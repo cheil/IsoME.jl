@@ -31,7 +31,7 @@ makedocs(
 )
 
 deploydocs(
-    repo = "github.com/cheil/IsoME.jl",
+    repo = "github.com/cheil/IsoME.jl.git",
     push_preview = true,
     versions = nothing,
     branch = "gh-pages",

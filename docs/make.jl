@@ -31,6 +31,7 @@ makedocs(
 )
 
 deploydocs(
-    repo = "https://github.com/cheil/IsoME.jl",
+    repo = "github.com/cheil/IsoME.jl",
     push_preview = true,
+    versions = nothing,
 )

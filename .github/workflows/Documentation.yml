@@ -29,6 +29,3 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # If authenticating with GitHub Actions token
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }} 
         run: julia --project=docs/ docs/make.jl
-      - name: Deploy Documentation
-        if: github.ref == 'refs/heads/main'
-        run: julia --project=docs -e 'using Documenter; Documenter.deploydocs()'

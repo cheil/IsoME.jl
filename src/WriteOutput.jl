@@ -779,7 +779,7 @@ function saveSelfEnergyComponents(itemp, inp, iwn, Delta, Z; epsilon=nothing,  c
     # Phiph
     if ~isnothing(phiph)
         open(folder*"Phiph_"*string(itemp)*"K.dat", "w") do io
-            write(io, "#  iωₙ /meV      Φp(iωₙ) / meV \n")
+            write(io, "#  iωₙ / meV      Φp(iωₙ) / meV \n")
             writedlm(io, [iwn phiph], '\t')
         end
     end

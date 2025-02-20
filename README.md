@@ -12,7 +12,7 @@ In the most general case two additional files containing the ``W`` data as well 
 
 All input parameters and flags are set using the custom struct arguments.
 
-For a more thorough documentation please refer to [Docs](./docs/src/index.md)
+For a more thorough documentation please refer to [Docs](https://cheil.github.io/IsoME.jl/)
 
 
 

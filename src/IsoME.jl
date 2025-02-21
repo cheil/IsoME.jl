@@ -101,7 +101,8 @@ const kb = 0.08617333262; # meV/K
     flag_figure::Int64  = 1
     flag_writeSelfEnergy::Int64 = 0
     material::String    = "Material"
-    returnTc::Bool     = false
+    returnTc::Bool      = false
+    testMode::Bool      = false
 
 end
 

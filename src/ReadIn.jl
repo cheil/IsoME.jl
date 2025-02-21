@@ -20,7 +20,7 @@ Include the file specified via path.
 
 # Examples
 """
-function InputParser(inp::arguments, log_file::IOStream)
+function InputParser(inp::arguments, log_file)
 
     ### Init table size ###
     console = Dict()
@@ -198,34 +198,39 @@ Check which input files (a2f, dos, weep) exist. Overwrite flags if neccessary.
 """
 function createDirectory(inp::arguments, strIsoME::String)
 
-    # create output directory
-    if isempty(inp.outdir) 
-        inp.outdir = "./"
-    elseif ~(inp.outdir[end] == '/' || inp.outdir[end] == '\\')
-        inp.outdir = inp.outdir*"/"
+    if inp.testMode # hidden outputs in test mode
+        log_file = IOBuffer()
+        errorLogger = SimpleLogger(log_file, Logging.Error)
+    else
+        # create output directory
+        if isempty(inp.outdir) 
+            inp.outdir = "./"
+        elseif ~(inp.outdir[end] == '/' || inp.outdir[end] == '\\')
+            inp.outdir = inp.outdir*"/"
+        end
+
+        idxDir = 1
+        tempDir = inp.outdir[1:end-1]
+        while isdir(inp.outdir)
+            inp.outdir = tempDir*"_"*string(idxDir)*"/"
+            idxDir+=1
+        end
+
+        try
+            mkpath(inp.outdir)   # mkpath
+        catch ex
+            error("Couldn't write into " * inp.outdir * "! Outdir may not writable or an invalid path.\n\n")
+        end
+
+        log_file = open(inp.outdir * "log.txt", "w")
+        print(log_file, strIsoME)
+
+        # logging to console and log-file (@warn,...)
+        errorLogger = SimpleLogger(log_file, Logging.Error)
+        file_logger = SimpleLogger(log_file)
+        tee_logger = TeeLogger(ConsoleLogger(), file_logger)
+        global_logger(tee_logger)
     end
-
-    idxDir = 1
-    tempDir = inp.outdir[1:end-1]
-    while isdir(inp.outdir)
-        inp.outdir = tempDir*"_"*string(idxDir)*"/"
-        idxDir+=1
-    end
-
-    try
-        mkpath(inp.outdir)   # mkpath
-    catch ex
-        error("Couldn't write into " * inp.outdir * "! Outdir may not writable or an invalid path.\n\n")
-    end
-
-    log_file = open(inp.outdir * "log.txt", "w")
-    print(log_file, strIsoME)
-
-    # logging to console and log-file (@warn,...)
-    errorLogger = SimpleLogger(log_file, Logging.Error)
-    file_logger = SimpleLogger(log_file)
-    tee_logger = TeeLogger(ConsoleLogger(), file_logger)
-    global_logger(tee_logger)
 
     return inp, log_file, errorLogger
 
@@ -237,7 +242,7 @@ end
 
 Check which input files (a2f, dos, weep) exist. Overwrite flags if neccessary.
 """
-function checkInput(inp::arguments, log_file::IOStream)
+function checkInput(inp::arguments)
 
     # check input files / cDOS & Weep
     if ~isfile(inp.a2f_file)

@@ -1,12 +1,11 @@
 # !!! Automatic test - Do not change !!!
+# Add further tests for sparse sampling, encut, interpoaltion, ....
 
 using IsoME
 using Test
 
 
 @testset "IsoME.jl" begin
-
-    outdir  = "test/Nb/output/"
 
     ### 1.TEST: Nb cDOS mu* ###
     inp = arguments(
@@ -16,7 +15,8 @@ using Test
                     Wen_file = joinpath(@__DIR__, "Nb/Wen.dat"),
                     flag_figure = 0,
                     returnTc    = true,
-                    outdir = outdir*"cDOS_mu/",
+                    testMode    = true,
+                    outdir = "",
                     muc_AD = 0.12,
                     )
 
@@ -32,7 +32,8 @@ using Test
                     Wen_file = joinpath(@__DIR__, "Nb/Wen.dat"),
                     flag_figure = 0,
                     returnTc    = true,
-                    outdir = outdir*"vDOS_mu/",
+                    testMode    = true,
+                    outdir = "",
                     cDOS_flag   = 0,
                     muc_AD = 0.12,
                     )
@@ -48,8 +49,9 @@ using Test
         Weep_file = joinpath(@__DIR__, "Nb/Weep.dat"),
         Wen_file = joinpath(@__DIR__, "Nb/Wen.dat"),
         flag_figure=0,
-        returnTc=true,
-        outdir=outdir * "cDOS_W/",
+        returnTc    = true,
+        testMode    = true,
+        outdir = "",
         cDOS_flag = 1,
         include_Weep = 1,
     )
@@ -65,18 +67,15 @@ using Test
         Weep_file = joinpath(@__DIR__, "Nb/Weep.dat"),
         Wen_file = joinpath(@__DIR__, "Nb/Wen.dat"),
         flag_figure=0,
-        returnTc=true,
-        outdir=outdir * "vDOS_W/",
+        returnTc    = true,
+        testMode    = true,
+        outdir = "",
         cDOS_flag = 0,
         include_Weep = 1,
     )
 
     Tc = EliashbergSolver(inp)
     @test Tc == [13, 14]
-
-
-    # remove outdir
-    rm(outdir, recursive=true)
 
 end
 

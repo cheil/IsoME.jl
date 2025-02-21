@@ -544,7 +544,7 @@ function EliashbergSolver(inp::arguments)
         
         ### Check input
         try
-            inp = checkInput(inp, log_file)
+            inp = checkInput(inp)
         catch ex
             # crash file
             writeToCrashFile(inp)
@@ -590,7 +590,6 @@ function EliashbergSolver(inp::arguments)
             # console / log file
             printError("while solving the Eliashberg equations. Stopping now!", ex, log_file, errorLogger)
         end
-    
 
         ### write Tc to console
         try
@@ -600,50 +599,55 @@ function EliashbergSolver(inp::arguments)
             writeToCrashFile(inp)
 
             # console / log file
-            printWarning("Error while printing the summary.", log_file, ex = ex)
+            printWarning("Error while printing the summary.", log_file, ex=ex)
         end
 
-        ### save inputs
-        try
-            createInfoFile(inp)
-        catch ex
-            # crash file
-            writeToCrashFile(inp)
- 
-            # console / log file
-            printWarning("Error while creating the Info file.", log_file, ex = ex)
-        end
-
-        ### create Summary file
-        header = "# T/K  Δ(0)/meV  Z(0)/1"
-        out_vars = zeros(size(Delta0, 1), 3)
-        out_vars[:, 1] = temps
-        out_vars[:, 2] = Delta0
-        out_vars[:, 3] = Znorm0
-        if inp.cDOS_flag == 0
-            header = header * "  χ(0)/meV  ϵ_F-μ/meV"
-            out_vars = hcat(out_vars, Shift0, EfMu)
-        end
-        try
-            createSummaryFile(inp, Tc, out_vars, header)
-        catch ex
-            # crash file
-            writeToCrashFile(inp)
-
-            # console / log file
-            printWarning("Error while creating the Summary.dat file.", log_file, ex = ex)
-        end
-
-        ### figures
-        if inp.flag_figure == 1
+        ### Outputs ###
+        if ~inp.testMode # no output in test mode
+            ### save inputs
             try
-                createFigures(inp, matval, Delta0, temps, Tc, log_file)
+                createInfoFile(inp)
             catch ex
                 # crash file
                 writeToCrashFile(inp)
 
                 # console / log file
-                printWarning("Error while plotting. Skipping plots.", log_file, ex = ex)
+                printWarning("Error while creating the Info file.", log_file, ex=ex)
+            end
+
+
+            ### create Summary file
+            header = "# T/K  Δ(0)/meV  Z(0)/1"
+            out_vars = zeros(size(Delta0, 1), 3)
+            out_vars[:, 1] = temps
+            out_vars[:, 2] = Delta0
+            out_vars[:, 3] = Znorm0
+            if inp.cDOS_flag == 0
+                header = header * "  χ(0)/meV  ϵ_F-μ/meV"
+                out_vars = hcat(out_vars, Shift0, EfMu)
+            end
+            try
+                createSummaryFile(inp, Tc, out_vars, header)
+            catch ex
+                # crash file
+                writeToCrashFile(inp)
+
+                # console / log file
+                printWarning("Error while creating the Summary.dat file.", log_file, ex=ex)
+            end
+
+
+            ### figures
+            if inp.flag_figure == 1
+                try
+                    createFigures(inp, matval, Delta0, temps, Tc, log_file)
+                catch ex
+                    # crash file
+                    writeToCrashFile(inp)
+
+                    # console / log file
+                    printWarning("Error while plotting. Skipping plots.", log_file, ex=ex)
+                end
             end
         end
     end
@@ -655,7 +659,9 @@ function EliashbergSolver(inp::arguments)
     print(log_file, "\nTotal Runtime: ", round(dt, digits=2), " seconds\n")
 
     # close & save
-    close(log_file)
+    if ~inp.testMode
+        close(log_file)
+    end
 
     if inp.returnTc
         return Tc

@@ -211,7 +211,7 @@ function printTextCentered(text, hline; file = "", bold = false, blanks=3, delim
     end
 
     # print to file
-    if isfile(file)
+    if ~isa(file, IO) && isfile(file)
         print(file, leftText)
         print(file, text)
         print(file, rightText)
@@ -525,7 +525,11 @@ end
 Save exception in CRASH file
 """
 function writeToCrashFile(inp)
-    crashFile = open(inp.outdir * "CRASH", "a")
+    if inp.testMode
+        crashFile = IOBuffer()
+    else
+        crashFile = open(inp.outdir * "CRASH", "a")
+    end
     print(crashFile, current_exceptions())
     print(crashFile, "\n\n")
     close(crashFile)

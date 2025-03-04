@@ -21,17 +21,17 @@ module IsoME
 export EliashbergSolver, arguments
 
 
-using DelimitedFiles        # read in files
+using DelimitedFiles        
 using Interpolations    
 using Plots, LaTeXStrings
-using Trapz                 # integration
-using LinearAlgebra         # 
-using CSV, DataFrames       # write to csv
-using Printf                # Format console output
-using SparseIR              # Intermediate basis 
-using LsqFit                # Fitting 
-using Roots                 # Root finding
-using Term                  # styled text terminal
+using Trapz                 
+using LinearAlgebra          
+using CSV, DataFrames       
+using Printf               
+using SparseIR              
+using LsqFit                
+using Roots                 
+using Term                 
 using Logging, LoggingExtras
 
 
@@ -55,7 +55,7 @@ const kb = 0.08617333262; # meV/K
     conv_thr::Float64       = 1e-4
     minGap::Float64         = 0.1
     N_it::Int64             = 5000   
-    encut::Float64           = -1        # outer cutoff energies
+    encut::Float64           = 5000        # outer cutoff energies
     shiftcut::Float64          = 2000      # cutoff shift & Ne
     sparseSamplingTemp::Float64 = 2
     typEl::Float64          = -1 

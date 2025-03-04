@@ -15,35 +15,13 @@ Comments:
 
  
 ### Electron-Phonon Coupling ###
-function calcLambda(itemp, M, a2f_omega, a2f)
-    """
-    Calculate electron-phonon coupling strength on imaginary axis
-    based on ...
-    λ(iω_n - iω_m) is calcualted for all pairs
-    --> λ[1] = m-n = 0
-        λ[2] = abs(m-n) = 1
-        and so on
+"""
+    calcLambda(itemp, M, a2f_omega, a2f) 
 
-    -------------------------------------------------------------------
-    Input:
-        itemp:      temperature
-        M:          number of highest matsubara frequency 
-                    (attention: there is a 0'th frequency 
-                    -> M=10 means there are 11 frequencies)
-        a2f_omega:  energy in meV
-        a2f_fine:   Eliashberg spectral function (1/meV) 
-
-    --------------------------------------------------------------------
-    Output:
-        λ:          electron-phonon coupling for the first 2*M+2 
-                    matsubara frequencies 
-    
-    --------------------------------------------------------------------
-    Comments:
-        - Calculate directly λ_n & λ_p?
-
-    --------------------------------------------------------------------
-    """    
+Calculate electron-phonon coupling strength on the imaginary axis
+λ(iω_n - iω_m) is calcualted for all pairs
+"""  
+function calcLambda(itemp, M, a2f_omega, a2f)  
 
     λ = zeros(2 * M + 2)
     for n in 1:2*M+2
@@ -71,41 +49,6 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
                         dos_en::Vector{Float64}, dos::Vector{Float64}, Weep::Matrix{Float64}, znormip::Vector{Float64}, 
                         phiphip::Vector{Float64}, phicip::Vector{Float64}, shiftip::Vector{Float64}, wgCoulomb::Float64, 
                         muintr::Float64, idxShiftcut::Vector{Int64})
-    """
-    Evaluate the Isotropic Eliashberg equations for
-        - variable Dos
-        - Weep
-
-    -------------------------------------------------------------------
-    Input:
-        itemp:          Temperature
-        nsiw:           number of matsubara frequencies
-        wsi:            matsubara frequencies
-        ind_mat_freq:   indices of considered mat freq (sparse sampling)
-        lambdai:        strength of el-ph interaction
-        dosef:          Dos at fermi energy
-        ndos:           number of energy points
-        dos_en:         energies
-        dos:            DoS
-        znormip:        Z of previous iteration
-        phiphip:        phi phonon of previous iteration
-        phicip:         phi coloumb of previous iteration
-        shiftip:        shift of previous iteration 
-        wgCoulomb:         weighting of Weep 
-        muintr:         updated chemical potential [optional]
-
-    --------------------------------------------------------------------
-    Output:
-        data:   Vector containing the updated quantities
-                    -
-                    -
-                    -
-
-    --------------------------------------------------------------------
-    Comments:
-        - 
-    --------------------------------------------------------------------
-    """
 
 
     znormi  = zeros(nsiw)
@@ -147,8 +90,6 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
         lambdap = tmp1 .+ tmp2
 
         # Eqs. (4.1-4.3) in Picket, PRB 26, 1186 (1982) for FBW
-        # using lambdam and lambdap the sum over |wp| < wscut 
-        # is rewritten as a sum over iwp = 1, nsiw(itemp)
         znormi[iw] = znormi[iw] + dot(ziwp, lambdam)
         phiphi[iw] = phiphi[iw] + dot(phiwp, lambdap)
         shifti[iw] = shifti[iw] + dot(shiwp, lambdap)
@@ -191,40 +132,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
                         sparse_sampling_flag::Int64, lambdai::Vector{Float64}, ndos::Int64, 
                         dos_en::Vector{Float64}, dos::Vector{Float64}, Weep::Matrix{Float64}, znormip::Vector{Float64}, 
                         phiphip::Vector{Float64}, phicip::Vector{Float64}, idx_ef::Int64, wgCoulomb::Float64)
-    """
-    Evaluate the Isotropic Eliashberg equations for
-        - Constant Dos
-        - Weep
 
-    Following Eqs. (14)-(18) in Pellegrini, Phys- Mater. 5 024007(2022) 
-
-    -------------------------------------------------------------------
-    Input:
-        itemp:          Temperature
-        nsiw:           number of matsubara frequencies
-        wsi:            matsubara frequencies
-        ind_mat_freq:   indices of considered mat freq (sparse sampling)
-        lambdai:        strength of el-ph interaction
-        ndos:           number of energy points
-        dos_en:         energies
-        dos:            DoS
-        znormip:        Z of previous iteration
-        phiphip:        phi phonon of previous iteration
-        phicip:         phi coloumb of previous iteration
-        wgCoulomb:         weighting of Weep 
-
-    --------------------------------------------------------------------
-    Output:
-        data:   Vector containing the updated quantities
-                    -
-                    -
-                    -
-
-    --------------------------------------------------------------------
-    Comments:
-        - 
-    --------------------------------------------------------------------
-    """
 
     # Solve Eliashberg equations for current iteration
     znormi  = zeros(nsiw)
@@ -235,10 +143,10 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     nsiw_vec = [1:nsiw;]
 
     # denominator z & ph, Mx1
-    normzph = 1 ./ sqrt.((znormip .* wsi) .^ 2 .+ (phiphip .+ phicip[idx_ef]) .^ 2) #+wz²+phi⁰ #[ef]
+    normzph = 1 ./ sqrt.((znormip .* wsi) .^ 2 .+ (phiphip .+ phicip[idx_ef]) .^ 2) 
     
     # 1/theta, NxM
-    theta_inv = 1 ./ ((znormip' .* wsi') .^ 2 .+ (phiphip' .+ phicip) .^ 2 .+ (dos_en .^ 2)) #theta[iwn](e)vector in epsilon
+    theta_inv = 1 ./ ((znormip' .* wsi') .^ 2 .+ (phiphip' .+ phicip) .^ 2 .+ (dos_en .^ 2)) 
 
     # vector of matsubara summands, Mx1
     ziwp = normzph .* wsi .* znormip
@@ -253,7 +161,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     # integrate phi_c
     phici = -trapz(dos_en, ckernel)
 
-    for iw in ind_mat_freq # loop over omega
+    for iw in ind_mat_freq 
         # Eq. (4.4) in Picket, PRB 26, 1186 (1982)
         tmp1 = lambdai[abs.(iw .- nsiw_vec).+1] 
         tmp2 = lambdai[iw.+nsiw_vec]
@@ -262,7 +170,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
 
         znormi[iw] = znormi[iw] + dot(ziwp, lambdam)
         phiphi[iw] = phiphi[iw] + dot(phiwp, lambdap)
-    end # iw = 1:M+1
+    end 
 
     # sparse sampling 
     if sparse_sampling_flag == 1
@@ -289,7 +197,7 @@ end
 ##### Eliashberg equations - Variable Dos - mu* #####
 """
     eliashberg_eqn( itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, 
-                    dos, dosef, znormip, deltaip, shiftip, muc, muintr, wgCoulomb)
+                    dos, dosef, znormip, deltaip, shiftip, muc, muintr, wgCoulomb, idxShiftcut)
 
 Evaluate the isotropic Eliashberg equations, variable dos, mu*
 """
@@ -297,42 +205,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
                         sparse_sampling_flag::Int64, lambdai::Vector{Float64}, dos_en::Vector{Float64}, 
                         dos::Vector{Float64}, dosef::Float64, znormip::Vector{Float64}, deltaip::Vector{Float64}, 
                         shiftip::Vector{Float64}, muc::Float64, muintr::Float64, wgCoulomb::Float64, idxShiftcut::Vector{Int64})
-    """
-    Evaluate the Isotropic Eliashberg equations for
-        - Variable Dos
-        - no Weep
-    
-    Following Lee, npj Computational Materials volume 9, 156 (2023)
-        - Eqs.(29) - (31)
 
-    -------------------------------------------------------------------
-    Input:
-        itemp:          Temperature
-        nsiw:           number of matsubara frequencies
-        wsi:            matsubara frequencies
-        ind_mat_freq:   indices of considered mat freq (sparse sampling)
-        lambdai:        strength of el-ph interaction
-        dosef:          Dos at fermi energy
-        dos_en:         energies
-        dos:            DoS
-        znormip:        Z of previous iteration
-        deltaip:        delta of previous iteration
-        shiftip:        shift of previous iteration 
-        muc_ME:         mu star for Migdal-Eliashberg
-        muintr:         updated chemical potential [optional]
-
-    --------------------------------------------------------------------
-    Output:
-        data:   Vector containing the updated quantities
-                    - znormi
-                    - deltai
-                    - shifti
-
-    --------------------------------------------------------------------
-    Comments:
-        - (ϵ, iωₙ) <--> (dos_en, wsi')
-    --------------------------------------------------------------------
-    """
 
     deltai = zeros(nsiw)
     znormi = zeros(nsiw)
@@ -349,20 +222,18 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     shiwp = trapz(dos_en[idxShiftcut[1]:idxShiftcut[2]], shkernel') 
 
 
-    for iw in ind_mat_freq # loop over omega
+    for iw in ind_mat_freq 
         tmp1 = lambdai[abs.(iw .- nsiw_vec).+1] 
         tmp2 = lambdai[iw.+nsiw_vec]
         lambdam = tmp1 .- tmp2
         lambdap = tmp1 .+ tmp2
         # Eqs. (4.1-4.3) in Picket, PRB 26, 1186 (1982) for FBW
-        # using lambdam and lambdap the sum over |wp| < wscut 
-        # is rewritten as a sum over iwp = 1, nsiw(itemp)
         znormi[iw] = znormi[iw] + dot(ziwp, lambdam)
         deltai[iw] = deltai[iw] + dot(deiwp, lambdap .- 2 * wgCoulomb * muc)
         shifti[iw] = shifti[iw] + dot(shiwp, lambdap)
-    end # iw = 1:M+1
+    end 
 
-    # gives different result? (e.g. 1 K difference in Tc for LaBeH8, especially shift is different)
+    # sparse sampling
     if sparse_sampling_flag == 1
         znormi_sparse = filter(!iszero, znormi)
         deltai_sparse = filter(!iszero, deltai)
@@ -382,9 +253,6 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     deltai = kb * itemp .* deltai .* inv.(znormi) / dosef
     shifti = -kb * itemp .* shifti / dosef
 
-    #plot(wsi, shifti)
-    #savefig("shifti_temp.png")
-
     data = Vector{Vector{Float64}}([znormi, deltai, shifti])
 
     return data
@@ -392,63 +260,38 @@ end
 
 
 ##### Eliashberg equations - Constant Dos - mu* #####
+"""
+    eliashberg_eqn( itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, deltaip, muc, wgCoulomb)
+
+Evaluate the isotropic Eliashberg equations, constant dos, mu*
+"""
 function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_mat_freq::Vector{Int64},
                         sparse_sampling_flag::Int64, lambdai::Vector{Float64}, deltaip::Vector{Float64}, 
                         muc::Float64, wgCoulomb)
-    """
-    Evaluate the Isotropic Eliashberg equations for
-        - Constant Dos
-        - no Weep
-
-    Following Margine & Giustino, Phys. Rev. B 87, 024505
-        - Eq. (34) - (35)
-
-    -------------------------------------------------------------------
-    Input:
-        itemp:          Temperature
-        nsiw:           number of matsubara frequencies
-        wsi:            matsubara frequencies
-        ind_mat_freq:   indices of considered mat freq (sparse sampling)
-        lambdai:        strength of el-ph interaction
-        dos_en:         energies
-        znormip:        Z of previous iteration
-        phiphip:        phi phonon of previous iteration
-        muc_ME:         mu star for Migdal-Eliashberg
-
-    --------------------------------------------------------------------
-    Output:
-        data:   Vector containing the updated quantities
-
-    --------------------------------------------------------------------
-    Comments:
-        - 
-    --------------------------------------------------------------------
-    """
 
 
     deltai = zeros(nsiw)
     znormi = zeros(nsiw)
     nsiw_vec = [1:nsiw;]
 
-    normzph = 1 ./ sqrt.(wsi .^ 2 .+ deltaip .^ 2) #wz^2+phi0
+    normzph = 1 ./ sqrt.(wsi .^ 2 .+ deltaip .^ 2) 
 
     ziwp = normzph .* wsi 
     deiwp = normzph .* deltaip
 
-    for iw in ind_mat_freq # loop over omega
+    for iw in ind_mat_freq 
         tmp1 = lambdai[abs.(iw .- nsiw_vec).+1] 
         tmp2 = lambdai[iw.+nsiw_vec]
         lambdam = tmp1 .- tmp2
         lambdap = tmp1 .+ tmp2
+
         # Eqs. (4.1-4.3) in Picket, PRB 26, 1186 (1982) for FBW
-        # using lambdam and lambdap the sum over |wp| < wscut 
-        # is rewritten as a sum over iwp = 1, nsiw(itemp)
         znormi[iw] = znormi[iw] + dot(ziwp, lambdam)
         deltai[iw] = deltai[iw] + dot(deiwp, lambdap .- 2 * wgCoulomb * muc)
-    end # iw = 1:M+1
+    end 
 
 
-    #gives different result? (e.g. 1 K difference in Tc for LaBeH8, especially shift is different)
+    # sparse sampling
     if sparse_sampling_flag == 1
         znormi_sparse = filter(!iszero, znormi)
         deltai_sparse = filter(!iszero, deltai)
@@ -471,26 +314,12 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
 end
 
 
+"""
+    initSparseSampling(beta, omega_c, M)
 
+Initialize sparse matsubara basis (IR-Basis)
+"""
 function initSparseSampling(beta, omega_c, M)
-    """
-    Initialize sparse matsubara basis (IR-Basis)
-
-    -------------------------------------------------------------------
-    Input:
-        beta:       inverse temperature
-        omega_c:    omega cutoff
-        M:          number mat freq
-
-    --------------------------------------------------------------------
-    Output:
-        ind_mat_freq:   indices of relevant matsubara frequencies
-    
-    --------------------------------------------------------------------
-    Comments:
-        - 
-    --------------------------------------------------------------------
-    """
 
 
     IRbasis = FiniteTempBasis(Fermionic(), beta, omega_c)
@@ -506,7 +335,8 @@ function initSparseSampling(beta, omega_c, M)
 
     ind_mat_freq = ir_indices[ir_indices.<M+2] #+2
 
-    if ind_mat_freq[end] != M+1 # last mat freq needed for interpolation; 
+    # last mat freq needed
+    if ind_mat_freq[end] != M+1 
         ind_mat_freq = [ind_mat_freq; M+1] 
     end
 

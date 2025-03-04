@@ -19,10 +19,10 @@ An analytic continuation to the real frequency axis will be implemented in a fut
 
 ## Installation
 In order to run the code you need to [install](https://julialang.org/downloads/) julia 1.10 or higher.
-IsoME.jl is not yet a registered package but it can be installed using the link to the github repository.
+IsoME.jl is a registered package and it can be installed using the Julia package manager.
 ```julia-repl 
 julia> using Pkg
-julia> Pkg.add(path="https://github.com/cheil/IsoME.jl")
+julia> Pkg.add("IsoME")
 ```
 
  ## Usage
@@ -64,20 +64,20 @@ julia> inp = arguments(
                 include_Weep        = 1
                 )
 ```
-If the energy grid is not containted within the Weep-file, it can be provided through an addional `Wen_file  = "Path to W energies-file"`
+If the energy grid is not containted within the Weep-file, it can be provided through an addional file: `Wen_file  = "Path to W energies-file"`
 
 ## Minimal example
 A minimal example can be found at [Example files](https://github.com/cheil/IsoME.jl/tree/main/test/Nb).
 If you have installed the package you should be able to run the file examples.jl in any of the appoximations.
 ```console
-~ $ julia --project= examples.jl
+~ $ julia examples.jl
 ```
+If you have installed IsoME into a separate project environment, specify the path to the environment via
+```console
+~ $ julia --project=/path/to/environment/ examples.jl
+```
+For more information please refer to [Best practices](@ref).
 
 
- ## Outline 
- ```@index
-```
 
-```@contents
-```
 

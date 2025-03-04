@@ -23,4 +23,5 @@ Per default, a certain structure of the input files is assumed:
 - 1st column: energies (change via *Wen_col*)
 - 3rd column: Weep data (change via *Weep_col*)
 ### Wen-file
+Only required if the Weep file does not contain the energy grid points
 - 1st column: energies (change via *Wen_col*)

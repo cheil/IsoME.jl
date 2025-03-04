@@ -211,7 +211,7 @@ function printTextCentered(text, hline; file = "", bold = false, blanks=3, delim
     end
 
     # print to file
-    if ~isa(file, IO) && isfile(file)
+    if ~isa(file, IOBuffer) && isfile(file)
         print(file, leftText)
         print(file, text)
         print(file, rightText)

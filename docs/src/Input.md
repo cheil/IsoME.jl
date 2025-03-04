@@ -53,12 +53,16 @@ It is connected to the pseudopotentials via:
 where ``\omega_{ph}`` is a characteristic cutoff frequency for the phonon-induced interaction and ``\varepsilon_{el}`` is a characteristic electronic energy scale.   
 The typical electronic energy can be explicitly sepcified through *typEl*, otherwise the fermi energy (*ef* or *efW*)  will be used. For the characteristic phonon cutoff the Matsubara cutoff and the maximum given phonon frequency are used in case of ME or AD, respectively.
 
-Per default, ``\mu`` and ``\mu^*``'s are set to -1, which indicates that *muc_AD* = 0.12 is used. This also fixes *muc_ME* through 
+Per default, the ``\mu`` and ``\mu^*``'s are set to -1, which indicates that *muc_AD* = 0.12 is used. This also fixes *muc_ME* through 
 ```math
-\mu^*_{ME}={\mu^*_{AD}}/({1 + \mu^*_{AD} \ln(\omega_{ph}/\omega_c)})~.
+\mu^*_{ME}= \frac{\mu^*_{AD}}{(1 + \mu^*_{AD} \ln(\frac{\omega_{ph}}{\omega_c}))}~.
 ```
-If at least one of the ``\mu's`` is set, all unspecified ``\mu^*``'s, will be calculated based on it. However, no user input will be overwritten.
-Furthermore, if none of the ``\mu``'s is specified but a Weep-file is given, the ``\mu`` will be calculated from the ``W``.   
+If the ``\mu's`` or a ``\mu^*`` is set, the unspecified ``\mu^*``'s, will be calculated based on it. However, no user input will be overwritten.
+Furthermore, if neither of the ``\mu``/``\mu^*``'s is specified but a Weep-file is given, the ``\mu`` will be calculated from the ``W``.   
+
+
+### Interpolation of the energy grid
+To resolve the properties of the electron-phonon coupling, an interpolation of the energy grid using the bounds and steps specified by *itpBounds* and *itpStepSize* is performed. The bounds specify the region around the Fermi level, in which steps of size itpStepSize are used. E.g. the first step size is used within the first region around the Fermi level.
 
 
 ## Read-In 

@@ -6,9 +6,9 @@
 
 This Julia codes solves the isotropic Migdal-Eliashberg equations, either within the constant DOS approximation, the full-bandwidth (variable DOS) implementation or with the full static coulomb interaction $W(\epsilon, \epsilon')$.
 
-In all cases a file containing the Eliashberg spectral function alpha2F has to be provided.
-For the variable DOS calculation the electronic DOS and the respective value of the Fermi level is needed as well.
-In the most general case an additional file containing the screened Coulomb interaction W is required.
+In all cases a file containing the Eliashberg spectral function $\alpha^2F$ has to be provided.
+For the variable DOS calculation the electronic DOS $N(\varepsilon)$ and the respective value of the Fermi level is needed as well.
+In the most general case an additional file containing the screened Coulomb interaction $W(\varepsilon,\varepsilon')$ is required.
 
 All input parameters and flags are set using the custom struct `arguments`.
 

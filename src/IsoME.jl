@@ -18,7 +18,7 @@
 module IsoME
 
 
-export EliashbergSolver, arguments
+export EliashbergSolver, arguments, FINDAGOODNAME
 
 
 using DelimitedFiles        
@@ -41,6 +41,7 @@ const THz2meV = 4.13566553853599;
 const kb = 0.08617333262; # meV/K
 
 ### Define input struct ###
+# inputs Eliashberg Solver
 @kwdef mutable struct arguments
     # Parameters
     temps::Vector{Number}   = [-1]        
@@ -106,6 +107,24 @@ const kb = 0.08617333262; # meV/K
 
 end
 
+# input structure for iterative ACON 
+@kwdef mutable struct FINDAGOODNAME
+    temps::Vector{Number}       = [-1]  # required in this case
+    path_selfEnergy::String     = ""
+    muc_ME::Float64             = -1
+    
+    # a2f input file
+    a2f_file::String
+    ind_smear::Int64    = -1
+    nsmear::Int64       = -1
+    nheader_a2f::Int64  = -1
+    nfooter_a2f::Int64  = -1
+    a2f_unit::String    = ""
+
+    # Output
+    outdir::String      = pwd() 
+end
+
 
 ### include files ###
 include("TcSearch.jl")
@@ -116,6 +135,7 @@ include("AllenDynes.jl")
 include("MuUpdate.jl")
 include("WriteOutput.jl")
 include("EliashbergEq.jl")
+include("iterativeAcon.jl")
 
 
 end

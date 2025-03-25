@@ -16,7 +16,7 @@
 """
     InputParser(inp, log_file)
 
-Read, convert, preprocess inputs.
+Read, convert, preprocess inputs for EliashbergSolver().
 """
 function InputParser(inp::arguments, log_file)
 

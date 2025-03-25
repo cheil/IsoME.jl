@@ -36,27 +36,26 @@ end
 """
     printStartMessage(console)
 
-Start message
+Start message - Eliashberg Solver
 """
-function printStartMessage(console, log_file)
+function printStartMessage(console::Dict, log_file; mode = 0)
 
-    strLine = "-"^(sum(console["width"])+length(console["width"])+1)
+    if mode == 0
+        strLine = "-"^(sum(console["width"])+length(console["width"])+1)
 
-    strAuthors = "  Authors: Christoph Heil, Eva Kogler, Dominik Spath\n\n"
+        strAuthors = "  Authors: Christoph Heil, Dominik Spath, Eva Kogler\n\n"
 
-    strEliash = "Eliashberg Solver started"
+        strMode = "Eliashberg Solver started"
 
-    #printTextCentered(log_file, "Version 1.0", strLine, false)
-    print(strAuthors)
-    print(strLine)
-    # log file
-    print(log_file, strAuthors)
-    print(log_file, strLine)
+        printTee(log_file, strAuthors)
+    else
+        strLine = "-"^50
+        strMode = "Iterative ACON started"
+    end
+    printTee(log_file, strLine)
 
-    printTextCentered(strEliash, strLine, file = log_file, bold = true)
-    print(strLine*"\n\n\n")
-    # log file
-    print(log_file, strLine*"\n\n\n")
+    printTextCentered(strMode, strLine, file = log_file, bold = true)
+    printTee(log_file, strLine*"\n\n\n")
     
     console["partingLine"] = strLine
     

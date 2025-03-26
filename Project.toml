@@ -1,7 +1,7 @@
 name = "IsoME"
 uuid = "5affe8ad-4ea4-4a13-a3c7-a7034cd8af9a"
 authors = ["Christoph Heil <christoph.heil@tugraz.at>", "Eva Kogler", "Dominik Spath"]
-version = "1.0.0"
+version = "1.0.3"
 
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
@@ -22,6 +22,21 @@ Term = "22787eb5-b846-44ae-b979-8e399b8463ab"
 Trapz = "592b5752-818d-11e9-1e9a-2b8ca4a44cd1"
 
 [compat]
+CSV = "0.10.0"
+DataFrames = "1.7.0"
+DelimitedFiles = "1.9"
+Interpolations = "0.15"
+LaTeXStrings = "1.4"
+LinearAlgebra = "1"
+Logging = "1"
+LoggingExtras = "1.1"
+LsqFit = "0.15"
+Plots = "1.40"
+Printf = "1"
+Roots = "2.2"
+SparseIR = "1.0"
+Term = "2.0"
+Trapz = "2.0"
 julia = "1.10"
 
 [extras]

@@ -17,7 +17,7 @@
 export EliashbergSolver
 
 """
-    solve_eliashberg(itemp, inp, console, matval)
+    solve_eliashberg(itemp, inp, console, matval, log_file)
 
 Solve the eliashberg eq. self-consistently for a fixed temperature
 """
@@ -32,22 +32,10 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
     wsi = collect((2 * (0:M) .+ 1) .* π .* kb .* itemp)
     nsiw = size(wsi, 1)
 
-    ### sparse sampling, consider only subset of mat frequencies up to M
+    ### sparse sampling
     if itemp < sparseSamplingTemp    
         sparse_sampling_flag = 1
-        ind_mat_freq = initSparseSampling(beta, omega_c, M)
-
-        
-        # sparse sampling, roman fbw paper
-        #=
-        fsparse = 1.0
-        ind_mat_freq = cumsum(Int64.(round.(exp.(collect(1:nsiw)./(nsiw*fsparse)))))
-        ind_mat_freq = ind_mat_freq[ind_mat_freq .<= nsiw]
-        if ind_mat_freq[end] != nsiw
-            ind_mat_freq = push!(ind_mat_freq, nsiw)
-        end
-        =#
-        
+        ind_mat_freq = initSparseSampling(beta, omega_c, M)       
 
         # write to console
         printTextCentered("T = "*string(itemp)*" K ", console["partingLine"], file = log_file, bold = true)
@@ -76,13 +64,12 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
     lambdai = calcLambda(itemp, M, a2f_omega_fine, a2f_fine)
 
 
-
     ##### Initialize variables #####
     if include_Weep == 1
         if cDOS_flag == 0
             ### Initialize
             deltai = ones(ndos, nsiw) .* BCS_gap
-            znormi = ones(nsiw) #.* 2 ./(1 .+ exp.(wsi .- round(nsiw/4))) .+1  # sigmoid function
+            znormi = ones(nsiw) 
             shifti = -zeros(nsiw)
             phici = -ones(ndos).*0.1
             phiphi = ones(nsiw) .* maximum([BCS_gap, 2*phici[1]])
@@ -95,7 +82,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
         elseif cDOS_flag == 1
             ### Initialize
             deltai = ones(ndos, nsiw) .* BCS_gap
-            znormi = ones(nsiw) #.* 2 ./(1 .+ exp.(wsi .- round(nsiw/4))) .+1  # sigmoid function
+            znormi = ones(nsiw) 
             phici = -ones(ndos).*0.1
             phiphi = ones(nsiw) .* maximum([BCS_gap, 2*phici[1]])
 
@@ -110,7 +97,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
         if cDOS_flag == 0
             ### Initialize 
             deltai = ones(nsiw) .* BCS_gap
-            znormi = ones(nsiw) #.* 2 ./(1 .+ exp.(wsi .- round(nsiw/4))) .+1  # sigmoid function
+            znormi = ones(nsiw) 
             shifti = zeros(nsiw)
             muintr = 0.0
 
@@ -121,7 +108,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
         elseif cDOS_flag == 1
             ### Initialize 
             deltai = ones(nsiw) .* BCS_gap
-            znormi = ones(nsiw) #.* 2 ./(1 .+ exp.(wsi .- round(nsiw/4))) .+1  # sigmoid function
+            znormi = ones(nsiw) 
 
             ### Print to console & log file
             console["InitValues"] = [0 znormi[1] deltai[1] nothing]
@@ -377,7 +364,7 @@ end
 
  
 """
-    solve_eliashberg(itemp, inp, console, matval)
+    solve_eliashberg(inp, console, matval, ML_Tc, log_file)
 
 Start the Tc search mode or solve the eliashberg equations for each temperature
 """
@@ -395,7 +382,7 @@ function findTc(inp, console, matval, ML_Tc, log_file)
         # initial guess, Machine learning Tc           
         itemp = maximum([1.0, round(ML_Tc)])
 
-        # expansion of a + b*log(c-x) at x = 0, a=Delta(T2), b=1, c=Delta(T1) - use other function instead??
+        # expansion of a + b*log(c-x) at x = 0, a=Delta(T2), b=1, c=Delta(T1)
         m(x, p) = p[1] + log(p[3]) .- p[2] * x ./ p[3] .- p[2] * x .^ 2 / (2 * p[3]^2) .- p[2] * x .^ 3 / (3 * p[3]^3) .- p[2] * x .^ 4 / (4 * p[3]^4) .- p[2] * x .^ 5 / (5 * p[3]^5)
         inp.temps = Vector{Float64}()
         fitFlag = true
@@ -454,7 +441,7 @@ function findTc(inp, console, matval, ML_Tc, log_file)
             elseif sum(.~isnan.(Delta0)) == 1 
                 # get a second gap value
                 if length(Delta0) == 1
-                    itemp = itemp + round(maximum([itemp / 2, 2]))      # incorporate gap value into estimate of next Tc?
+                    itemp = itemp + round(maximum([itemp / 2, 2]))      
                 else
                     itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
                 end
@@ -571,7 +558,7 @@ function EliashbergSolver(inp::arguments)
         
         ### Check input
         try
-            inp = checkInput(inp, log_file)
+            inp = checkInput(inp)
         catch ex
             # crash file
             writeToCrashFile(inp)
@@ -617,7 +604,6 @@ function EliashbergSolver(inp::arguments)
             # console / log file
             printError("while solving the Eliashberg equations. Stopping now!", ex, log_file, errorLogger)
         end
-    
 
         ### write Tc to console
         try
@@ -627,50 +613,55 @@ function EliashbergSolver(inp::arguments)
             writeToCrashFile(inp)
 
             # console / log file
-            printWarning("Error while printing the summary.", log_file, ex = ex)
+            printWarning("Error while printing the summary.", log_file, ex=ex)
         end
 
-        ### save inputs
-        try
-            createInfoFile(inp)
-        catch ex
-            # crash file
-            writeToCrashFile(inp)
- 
-            # console / log file
-            printWarning("Error while creating the Info file.", log_file, ex = ex)
-        end
-
-        ### create Summary file
-        header = "# T/K  Δ(0)/meV  Z(0)/1"
-        out_vars = zeros(size(Delta0, 1), 3)
-        out_vars[:, 1] = temps
-        out_vars[:, 2] = Delta0
-        out_vars[:, 3] = Znorm0
-        if inp.cDOS_flag == 0
-            header = header * "  χ(0)/meV  ϵ_F-μ/meV"
-            out_vars = hcat(out_vars, Shift0, EfMu)
-        end
-        try
-            createSummaryFile(inp, Tc, out_vars, header)
-        catch ex
-            # crash file
-            writeToCrashFile(inp)
-
-            # console / log file
-            printWarning("Error while creating the Summary.dat file.", log_file, ex = ex)
-        end
-
-        ### figures
-        if inp.flag_figure == 1
+        ### Outputs ###
+        if ~inp.testMode # no output in test mode
+            ### save inputs
             try
-                createFigures(inp, matval, Delta0, temps, Tc, log_file)
+                createInfoFile(inp)
             catch ex
                 # crash file
                 writeToCrashFile(inp)
 
                 # console / log file
-                printWarning("Error while plotting. Skipping plots.", log_file, ex = ex)
+                printWarning("Error while creating the Info file.", log_file, ex=ex)
+            end
+
+
+            ### create Summary file
+            header = "# T/K  Δ(0)/meV  Z(0)/1"
+            out_vars = zeros(size(Delta0, 1), 3)
+            out_vars[:, 1] = temps
+            out_vars[:, 2] = Delta0
+            out_vars[:, 3] = Znorm0
+            if inp.cDOS_flag == 0
+                header = header * "  χ(0)/meV  ϵ_F-μ/meV"
+                out_vars = hcat(out_vars, Shift0, EfMu)
+            end
+            try
+                createSummaryFile(inp, Tc, out_vars, header)
+            catch ex
+                # crash file
+                writeToCrashFile(inp)
+
+                # console / log file
+                printWarning("Error while creating the Summary.dat file.", log_file, ex=ex)
+            end
+
+
+            ### figures
+            if inp.flag_figure == 1
+                try
+                    createFigures(inp, matval, Delta0, temps, Tc, log_file)
+                catch ex
+                    # crash file
+                    writeToCrashFile(inp)
+
+                    # console / log file
+                    printWarning("Error while plotting. Skipping plots.", log_file, ex=ex)
+                end
             end
         end
     end
@@ -682,7 +673,9 @@ function EliashbergSolver(inp::arguments)
     print(log_file, "\nTotal Runtime: ", round(dt, digits=2), " seconds\n")
 
     # close & save
-    close(log_file)
+    if ~inp.testMode
+        close(log_file)
+    end
 
     if inp.returnTc
         return Tc

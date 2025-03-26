@@ -212,7 +212,7 @@ function printTextCentered(text, hline; file = "", bold = false, blanks=3, delim
     end
 
     # print to file
-    if isfile(file)
+    if ~isa(file, IOBuffer) && isfile(file)
         print(file, leftText)
         print(file, text)
         print(file, rightText)
@@ -526,7 +526,11 @@ end
 Save exception in CRASH file
 """
 function writeToCrashFile(inp)
-    crashFile = open(inp.outdir * "CRASH", "a")
+    if inp.testMode
+        crashFile = IOBuffer()
+    else
+        crashFile = open(inp.outdir * "CRASH", "a")
+    end
     print(crashFile, current_exceptions())
     print(crashFile, "\n\n")
     close(crashFile)
@@ -780,7 +784,7 @@ function saveSelfEnergyComponents(itemp, inp, iwn, Delta, Z; epsilon=nothing,  c
     # Phiph
     if ~isnothing(phiph)
         open(folder*"Phiph_"*string(itemp)*"K.dat", "w") do io
-            write(io, "#  iωₙ /meV      Φp(iωₙ) / meV \n")
+            write(io, "#  iωₙ / meV      Φp(iωₙ) / meV \n")
             writedlm(io, [iwn phiph], '\t')
         end
     end

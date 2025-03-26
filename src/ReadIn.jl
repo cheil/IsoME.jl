@@ -14,13 +14,11 @@
 
 
 """
-    InputParser()
+    InputParser(inp, log_file)
 
-Include the file specified via path.
-
-# Examples
+Read, convert, preprocess inputs.
 """
-function InputParser(inp::arguments, log_file::IOStream)
+function InputParser(inp::arguments, log_file)
 
     ### Init table size ###
     console = Dict()
@@ -80,22 +78,22 @@ function InputParser(inp::arguments, log_file::IOStream)
 
         ### Interpolation ###
         # Interpolation Object DoS
-        epsilonItp = range(dos_en[1], dos_en[end], length(dos_en))       # interpolation vector must be of the form a:b
+        epsilonItp = range(dos_en[1], dos_en[end], length(dos_en))      
         itpDos = scale(interpolate(dos, BSpline(Cubic())), epsilonItp) 
 
         # encut in meV
-        if (inp.encut > dos_en[end]) || (-inp.encut < dos_en[1])    # DO not set inp.encut=-1 if it exceeds the interval
+        if (inp.encut > dos_en[end]) || (-inp.encut < dos_en[1])    
             text = "Energy cutoff exceeds range of DOS!"
             printWarning(text, log_file)
         end
 
-        if inp.include_Weep == 1 || ((isfile(inp.Weep_file) && (isempty(inp.Wen_file) || isfile(inp.Wen_file))) && inp.mu == -1)  # if Wen is given Wen must exist as well
+        if inp.include_Weep == 1 || ((isfile(inp.Weep_file) && (isempty(inp.Wen_file) || isfile(inp.Wen_file))) && inp.mu == -1)  
             # read Weep + energy grid points
-            Weep, Wen, inp.efW, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, outdir = inp.outdir, logFile = log_file)
+            Weep, Wen, inp.efW, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.Wen_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, outdir = inp.outdir, logFile = log_file)
 
             ### Interpolation ###
             # Interpolation Object Weep
-            epsilonItp = range(Wen[1], Wen[end], length(Wen))       # interpolation vector must be of the form a:b
+            epsilonItp = range(Wen[1], Wen[end], length(Wen))       
             itpWeep = scale(interpolate(Weep, BSpline(Constant())), (epsilonItp, epsilonItp)) 
 
             # interpolate 
@@ -146,15 +144,15 @@ function InputParser(inp::arguments, log_file::IOStream)
 
     elseif inp.muc_AD == -1 && inp.muc_ME == -1
         if inp.typEl != -1
-            calcMucs(inp, inp.typEl, a2f, a2f_omega)
+            calcMucs(inp, inp.typEl, a2f, a2f_omega, log_file)
         
         elseif ~(isnothing(ef) || ef == -1 || ef == 0)
             inp.typEl = ef
-            calcMucs(inp, inp.typEl, a2f, a2f_omega)
+            calcMucs(inp, inp.typEl, a2f, a2f_omega, log_file)
 
         elseif ~(inp.efW == -1 || inp.efW == 0)
             inp.typEl = inp.efW
-            calcMucs(inp, inp.typEl, a2f, a2f_omega)
+            calcMucs(inp, inp.typEl, a2f, a2f_omega, log_file)
 
         else
             text = "Unable to calculate μ* from μ without a typical electron energy!"
@@ -192,40 +190,45 @@ end
 
 
 """
-    createDirectory()
+    createDirectory(inp, strIsoME)
 
-Check which input files (a2f, dos, weep) exist. Overwrite flags if neccessary.
+Create directory.
 """
 function createDirectory(inp::arguments, strIsoME::String)
 
-    # create output directory
-    if isempty(inp.outdir) 
-        inp.outdir = "./"
-    elseif ~(inp.outdir[end] == '/' || inp.outdir[end] == '\\')
-        inp.outdir = inp.outdir*"/"
+    if inp.testMode # hidden outputs in test mode
+        log_file = IOBuffer()
+        errorLogger = SimpleLogger(log_file, Logging.Error)
+    else
+        # create output directory
+        if isempty(inp.outdir) 
+            inp.outdir = "./"
+        elseif ~(inp.outdir[end] == '/' || inp.outdir[end] == '\\')
+            inp.outdir = inp.outdir*"/"
+        end
+
+        idxDir = 1
+        tempDir = inp.outdir[1:end-1]
+        while isdir(inp.outdir)
+            inp.outdir = tempDir*"_"*string(idxDir)*"/"
+            idxDir+=1
+        end
+
+        try
+            mkpath(inp.outdir)   # mkpath
+        catch ex
+            error("Couldn't write into " * inp.outdir * "! Outdir may not writable or an invalid path.\n\n")
+        end
+
+        log_file = open(inp.outdir * "log.txt", "w")
+        print(log_file, strIsoME)
+
+        # logging to console and log-file (@warn,...)
+        errorLogger = SimpleLogger(log_file, Logging.Error)
+        file_logger = SimpleLogger(log_file)
+        tee_logger = TeeLogger(ConsoleLogger(), file_logger)
+        global_logger(tee_logger)
     end
-
-    idxDir = 1
-    tempDir = inp.outdir[1:end-1]
-    while isdir(inp.outdir)
-        inp.outdir = tempDir*"_"*string(idxDir)*"/"
-        idxDir+=1
-    end
-
-    try
-        mkpath(inp.outdir)   # mkpath
-    catch ex
-        error("Couldn't write into " * inp.outdir * "! Outdir may not writable or an invalid path.\n\n")
-    end
-
-    log_file = open(inp.outdir * "log.txt", "w")
-    print(log_file, strIsoME)
-
-    # logging to console and log-file (@warn,...)
-    errorLogger = SimpleLogger(log_file, Logging.Error)
-    file_logger = SimpleLogger(log_file)
-    tee_logger = TeeLogger(ConsoleLogger(), file_logger)
-    global_logger(tee_logger)
 
     return inp, log_file, errorLogger
 
@@ -233,11 +236,11 @@ end
 
 
 """
-    checkInput!()
+    checkInput!(inp)
 
-Check which input files (a2f, dos, weep) exist. Overwrite flags if neccessary.
+Check which input files (a2f, dos, weep) exist.
 """
-function checkInput(inp::arguments, log_file::IOStream)
+function checkInput(inp::arguments)
 
     # check input files / cDOS & Weep
     if ~isfile(inp.a2f_file)
@@ -246,12 +249,12 @@ function checkInput(inp::arguments, log_file::IOStream)
     elseif ~isfile(inp.dos_file) && (inp.cDOS_flag == 0 || inp.include_Weep == 1)
 
         text = "Invalid path to Dos-file!\n\n"
-        @error text
+        error(text)
     
     elseif inp.include_Weep == 1 && ((~isfile(inp.Weep_file)) || (~isempty(inp.Wen_file) && ~isfile(inp.Wen_file)))
         
         text = "Invalid path to Weep or Wen-file!\n\n"
-        @error text
+        error(text)
 
     end
 
@@ -260,7 +263,7 @@ function checkInput(inp::arguments, log_file::IOStream)
 end
 
 """
-    readIn_a2f(a2f_file, indSmear [,unit, nheader, nfooter, nsmear])   
+    readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsmear=-1)   
 
 Read in a2f file to solve the isotropic Migdal-Eliashberg equations
 
@@ -291,6 +294,8 @@ function readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsme
             omega_raw = omega_raw * THz2meV
     elseif "Ry" == unit
         omega_raw = omega_raw * Ry2meV
+    elseif  "Ha" == unit     # Hartree
+        omega_raw = omega_raw .* Ry2meV*2
     else
         error("Invalid Unit! Please check the header of the a2F-file and try again!")
     end
@@ -311,39 +316,14 @@ end
 
 
 # Read in DOS
+"""
+    readIn_Dos(dos_file, ef =-1, spin=2, unit="", nheader=-1, nfooter=-1; outdir ="./", logFile = nothing)
+
+Read the dos file. All quantities are converted to meV.
+
+The energies must be in column 1 and the dos in column 2
+"""
 function readIn_Dos(dos_file, ef =-1, spin=2, unit="", nheader=-1, nfooter=-1; outdir ="./", logFile = nothing)
-    """
-    Read in DoS file to solve the isotropic Migdal-Eliashberg equations
-    All quantities are converted to meV
-
-    -------------------------------------------------------------------
-    Input:
-        Dos_file:   path to the Dos file
-        colFermi:   column of Fermi energy starting from the last col   
-        spin:       does the Dos take into account spin
-                        - 1: No, divide by 1
-                        - 2: Yes, divide by 2
-        nheader:    number of header lines in Dos file
-        nfooter:    number of footer lines in Dos file
-        unitFlag:   units used in Dos file  
-                        - 0: meV
-                        - 1: eV  
-
-    --------------------------------------------------------------------
-    Output:
-        energies:   Nintx1 vector containing energy grid points, [meV]
-        dos:        Nintx1 vector containing dos at epsilon grid points,
-                    [1/meV]
-        ef:         Fermi energy
-        idx_ef:     fermi energy index in energies
-    
-    --------------------------------------------------------------------
-    Comments:
-        - Currently the energies must be in column 1 and the dos in 
-          column 2 !!
-    --------------------------------------------------------------------
-    """
-
 
     ### Read in dos file ###
     dos_data = readdlm(dos_file) 
@@ -383,6 +363,9 @@ function readIn_Dos(dos_file, ef =-1, spin=2, unit="", nheader=-1, nfooter=-1; o
     elseif unit == "Ry"
         energies = energies .* Ry2meV
         dos = dos ./ Ry2meV
+    elseif  "Ha" == unit     # Hartree
+        energies = Weep.*Ry2meV*2
+        dos = Wen ./ Ry2meV*2
     else
         error("Invalid Unit! Either set the unit manually via dos_unit or check the header of the Dos-file and try again!")
     end
@@ -395,12 +378,12 @@ end
 
 
 """
-    readIn_Weep(Weep_file[, unit, nheader, nfooter])
+    readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=-1, unit = "", nheader=-1, nfooter=-1,  nheaderWen=-1, nfooterWen=-1; outdir = "./", logFile = nothing)
 
 Read in Weep file containing the sreened coulomb interaction.
 Weep data must be in column 3
 """
-function readIn_Weep(Weep_file, Wen_file, Weep_col=3, ef=-1, unit = "", nheader=-1, nfooter=-1,  nheaderWen=-1, nfooterWen=-1; outdir = "./", logFile = nothing)
+function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=-1, unit = "", nheader=-1, nfooter=-1,  nheaderWen=-1, nfooterWen=-1; outdir = "./", logFile = nothing)
 
     ### Read in Weep file ###
     Weep_data = readdlm(Weep_file);
@@ -430,11 +413,10 @@ function readIn_Weep(Weep_file, Wen_file, Weep_col=3, ef=-1, unit = "", nheader=
 
     ### read in W energies ###
     if isempty(Wen_file)
-        Wen_col = 2     # as input parameter?
         #Wen = Float64.(Weep_data[nheader+1:numWens+nheader, Wen_col])
-        Wen = unique(Float64.(Weep_data[nheader+1:end-nfooter, 1]))
+        Wen = unique(Float64.(Weep_data[nheader+1:end-nfooter, Wen_col]))
     else
-        Wen = readIn_Wen(Wen_file, nheaderWen, nfooterWen)
+        Wen = readIn_Wen(Wen_file, Wen_col, nheaderWen, nfooterWen)
     end
 
     ### Convert ###
@@ -450,6 +432,9 @@ function readIn_Weep(Weep_file, Wen_file, Weep_col=3, ef=-1, unit = "", nheader=
     elseif  "Ha" == unit     # Hartree
         Weep = Weep.*Ry2meV*2
         Wen = Wen.*Ry2meV*2
+    elseif unit == "THz"
+        Weep = Weep .* THz2meV
+        Wen = Wen .* THz2meV
     else
         error("Invalid Unit! Consider setting the unit manually (Weep_unit) or check the header of the Weep-file and try again!")
     end
@@ -462,12 +447,12 @@ function readIn_Weep(Weep_file, Wen_file, Weep_col=3, ef=-1, unit = "", nheader=
 end
 
 """
-    readIn_Wen(Wen_file[, ef, colFermi, unit, nheader, nfooter])
+    readIn_Wen(Wen_file, Wen_col, nheader=-1, nfooter=-1)
 
 Read in Wen 
 Energy grid for Weep 
 """
-function readIn_Wen(Wen_file, nheader=-1, nfooter=-1)
+function readIn_Wen(Wen_file, Wen_col, nheader=-1, nfooter=-1)
     ### Read in Weep file ###
     Wen_data = readdlm(Wen_file);
 
@@ -476,7 +461,7 @@ function readIn_Wen(Wen_file, nheader=-1, nfooter=-1)
     (nfooter != -1) || (nfooter = size(Wen_data, 1) - findlast(isa.(Wen_data[:, 1], Number)))
 
     ### Remove header & footer
-    Wen = Float64.(Wen_data[nheader+1:end-nfooter, 1])
+    Wen = Float64.(Wen_data[nheader+1:end-nfooter, Wen_col])
 
     return Wen
 
@@ -485,11 +470,11 @@ end
 
 # Fermi energy
 """
-    extractFermiEnergy(header, file=nothing)
+    extractFermiEnergy(header, unit, nameFile=nothing)
 
 Extract the fermi energy from the header of the input files
 """
-function extractFermiEnergy(header, unit, file=nothing; outdir = "./", logFile = nothing)
+function extractFermiEnergy(header, unit, nameFile=nothing; outdir = "./", logFile = nothing)
 
     ef = -1
     try
@@ -523,12 +508,12 @@ function extractFermiEnergy(header, unit, file=nothing; outdir = "./", logFile =
         elseif "Ha" == unit     # Hartree
             ef = ef .* Ry2meV * 2
         else
-            error("Invalid Unit! Consider setting the unit manually ("*file*"_unit) or check the header of the "*file*"-file and try again!")
+            error("Invalid Unit! Consider setting the unit manually ("*nameFile*"_unit) or check the header of the "*nameFile*"-file and try again!")
         end
 
     catch ex
-        text = "Error while reading the fermi energy from the " * file * "-file."
-        text *= "\nConsider setting the fermi-energy manually (ef or efW) or check the header of the " * file * "-file\n\n"
+        text = "Error while reading the fermi energy from the " * nameFile * "-file."
+        text *= "\nConsider setting the fermi-energy manually (ef or efW) or check the header of the " * nameFile * "-file\n\n"
         @error text
     end
 
@@ -537,27 +522,12 @@ end
 
 
 # Convert units
-function getUnit(header, file=nothing)
-    """
-    Return unit given in the header
+"""
+    getUnit(header, nameFile=nothing)
 
-    -------------------------------------------------------------------
-    Input:
-        unit:       Energy unit given as string      
-        header:     header of a given file  
-
-    --------------------------------------------------------------------
-    Output:
-        unitFlag:   true if correct unit, false otherwise
-    
-    --------------------------------------------------------------------
-    Comments:
-        - When using this function it is important to check first composed 
-          units like e.g. meV before eV
-          If a string contains meV and one checkes for eV the function will
-          return true
-    --------------------------------------------------------------------
-    """
+Read the units from the header of the input files
+"""
+function getUnit(header, nameFile=nothing)
 
     units = ["meV", "eV", "THz", "Ry", "Ha"]
     for unit in units
@@ -566,7 +536,7 @@ function getUnit(header, file=nothing)
         end
     end
     
-    println("Auto-extraction of unit from "*file*"-file failed! Please type the correct unit case sensitive into the console (it might be that you need to type it twice due to a bug in julia):")
+    println("Auto-extraction of unit from "*nameFile*"-file failed! Please type the correct unit case sensitive into the console (it might be that you need to type it twice due to a bug in julia):")
     unit = readline();
 
     return unit
@@ -589,7 +559,7 @@ end
 
 
 """
-    calcMucME(inp, console, a2f_omega, log_file))
+    calcMucME(inp, console, a2f_omega, log_file)
 
 Calculate μ*_ME from μ*_AD using formula as in 
 Pellegrini, Ab initio methods for superconductivity 
@@ -610,7 +580,7 @@ end
 
 
 """
-    calcMucAD(inp, console, a2f_omega, log_file))
+    calcMucAD(inp, console, a2f_omega)
 
 Calculate μ*_AD from μ*_ME using formula (30) in
 Pellegrini, Ab initio methods for superconductivity 
@@ -626,19 +596,20 @@ end
 
 
 """
-    calcMucME(inp, console, a2f_omega, log_file))
+    calcMucME(inp, console, a2f_omega, log_file)
 
 Calculate μ*_ME and μ*_AD from μ using formulas as in 
 Pellegrini, Ab initio methods for superconductivity 
 DOI: 10.1038/s42254-024-00738-9
 """
-function calcMucs(inp, ef, a2f, a2f_omega)
-    # ensure μ*_ME < 4*μ --> reasonable ??
+function calcMucs(inp, ef, a2f, a2f_omega, log_file)
+    # μ*_ME < 4*μ
     if inp.omega_c > ef * exp(3 / (4 * inp.mu))
         inp.omega_c = ef * exp(3 / (4 * inp.mu))
 
         text = "Matsubara cutoff would lead to μ*_ME > 4*μ."
         text *= "\nomega_c has been set to a smaller value."
+        text *= "\nConsider checking the typical electronic energy typEl!"
         printWarning(text, log_file)
     end
 

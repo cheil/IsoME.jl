@@ -13,9 +13,9 @@
 
 # TODO:
 #   - flags as input
-#   - ral_c as input
+#   - real_c as input
 function acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file; idx_ef=-1, shifti = 0)
-    printTextCentered("Analytic Continuation started", console["partingLine"], file = log_file)
+
     real_c = 500.0
 
     # sinnvoller machen
@@ -30,6 +30,11 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file; idx_ef=-
         g12 = anomalousGF(g11, gaux)
         delta = Delta_from_GF(ws, g11, g12)
         dos_qp = qdos(ws, delta)#
+
+        # spectral function
+        A11 = -imag.(g11) / pi
+        A12 = -imag.(g12) / pi
+
     end
 
     lpade = 1
@@ -38,84 +43,29 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file; idx_ef=-
         g12_pade = anomalousGF(g11_pade, gaux_pade)
         delta_pade = Delta_from_GF(ws_pade, g11_pade, g12_pade)
         dos_qp_pade = qdos(ws_pade, delta_pade)
+
+        # spectral function
+        A11_pade = -imag.(g11_pade) / pi
+        A12_pade = -imag.(g12_pade) / pi
     end
 
-    flag_A_figure = 1
-    if flag_A_figure == 1
-        plot_font = "Computer Modern"
-        default(
-            fontfamily=plot_font,
-            linewidth=2,
-            framestyle=:box,
-            label=nothing,
-            grid=false
-        )
-        # NAC
-        if lneva == 1
-            A11 = -imag.(g11) / pi
-            xlim_max = round(maximum(ws), RoundUp)
-            xtick_val = 0:5:xlim_max
-            ylim_max = round(maximum(A11), RoundUp)
-            #ylim_max = round(maximum(A11) / 10 * 1.01, RoundUp) * 10
-            #ylim_max = 5
-
-            plot(ws, A11)
-            xlims!(-xlim_max, xlim_max)
-            ylims!(0, ylim_max)
-            title!(inp.material)
-            xlabel!(L"\omega ~ \mathrm{(meV)}")
-            ylabel!(L"\mathrm{A}^{\textrm{11}}(\omega) \;\;\; [\mathrm{eV^{-1}}]")
-            savefig(inp.outdir * "/A11_neva_T" * string(itemp) * ".pdf")
-
-            A12 = -imag.(g12) / pi
-            ylim_min = round(minimum(A12), RoundUp)
-            ylim_max = round(maximum(A12), RoundUp)
-
-            plot(ws, A12)
-            xlims!(-xlim_max, xlim_max)
-            ylims!(ylim_min, ylim_max)
-            title!(inp.material)
-            xlabel!(L"\omega ~ \mathrm{(meV)}")
-            ylabel!(L"\mathrm{A}^{\textrm{an}}(\omega) \;\;\; [\mathrm{eV^{-1}}]")
-            savefig(inp.outdir * "/A12_neva_T" * string(itemp) * ".pdf")
-        end
-
-        # Pade
-        if lpade == 1
-            A11_pade = -imag.(g11_pade) / pi   # this should be -imag.(g11)/pi, there is some sign issue...
-            xlim_max = round(maximum(ws_pade), RoundUp)
-            xtick_val = 0:10:xlim_max
-            ylim_min = round(minimum(A11_pade), RoundUp)
-            ylim_max = round(maximum(A11_pade), RoundUp)
-            #ylim_max = round(maximum(A11) / 10 * 1.01, RoundUp) * 10
-            #ylim_max = 5
-
-            plot(ws_pade, A11_pade)
-            xlims!(-xlim_max, xlim_max)
-            ylims!(ylim_min, ylim_max)
-            title!(inp.material)
-            xlabel!(L"\omega ~ \mathrm{(meV)}")
-            ylabel!(L"\mathrm{A}^{\textrm{11}}(\omega) \;\;\; [\mathrm{eV^{-1}}]")
-            savefig(inp.outdir * "/A11_pade_T" * string(itemp) * ".pdf")
-
-            A12_pade = -imag.(g12_pade) / pi   # this should be -imag.(g11)/pi, there is some sign issue...
-            xlim_max = round(maximum(ws_pade), RoundUp)
-            xtick_val = 0:10:xlim_max
-            ylim_min = round(minimum(A12_pade), RoundUp)
-            ylim_max = round(maximum(A12_pade), RoundUp)
-
-            plot(ws_pade, A12_pade)
-            xlims!(-xlim_max, xlim_max)
-            ylims!(ylim_min, ylim_max)
-            title!(inp.material)
-            xlabel!(L"\omega ~ \mathrm{(meV)}")
-            ylabel!(L"\mathrm{A}^{\textrm{an}}(\omega) \;\;\; [\mathrm{eV^{-1}}]")
-            savefig(inp.outdir * "/A12_pade_T" * string(itemp) * ".pdf")
-        end
+    ### save outputs ###
+    folder = inp.outdir*"ACON/"
+    if ~isdir(folder)
+        mkdir(folder)
     end
 
-    flag_qdos_figure = 1
-    if flag_qdos_figure == 1
+    if lneva == 1
+        saveACON(itemp, inp, folder, ws, delta, A11, A12, "neva")
+    end
+
+    if lpade == 1
+        saveACON(itemp, inp, folder, ws_pade, delta_pade, A11_pade, A12_pade, "pade")
+    end    
+
+    # make plots
+    flag_figureACON = 1
+    if flag_figureACON == 1
         plot_font = "Computer Modern"
         default(
             fontfamily=plot_font,
@@ -127,64 +77,34 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file; idx_ef=-
 
         # NAC
         if lneva == 1
-            xlim_max = round(maximum(ws), RoundUp)
-            xtick_val = 0:10:xlim_max
-            #ylim_max = round(maximum(dos_qp) / 10 * 1.01, RoundUp) * 10
-            ylim_max = round(maximum(dos_qp), RoundUp)
+            plotSpectralFunction(itemp, ws, A11, A12, folder, inp.material)
 
-            plot(ws, dos_qp)
-            xlims!(0, xlim_max)
-            ylims!(0, ylim_max)
-            title!(inp.material)
-            xlabel!(L"\omega ~ \mathrm{(meV)}")
-            ylabel!(L"\mathrm{N}_{\mathrm{S}}(\omega)/\mathrm{N}_{\mathrm{F}}")
-            savefig(inp.outdir * "/qdos_neva_T" * string(itemp) * ".pdf")
+            plotQDOS(itemp, ws, dos_qp, folder, inp.material)
+
+            plotGap(itemp, ws, delta, folder, inp.material)
         end
 
         # Pade
         if lpade == 1
-            xlim_max = round(maximum(ws_pade), RoundUp)
-            xtick_val = 0:10:xlim_max
-            #ylim_max = round(maximum(dos_qp_pade) / 10 * 1.01, RoundUp) * 10
-            ylim_max = round(maximum(dos_qp_pade), RoundUp)
+            plotSpectralFunction(itemp, ws_pade, A11_pade, A12_pade, folder, inp.material, "pade")
 
-            plot(ws_pade, dos_qp_pade)
-            xlims!(0, xlim_max)
-            ylims!(0, ylim_max)
-            title!(inp.material)
-            xlabel!(L"\omega ~ \mathrm{(meV)}")
-            ylabel!(L"\mathrm{N}_{\mathrm{S}}(\omega)/\mathrm{N}_{\mathrm{F}}")
-            savefig(inp.outdir * "/qdos_pade_T" * string(itemp) * ".pdf")
+            plotQDOS(itemp, ws_pade, dos_qp_pade, folder, inp.material, "pade")
+
+            plotGap(itemp, ws_pade, delta_pade, folder, inp.material, "pade")
         end
     end
+
+    printTee(log_file, "Analytic Continuation finished\n")
 end
 
-### Calculate Green's functions ###
+
+
+"""
+    calcGF(wsi, deltai, znormi, shifti)
+
+Calculate the normal and the auxiliary Green's function in imaginary space
+"""
 function calcGF(wsi, deltai, znormi, shifti)
-    """
-    Calculate the normal and the auxiliary Green's function in imaginary space
-
-    -------------------------------------------------------------------
-    Input:
-    wsi:        matsubara frequencies
-    N:          number of matsubara frequencies
-    deltai:     superconducting gap function in Matsubarsa frequency
-    znormi:     renormalization function in Matsubara frequency
-    shifti:     energy shift function in Matsubara frequency
-
-    --------------------------------------------------------------------
-    Output:
-    g11i:       normal Green's function (11 component of Nambu)
-                in imaginary space (complex)
-    gauxi:      auxiliary Green's function in imaginary space (complex)
-
-    --------------------------------------------------------------------
-    """
-
-    # println(size(wsi))
-    # println(size(deltai))
-    # println(size(znormi))
-    # println(size(shifti))
 
     thetai = (wsi .* znormi).^2 .+ (shifti).^2 .+ (deltai .* znormi).^2
     g11i = -(im .* wsi  .* znormi .+ shifti) ./ thetai
@@ -193,21 +113,17 @@ function calcGF(wsi, deltai, znormi, shifti)
     return g11i, gauxi
 end
 
-### ACon ###
+"""
+    Pade(wsi, nsiw, real_c, g11i, gauxi)
+
+Calculate analytic continuation using Pade approximants
+"""
 function Pade(wsi, nsiw, real_c, g11i, gauxi)
     """
-    Calculate analytic continuation using Pade approximants
-
     --------------------------------------------------------------------
         Input:
-        N:     number of matsubara frequencies
         g11i:     normal Green's function (11 component of Nambu) (complex)
         gauxi:    auxiliary Green's function                      (complex)
-
-    --------------------------------------------------------------------
-        Local:
-        a11:        Pade coefficients
-        aaux:       Pade coefficients
 
     --------------------------------------------------------------------
         Output:
@@ -218,6 +134,7 @@ function Pade(wsi, nsiw, real_c, g11i, gauxi)
 
     --------------------------------------------------------------------
     """
+
     # pade coeff
     # Pade collapses with to many matsubara points:
     if nsiw > 100
@@ -305,10 +222,13 @@ function Pade(wsi, nsiw, real_c, g11i, gauxi)
 end
 
 
+"""
+    NAC(wsi, real_c, g11i, gauxi)
+
+Use Nevanlinna package to analytically continue
+"""
 function NAC(wsi, real_c, g11i, gauxi)
     """
-    Use Nevanlinna package to analytically continue
-
     --------------------------------------------------------------------
     Input:
     wsi:        Matsubara frequencies
@@ -326,7 +246,6 @@ function NAC(wsi, real_c, g11i, gauxi)
 
     --------------------------------------------------------------------
     """
-    # needs "using Nevanlinna" at some point
 
     # these are required, and could be user inputs:
     eta = 0.0005         # broadening parameter (w + im*eta)
@@ -351,10 +270,13 @@ function NAC(wsi, real_c, g11i, gauxi)
     return ws, g11, gaux
 end
 
-### Nambu-Gor'kov components / Anomalous GF ###
+"""
+    anomalousGF(g11, gaux)
+
+Calculate anomalous Green's function
+"""
 function anomalousGF(g11, gaux)
     """
-    Calculate anomalous Green's function
 
     --------------------------------------------------------------------
     Input:
@@ -373,31 +295,28 @@ function anomalousGF(g11, gaux)
     return g12
 end
 
-### Delta function from GF ###
+
+"""
+    Delta_from_GF(ws, g11, g12)
+
+Calculate gap function from Green's functions
+"""
 function Delta_from_GF(ws, g11, g12)
-    """
-    Calculate Delta function from Green's functions
 
-    --------------------------------------------------------------------
-    Input:
-    g11:        normal Green's function (11 component of Nambu)
-                in real space (complex)
-    g12:        anomalous Green's function (12 component of Nambu)
-                in real space (complex)
-
-    --------------------------------------------------------------------
-    Output:
-    delta:      superconducting gap function in real frequency
-    """
     delta = (2 .* ws .* g12) ./ (g11 .- conj(reverse(g11)))
+
     return delta
 end
 
-### qdos ###
+### Add Z and chi as in Daniels paper eq. (27), (28)
+
+"""
+    qdos(ws, delta)
+
+Calculate quasiparticle density of states
+"""
 function qdos(ws, delta)
     """
-    Calculate quasiparticle density of states
-
     --------------------------------------------------------------------
     Input:
     ws:         real frequency vector
@@ -417,5 +336,102 @@ function qdos(ws, delta)
     return dos_qp
 end
 
-# plots for spectral function (Im of GFs) and qdos would be nice
 
+### Plots ###
+"""
+
+Plot the spectral function on the real axis
+"""
+function plotSpectralFunction(itemp, ws, A11, A12, folder, material, mode="neva")
+
+    xlim_max = round(maximum(ws), RoundUp)
+    xtick_val = 0:5:xlim_max
+    ylim_max = round(maximum(A11), RoundUp)
+    #ylim_max = round(maximum(A11) / 10 * 1.01, RoundUp) * 10
+    #ylim_max = 5
+
+    plot(ws, A11)
+    xlims!(-xlim_max, xlim_max)
+    ylims!(0, ylim_max)
+    if material != "Material"
+        title!(inp.material)
+    end
+    xlabel!(L"\omega ~ \mathrm{(meV)}")
+    ylabel!(L"\mathrm{A}^{\textrm{11}}(\omega) \;\;\; [\mathrm{eV^{-1}}]")
+    savefig(folder * "/A11_"*mode*"_T" * string(itemp) * ".pdf")
+
+    ylim_min = round(minimum(A12), RoundUp)
+    ylim_max = round(maximum(A12), RoundUp)
+
+    plot(ws, A12)
+    xlims!(-xlim_max, xlim_max)
+    ylims!(ylim_min, ylim_max)
+    if material != "Material"
+        title!(inp.material)
+    end
+    xlabel!(L"\omega ~ \mathrm{(meV)}")
+    ylabel!(L"\mathrm{A}^{\textrm{an}}(\omega) \;\;\; [\mathrm{eV^{-1}}]")
+    savefig(folder * "/A12_"*mode*"_T" * string(itemp) * ".pdf") 
+
+end
+
+"""
+
+plot the QDOS in the BCS limit on the real axis
+"""
+function plotQDOS(itemp, ws, dos_qp, folder, material, mode="neva")
+    xlim_max = round(maximum(ws), RoundUp)
+    xtick_val = 0:10:xlim_max
+    #ylim_max = round(maximum(dos_qp) / 10 * 1.01, RoundUp) * 10
+    ylim_max = round(maximum(dos_qp), RoundUp)
+
+    plot(ws, dos_qp)
+    xlims!(0, xlim_max)
+    ylims!(0, ylim_max)
+    if material != "Material"
+        title!(inp.material)
+    end
+    xlabel!(L"\omega ~ \mathrm{(meV)}")
+    ylabel!(L"\mathrm{N}_{\mathrm{S}}(\omega)/\mathrm{N}_{\mathrm{F}}")
+    savefig(folder* "/qdos_"*mode*"_T" * string(itemp) * ".pdf")
+end
+
+
+"""
+
+plot the superconducting gap function on the real axis
+"""
+function plotGap(itemp, ws, delta, folder, material, mode= "neva")
+
+    xlim_max = round(maximum(ws), RoundUp)
+    xtick_val = 0:10:xlim_max
+    #ylim_max = round(maximum(delta), RoundUp)
+
+    plot(ws, real(delta), label="real", color = :red)
+    plot!(ws, imag(delta), label="imag", color = :blue)
+    xlims!(0, xlim_max)
+    #ylims!(0, ylim_max)
+    if material != "Material"
+        title!(inp.material)
+    end
+    xlabel!(L"\omega ~ \mathrm{(meV)}")
+    ylabel!(L"\Delta(\omega) ~ \mathrm{(meV)}")
+    savefig(folder* "/gap_"*mode*"_T" * string(itemp) * ".pdf")
+end
+
+
+"""
+    saveSelfEnergyComponents(inp, iwn, Delta, Z; epsilon=nothing,  chi=nothing, phiph=nothing, phic=nothing)
+
+Save the the real frequency quantities
+"""
+function saveACON(itemp, inp, folder, ws, delta, A11, A12, mode="neva")
+
+    # ACON
+    prec = 6
+    open(folder*"ACON_"*mode*"_"*string(itemp)*"K.dat", "a") do io
+        write(io, "#  ω / meV       A11(ω) / 1       A12(ω) / 1        Δ(ω) / meV\n")
+        writedlm(io, zip(ws, A11, A12, delta), '\t')
+    end
+
+end

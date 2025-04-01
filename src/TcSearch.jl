@@ -303,15 +303,15 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
                 try
                     if include_Weep == 1
                         if inp.cDOS_flag == 0
-                            acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file; idx_ef, shifti = shifti)
+                            acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef, shifti = shifti)
                         elseif inp.cDOS_flag == 1
-                            acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file; idx_ef)
+                            acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef)
                         end
                     elseif inp.include_Weep == 0
                         if inp.cDOS_flag == 0
-                            acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file)                     
+                            acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file)                     
                         elseif inp.cDOS_flag == 1
-                            acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file)          
+                            acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file)          
                         end
                     end
                 catch ex

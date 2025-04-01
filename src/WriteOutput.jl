@@ -42,8 +42,8 @@ function printStartMessage(console, log_file)
 
     strLine = "-"^(sum(console["width"])+length(console["width"])+1)
 
-    strAuthors = "  Authors: Christoph Heil, Eva Kogler,\n"
-    strAuthors *= " "^(length("  Authors:"))*" Dominik Spath, Daniel Khodachenko\n\n"
+    strAuthors = "  Authors: Christoph Heil, Dominik Spath\n"
+    strAuthors *= " "^(length("  Authors:"))*" Eva Kogler, Daniel Khodachenko\n\n"
 
     strEliash = "Eliashberg Solver started"
 

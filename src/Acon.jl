@@ -14,9 +14,9 @@
 # TODO:
 #   - flags as input
 #   - real_c as input
-function acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file; idx_ef=-1, shifti = 0)
+function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti = 0)
 
-    real_c = 500.0
+    real_c = 100.0
 
     # sinnvoller machen
     if inp.include_Weep == 1
@@ -24,7 +24,7 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file; idx_ef=-
     end
 
     g11i, gauxi = calcGF(wsi, deltai, znormi, shifti)
-    lneva = 1
+    lneva = 0
     if lneva == 1
         ws, g11, gaux = NAC(wsi, real_c, g11i, gauxi)
         g12 = anomalousGF(g11, gaux)
@@ -39,6 +39,8 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file; idx_ef=-
 
     lpade = 1
     if lpade == 1
+        #=
+        ------- direct pade of GF, less stable -------
         ws_pade, g11_pade, gaux_pade = Pade(wsi, nsiw, real_c, g11i, gauxi)
         g12_pade = anomalousGF(g11_pade, gaux_pade)
         delta_pade = Delta_from_GF(ws_pade, g11_pade, g12_pade)
@@ -47,6 +49,10 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file; idx_ef=-
         # spectral function
         A11_pade = -imag.(g11_pade) / pi
         A12_pade = -imag.(g12_pade) / pi
+        ----------------------------------------------
+        =#
+
+        delta_pade, ws_pade = Pade_separate(wsi, nsiw, real_c, deltai)
     end
 
     ### save outputs ###
@@ -56,11 +62,12 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file; idx_ef=-
     end
 
     if lneva == 1
-        saveACON(itemp, inp, folder, ws, delta, A11, A12, "neva")
+        saveACON(itemp, folder, ws, delta, A11, A12, "neva")
     end
 
     if lpade == 1
-        saveACON(itemp, inp, folder, ws_pade, delta_pade, A11_pade, A12_pade, "pade")
+        # saveACON(itemp, folder, ws_pade, delta_pade, A11_pade, A12_pade, "pade") # direct Pade of GF
+        saveACON(itemp, folder, ws_pade, delta_pade, "pade")
     end    
 
     # make plots
@@ -86,9 +93,13 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, console, log_file; idx_ef=-
 
         # Pade
         if lpade == 1
+            #=
+            ------- direct pade of GF, less stable -------
             plotSpectralFunction(itemp, ws_pade, A11_pade, A12_pade, folder, inp.material, "pade")
 
             plotQDOS(itemp, ws_pade, dos_qp_pade, folder, inp.material, "pade")
+            ----------------------------------------------
+            =#
 
             plotGap(itemp, ws_pade, delta_pade, folder, inp.material, "pade")
         end
@@ -116,7 +127,7 @@ end
 """
     Pade(wsi, nsiw, real_c, g11i, gauxi)
 
-Calculate analytic continuation using Pade approximants
+Calculate analytic continuation of Green's function using Pade approximants
 """
 function Pade(wsi, nsiw, real_c, g11i, gauxi)
     """
@@ -137,11 +148,8 @@ function Pade(wsi, nsiw, real_c, g11i, gauxi)
 
     # pade coeff
     # Pade collapses with to many matsubara points:
-    if nsiw > 100
-        N=100
-    else
-        N=nsiw
-    end
+    N = minimum([100, nsiw])
+
     f11i = Array{Complex}(undef, N, N)
     fauxi = Array{Complex}(undef, N, N)
     a11 = Array{Complex}(undef, N)
@@ -176,8 +184,8 @@ function Pade(wsi, nsiw, real_c, g11i, gauxi)
         println("One or more Pade coefficients are NaN")
     end
     # pade eval
-    eta = 0.0005        # broadening parameter (w + im*eta)
-    N_real = 1000       # dimension of array of output
+    eta = 0.001        # broadening parameter (w + im*eta)
+    N_real = 5000       # dimension of array of output
     ws = LinRange(-real_c, real_c, N_real)
     
     A = Array{Complex}(undef, N_real, N+1)
@@ -219,6 +227,104 @@ function Pade(wsi, nsiw, real_c, g11i, gauxi)
     end
     gaux = A[:,N+1]./B[:,N+1]
     return ws, g11, gaux
+end
+
+
+
+"""
+    Pade(wsi, nsiw, real_c, g11i, gauxi)
+
+Calculate analytic continuation of complex function using Pade approximants
+"""
+function Pade_separate(wsi, nsiw, real_c, gi)
+    """
+    Calculate analytic continuation of a complex function Pade approximants
+
+    --------------------------------------------------------------------
+        Input:
+        wsi:      Matsubara frequencies (real, meV)
+        nsiw:     Number of Matsubara frequencies
+        real_c:   Real frequency cutoff [meV]
+        gi:       Complex function gi(wsi) to be analytically continued
+
+    --------------------------------------------------------------------
+        Local:
+        a:        Pade coefficients
+        A, B:     Pade approximants
+
+    --------------------------------------------------------------------
+        Output:
+        ws:       Real frequency vector (not broadened)
+        g:        Analytic continuation of complex function g(ws)
+
+    --------------------------------------------------------------------
+    """
+    # pade coeff
+    # Pade collapses with to many matsubara points:
+    #println("Start Pade_seperate")
+    if nsiw > 200
+        N=200
+    else
+        N=nsiw
+    end
+    #N = nsiw
+    f = Array{Complex}(undef, N, N)
+    a = Array{Complex}(undef, N)
+    #println("Arrays defined")
+    for p in 1:N
+        if p == 1
+            f[p,1:N] = gi[1:N]
+        else
+            for i in p:N
+                tmp1 = f[p-1, p-1] / f[p-1, i]
+                tmp2 = f[p-1, i] / f[p-1, i]
+                f[p, i] = (tmp1 - tmp2) / (wsi[i]*im - wsi[p-1]*im)
+            end
+        end
+        a[p] = f[p, p]
+        #println("a=",a[p])
+    end
+    #println("Finished a's")
+    # Check whether a[p] is NaN
+    ar = real.(a)
+    ai = imag.(a)
+    if any(isnan.(ar)) || any(isnan.(ai))
+        println("One or more Pade coefficients are NaN")
+    end
+    # pade eval
+    eta = 0.001        # broadening parameter (w + im*eta)
+    N_real = 2000       # dimension of array of output
+    ws = LinRange(-real_c, real_c, N_real)
+    
+    A = Array{Complex}(undef, N_real, N+1)
+    B = Array{Complex}(undef, N_real, N+1) # pade approximants
+    A[:,1] .= 0 + 0*im
+    A[:,2] .= a[1]
+    B[:,1] .= 1 + 0*im
+    B[:,2] .= 1 + 0*im
+    for i in 3:N+1
+        # Version with broadening:
+        A[:,i] = A[:,i-1] .+ ((ws.+im*eta) .- wsi[i-2]*im) .* a[i-1] .* A[:,i-2]
+        B[:,i] = B[:,i-1] .+ ((ws.+im*eta) .- wsi[i-2]*im) .* a[i-1] .* B[:,i-2]
+        # A[:,i] = A[:,i-1] .+ (ws .- wsi[i-2]*im) .* a[i-1] .* A[:,i-2]
+        # B[:,i] = B[:,i-1] .+ (ws .- wsi[i-2]*im) .* a[i-1] .* B[:,i-2]
+    end
+    # println("final A=",A[1:10,N-50])
+    # println("final B=",B[:,N])
+    #println("Finished A,B")
+
+    # Check whether A nad B is NaN
+    Ar = real.(A)
+    Ai = imag.(A)
+    Br = real.(B)
+    Bi = imag.(B)
+    if any(isnan.(Ar)) || any(isnan.(Ai)) || any(isnan.(Br)) || any(isnan.(Bi))
+        println("One or more Pade approximants is NaN")
+    end
+
+    g = A[:,N+1]./B[:,N+1] # elementwise for vectors of ws, otherwise scalar
+    #println("Finished g")
+    return g, ws
 end
 
 
@@ -425,13 +531,28 @@ end
 
 Save the the real frequency quantities
 """
-function saveACON(itemp, inp, folder, ws, delta, A11, A12, mode="neva")
+function saveACON(itemp, folder, ws, delta, A11, A12, mode="neva")
 
     # ACON
-    prec = 6
     open(folder*"ACON_"*mode*"_"*string(itemp)*"K.dat", "a") do io
         write(io, "#  ω / meV       A11(ω) / 1       A12(ω) / 1        Δ(ω) / meV\n")
         writedlm(io, zip(ws, A11, A12, delta), '\t')
+    end
+
+end
+
+
+"""
+    saveSelfEnergyComponents(inp, iwn, Delta, Z; epsilon=nothing,  chi=nothing, phiph=nothing, phic=nothing)
+
+Save the the real frequency gap
+"""
+function saveACON(itemp, folder, ws, delta, mode="neva")
+
+    # ACON
+    open(folder*"ACON_"*mode*"_"*string(itemp)*"K.dat", "a") do io
+        write(io, "#  ω / meV          Δ(ω) / meV\n")
+        writedlm(io, zip(ws, delta), '\t')
     end
 
 end

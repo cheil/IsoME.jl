@@ -18,7 +18,7 @@
 module IsoME
 
 
-export EliashbergSolver, arguments, FINDAGOODNAME
+export EliashbergSolver, arguments, FINDAGOODNAME, iterativeAcon
 
 
 using DelimitedFiles        
@@ -109,9 +109,12 @@ end
 
 # input structure for iterative ACON 
 @kwdef mutable struct FINDAGOODNAME
-    temps::Vector{Number}       = [-1]  # required in this case
+    temps::Vector{Number}       = [-1]          # if temps specified, calculate at those temps, otherwise read automatically from Info file      
     path_selfEnergy::String     = ""
+    path_InfoFile::String           = ""
     muc_ME::Float64             = -1
+    real_c::Float64             = 500       # cutoff real axis in meV
+    numReal_c::Int64            = 1000      # number grid points real axis
     
     # a2f input file
     a2f_file::String

@@ -20,8 +20,14 @@ function iterativeAcon(inp::FINDAGOODNAME)
         ### Check input
         inp = checkInput(inp)
 
+        #=
+        Two modes:
+            1) Eliashberg calculations already finished, requires path to info-file and self-energy components
+            2) no eliashberg calculations, start EliashbergSolver() first
+        =#
+
         ### Imaginary Eliashberg
-        if isempty(inp.path_selfEnergy)
+        if isempty(inp.path_selfEnergy) || isempty(inp.path_InfoFile)
             eliash = transfer_fields(inp, arguments)  # Transfer matching fields to arguments
 
             # set defaults
@@ -34,22 +40,24 @@ function iterativeAcon(inp::FINDAGOODNAME)
 
             # self energy path
             inp.path_selfEnergy = inp.outdir*"SelfEnergy/"
+            inp.path_Info = eliash.outdir
             inp.muc_ME = eliash.muc_ME
+            inp.temps = eliash.temps
         else
-
-            # read muc_ME, temps,... from Info file in path_selfEnergy?
-
             inp, log_file, errorLogger = createDirectory(inp, strIsoME)
+
+            ### Read Info file ###
+            inp.temps, inp.muc_ME = readInfoFile(inp.path_InfoFile)     # is it safe to assume that info is path_selfEnergy/..?
         end
 
 """
- Not finishted
+ Not finished
 """
         ### read inputs
         matval = ()
         console = Dict()
         try
-            inp, console, matval, ML_Tc = InputParser(inp, log_file)        ### !!!! Not finished !!! --> read in a2f and self energy components at each temperature
+            inp, console, matval = InputParser(inp, log_file)        ### !!!! Not finished !!! --> read in a2f and self energy components at each temperature
         catch ex
             # crash file
             writeToCrashFile(inp)
@@ -58,6 +66,14 @@ function iterativeAcon(inp::FINDAGOODNAME)
             printError("while reading the inputs. Stopping now!", ex, log_file, errorLogger)
  
             rethrow(ex)
+        end
+
+
+        ### loop over temperatures
+        inp.temps = sort(inp.temps)
+        for itemp in inp.temps 
+            solveIterativeAcon(itemp, inp, matval)
+
         end
         
 
@@ -85,12 +101,12 @@ function InputParser(inp::FINDAGOODNAME, log_file)
     ### Init table size ###
     console = Dict()
 
-        # header table
-        console["header"] = ["it", "znormi", "deltai", "err_delta"]
-        #width table
-        console["width"] = [8, 14, 14, 14]
-        # precision data
-        console["precision"] = [0, 4, 4, 5]
+    # header table
+    console["header"] = ["it", "znormi", "deltai", "err_delta"]
+    #width table
+    console["width"] = [8, 14, 14, 14]
+    # precision data
+    console["precision"] = [0, 4, 4, 5]
     
 
     console = formatTableHeader(console)
@@ -102,46 +118,118 @@ function InputParser(inp::FINDAGOODNAME, log_file)
     ####### a2f file #######
     a2f_omega, a2f, inp.ind_smear, inp.a2f_unit = readIn_a2f(inp.a2f_file, inp.ind_smear, inp.a2f_unit, inp.nheader_a2f, inp.nfooter_a2f, inp.nsmear)
 
-
-    ### calc mu*'s
-    if inp.mu == -1 && inp.muc_ME == -1 && inp.muc_AD == -1
-        # defaut value
-        inp.muc_AD = 0.12
-        calcMucME(inp, a2f, a2f_omega, log_file)
-
-    elseif inp.muc_AD == -1 && inp.muc_ME == -1
-        if inp.typEl != -1
-            calcMucs(inp, inp.typEl, a2f, a2f_omega, log_file)
-        
-        elseif ~(isnothing(ef) || ef == -1 || ef == 0)
-            inp.typEl = ef
-            calcMucs(inp, inp.typEl, a2f, a2f_omega, log_file)
-
-        elseif ~(inp.efW == -1 || inp.efW == 0)
-            inp.typEl = inp.efW
-            calcMucs(inp, inp.typEl, a2f, a2f_omega, log_file)
-
-        else
-            text = "Unable to calculate μ* from μ without a typical electron energy!"
-            text *= "\nConsider setting typEl, ef or efW manually."
-            text *= "\nUsing μ*_AD = 0.12 instead"
-            printWarning(text, log_file)
-
-            inp.muc_AD = 0.12
-            calcMucME(inp, a2f, a2f_omega, log_file)
-        end
-
-    elseif  inp.include_Weep == 0 && inp.muc_AD != -1 && inp.muc_ME == -1   
-        calcMucME(inp, a2f, a2f_omega, log_file)
-    end
-
-
     # material specific values
-    matval = (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxShiftcut)
+    matval = (a2f_omega, a2f)
 
-    return inp, console, matval, ML_Tc
+    return inp, console, matval
 end
 
+
+"""
+
+Read the info.dat file
+"""
+function readInfoFile(path_InfoFile)
+
+
+    data = readdlm(path_InfoFile)
+    muc_ME = Float64(data[findfirst(data[:,1].=="muc_ME:"),2])
+    temps = numbersFromString(join(data[findfirst(data[:,1].=="temps:"),:]))
+
+    return temps, muc_ME
+    
+end
+
+"""
+
+Extract numbers from string
+"""
+function numbersFromString(str::String)
+    nums = []
+    current_number = ""
+    
+    for char in str
+        if isdigit(char) || char == '.'  # Check if the character is a digit or decimal point
+            current_number *= char      # Build the number string
+        elseif current_number != ""     # If we encounter a non-digit and have a number built
+            push!(nums, parse(Float64, current_number))  # Convert and store the number
+            current_number = ""  # Reset for the next number
+        end
+    end
+    
+    # If a number is left at the end of the string
+    if current_number != ""
+        push!(nums, parse(Float64, current_number))
+    end
+    
+    return Float64.(nums)
+end
+
+function readSelfEnergy(itemp, path)
+    
+    data = readdlm(path*"Delta_"*string(itemp)*"K.dat")
+    wsi = Float64.(data[2:end,1])
+    Deltai = Float64.(data[2:end,2])
+
+    data = readdlm(path*"Z_"*string(itemp)*"K.dat")
+    Zi = Float64.(data[2:end,2])
+
+    return wsi, Zi, Deltai
+
+end
+
+"""
+
+Solve the iteravie ACON at the given temperature
+"""
+function solveIterativeAcon(itemp, inp, matval)
+    # destruct inputs
+    (a2f_omega, a2f) = matval
+    (; outdir) = inp
+
+    ### Read imaginary self-energy ###
+    wsi, Zi, Deltai = readSelfEnergy(itemp, inp.path_selfEnergy)
+
+    ### real axis ###
+    ws = range(-inp.real_c, inp.real_c, inp.numReal_c)
+
+    # lambda, it is faster to calcualte lambda each time
+    lambda = calcLambda(ws, wsi, a2f, a2f_omega)            # !!! VERY SLOW !!!
+
+    ### cDOS + mu case ###
+    iterativeAconEq(itemp, ws, wsi, Zi, Deltai, λ)
+
+
+end
+
+"""
+
+Eq. (3.5a), (3.5b) in "Iterative analytic continuation of the electron self-energy to the real energy axis", Marsiglio et.al, (1987)
+"""
+function iterativeAconEq(itemp, ws, wsi, Zi, Deltai, λ)
+
+    ZimagSum = ws + i*π*kb*itemp*sum(ws./sqrt.(ws.^2 .- (Deltai^2)') .* () )
+
+
+end
+
+
+"""
+
+calculate lambda with complex argument
+lambda[ws, wsi]
+"""
+function calcLambda(ws::StepRangeLen{Float64}, wsi::Vector{Float64}, a2f::Vector{Float64}, a2f_omega::StepRangeLen{Float64})
+
+    lambda = Array{ComplexF64}(undef, length(ws), length(wsi))
+    for (omega, idx) in zip(ws, collect(1:length(ws)))
+        z = omega .+ wsi
+        integrand = 2 * a2f' .* a2f_omega' ./ (z .^ 2 .+ a2f_omega' .^ 2)
+        lambda[idx, :] = trapz(a2f_omega, integrand)
+    end
+
+    return lambda
+end
 
 
 """ 
@@ -165,15 +253,15 @@ Check if a2F-file exists and temps are specified.
 """
 function checkInput(inp::FINDAGOODNAME)
 
-    # check input files / cDOS & Weep
+    # check input files
     if ~isfile(inp.a2f_file)
         error("Invalid path to a2f-file!")
     end
 
     # 
-    if any(inp.temps .< 0)
-        error("Invalid temperature specification!")
-    end
+    #if any(inp.temps .< 0)
+    #    error("Invalid temperature specification!")
+    #end
 
     return inp
 

@@ -746,6 +746,9 @@ function saveSelfEnergyComponents(itemp, inp, iwn, Delta, Z; epsilon=nothing,  c
         mkdir(folder)
     end
 
+    # consistent folder names
+    itemp = Float64(itemp)
+
     # Z
     open(folder*"Z_"*string(itemp)*"K.dat", "w") do io
         write(io, "#  iωₙ / meV      Z(iωₙ) / 1 \n")

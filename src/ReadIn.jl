@@ -234,6 +234,46 @@ function createDirectory(inp::arguments, strIsoME::String)
 
 end
 
+"""
+    createDirectory(inp, strIsoME)
+
+Create directory.
+"""
+function createDirectory(inp::FINDAGOODNAME, strIsoME::String)
+        
+    # create output directory
+    if isempty(inp.outdir)
+        inp.outdir = "./"
+    elseif ~(inp.outdir[end] == '/' || inp.outdir[end] == '\\')
+        inp.outdir = inp.outdir * "/"
+    end
+
+    idxDir = 1
+    tempDir = inp.outdir[1:end-1]
+    while isdir(inp.outdir)
+        inp.outdir = tempDir * "_" * string(idxDir) * "/"
+        idxDir += 1
+    end
+
+    try
+        mkpath(inp.outdir)   # mkpath
+    catch ex
+        error("Couldn't write into " * inp.outdir * "! Outdir may not writable or an invalid path.\n\n")
+    end
+
+    log_file = open(inp.outdir * "log.txt", "w")
+    print(log_file, strIsoME)
+
+    # logging to console and log-file (@warn,...)
+    errorLogger = SimpleLogger(log_file, Logging.Error)
+    file_logger = SimpleLogger(log_file)
+    tee_logger = TeeLogger(ConsoleLogger(), file_logger)
+    global_logger(tee_logger)
+
+    return inp, log_file, errorLogger
+
+end
+
 
 """
     checkInput!(inp)

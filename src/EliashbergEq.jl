@@ -21,7 +21,7 @@ Comments:
 Calculate electron-phonon coupling strength on the imaginary axis
 λ(iω_n - iω_m) is calcualted for all pairs
 """  
-function calcLambda(itemp, M, a2f_omega, a2f)  
+function calcLambda(itemp::Float64, M::Int64, a2f_omega, a2f)  
 
     λ = zeros(2 * M + 2)
     for n in 1:2*M+2

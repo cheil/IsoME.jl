@@ -647,17 +647,17 @@ function createFigures(inp, matval, Delta0, temps, Tc, log_file)
         ylim_max = round(maximum(Delta0_plot)*1.11, RoundUp)
         
         # Create a custom gradient
-        my_gradient = cgrad(:coolwarm)  
-        #gradientBlue = cgrad(:Blues, rev=true)
-        #gradientRed = cgrad(:Reds)
+        my_gradient = cgrad(:RdBu, rev=true) 
         # Define gradient range
-        max_gradient_val = 77               # Blue Gradient applies up to this value
+        max_gradient_blue = 77               # Blue Gradient applies up to this value
+        max_gradient_red = 273               # Red Gradient applies up to this value
         
         # normalize x 
-        color_values = (temps_plot)/max_gradient_val/2
+        color_values_blue = temps_plot[temps_plot.<=max_gradient_blue]/max_gradient_blue/2
+        color_values_red = (temps_plot[temps_plot.>max_gradient_blue].-max_gradient_blue)/(max_gradient_red-max_gradient_blue)/2 .+0.5
         
         # Map colors: Use blue gradient for values <= max_gradient_val, red gradient for rest
-        marker_colors = [v < 1.0 ? my_gradient[v] : my_gradient[v-1] for v in color_values]
+        marker_colors = append!(my_gradient[color_values_blue], [v < 1.0 ? my_gradient[v] : my_gradient[end] for v in color_values_red])
         
         h=scatter(temps_plot, Delta0_plot, color=marker_colors, colorbar=false, markerstrokewidth=1, ms=6, xticks=xtick_val)
         if length(temps_plot) > 1
@@ -702,8 +702,11 @@ function createFigures(inp, matval, Delta0, temps, Tc, log_file)
                     end
                 end
             catch  ex
+                printWarning("Unable to produce fit of gap function. Potentially too few temperature points.", log_file)
                 #rethrow(ex)
             end
+        else
+            printWarning("Unable to produce fit of gap function. Too few temperatures.", log_file)
         end
         plot!(xticks=xtick_val)
         xlims!(0, xlim_max)

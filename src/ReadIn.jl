@@ -94,7 +94,7 @@ function InputParser(inp::arguments, log_file)
             ### Interpolation ###
             # Interpolation Object Weep
             epsilonItp = range(Wen[1], Wen[end], length(Wen))       
-            itpWeep = scale(interpolate(Weep, BSpline(Constant())), (epsilonItp, epsilonItp)) 
+            itpWeep = scale(interpolate(Weep, BSpline(Linear())), (epsilonItp, epsilonItp)) 
 
             # interpolate 
             dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut, itpWeep = itpWeep, Wen = Wen)

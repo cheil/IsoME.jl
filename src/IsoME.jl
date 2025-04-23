@@ -105,27 +105,10 @@ const kb = 0.08617333262; # meV/K
     returnTc::Bool      = false
     testMode::Bool      = false
 
-end
-
-# input structure for iterative ACON 
-@kwdef mutable struct FINDAGOODNAME
-    temps::Vector{Number}       = [-1]          # if temps specified, calculate at those temps, otherwise read automatically from Info file      
-    path_selfEnergy::String     = ""
-    path_InfoFile::String           = ""
-    muc_ME::Float64             = -1
-    real_c::Float64             = 500       # cutoff real axis in meV
-    numReal_c::Int64            = 1000      # number grid points real axis
-    
-    # a2f input file
-    a2f_file::String
-    ind_smear::Int64    = -1
-    nsmear::Int64       = -1
-    nheader_a2f::Int64  = -1
-    nfooter_a2f::Int64  = -1
-    a2f_unit::String    = ""
-
-    # Output
-    outdir::String      = pwd() 
+    # real axis inputs
+    # separate input struct? 
+    real_c::Float64     = 500 # real frequency cutoff
+    numReal_c::Int64  = 1000 # number of real frequency points
 end
 
 
@@ -138,7 +121,8 @@ include("AllenDynes.jl")
 include("MuUpdate.jl")
 include("WriteOutput.jl")
 include("EliashbergEq.jl")
-include("iterativeAcon.jl")
+include("realAxisSolver.jl")
+include("realAxisEliashbergEq.jl")
 
 
 end

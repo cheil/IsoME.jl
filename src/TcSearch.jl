@@ -337,9 +337,9 @@ end
 
  
 """
-    solve_eliashberg(inp, console, matval, ML_Tc, log_file)
+    findTc(inp, console, matval, ML_Tc, log_file)
 
-Start the Tc search mode or solve the eliashberg equations for each temperature
+Start the Tc search mode or solve the imaginary eliashberg equations for each temperature
 """
 function findTc(inp, console, matval, ML_Tc, log_file)
     inp.temps = sort(inp.temps)

@@ -18,7 +18,7 @@
 
 Read, convert, preprocess inputs for EliashbergSolver().
 """
-function InputParser(inp::arguments, log_file)
+function InputParser(inp::arguments, log_file; mode::Int64 = 0)
 
     ### Init table size ###
     console = Dict()
@@ -59,7 +59,7 @@ function InputParser(inp::arguments, log_file)
     end
     console = formatTableHeader(console)
 
-    console = printStartMessage(console, log_file)
+    console = printStartMessage(console, log_file, mode = mode)
   
 
     ########## READ-IN ##########
@@ -68,7 +68,7 @@ function InputParser(inp::arguments, log_file)
 
 
     ########## Dos and Weep ##########
-    if isfile(inp.dos_file)     # ~isempty was wrong
+    if isfile(inp.dos_file)     
         # read dos
         dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.ef, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos, outdir = inp.outdir, logFile = log_file)
         inp.ef = ef
@@ -207,6 +207,7 @@ function createDirectory(inp::arguments, strIsoME::String)
             inp.outdir = inp.outdir*"/"
         end
 
+        # check if directory exists
         idxDir = 1
         tempDir = inp.outdir[1:end-1]
         while isdir(inp.outdir)
@@ -215,7 +216,7 @@ function createDirectory(inp::arguments, strIsoME::String)
         end
 
         try
-            mkpath(inp.outdir)   # mkpath
+            mkpath(inp.outdir)   
         catch ex
             error("Couldn't write into " * inp.outdir * "! Outdir may not writable or an invalid path.\n\n")
         end
@@ -234,68 +235,33 @@ function createDirectory(inp::arguments, strIsoME::String)
 
 end
 
-"""
-    createDirectory(inp, strIsoME)
-
-Create directory.
-"""
-function createDirectory(inp::FINDAGOODNAME, strIsoME::String)
-        
-    # create output directory
-    if isempty(inp.outdir)
-        inp.outdir = "./"
-    elseif ~(inp.outdir[end] == '/' || inp.outdir[end] == '\\')
-        inp.outdir = inp.outdir * "/"
-    end
-
-    idxDir = 1
-    tempDir = inp.outdir[1:end-1]
-    while isdir(inp.outdir)
-        inp.outdir = tempDir * "_" * string(idxDir) * "/"
-        idxDir += 1
-    end
-
-    try
-        mkpath(inp.outdir)   # mkpath
-    catch ex
-        error("Couldn't write into " * inp.outdir * "! Outdir may not writable or an invalid path.\n\n")
-    end
-
-    log_file = open(inp.outdir * "log.txt", "w")
-    print(log_file, strIsoME)
-
-    # logging to console and log-file (@warn,...)
-    errorLogger = SimpleLogger(log_file, Logging.Error)
-    file_logger = SimpleLogger(log_file)
-    tee_logger = TeeLogger(ConsoleLogger(), file_logger)
-    global_logger(tee_logger)
-
-    return inp, log_file, errorLogger
-
-end
-
 
 """
     checkInput!(inp)
 
 Check which input files (a2f, dos, weep) exist.
+For real axis solver: Additionally check if cDOS+W mode has been chosen
 """
-function checkInput(inp::arguments)
+function checkInput(inp::arguments; realSolver::Bool = false)
 
     # check input files / cDOS & Weep
     if ~isfile(inp.a2f_file)
         error("Invalid path to a2f-file!")
         
     elseif ~isfile(inp.dos_file) && (inp.cDOS_flag == 0 || inp.include_Weep == 1)
-
         text = "Invalid path to Dos-file!\n\n"
         error(text)
     
     elseif inp.include_Weep == 1 && ((~isfile(inp.Weep_file)) || (~isempty(inp.Wen_file) && ~isfile(inp.Wen_file)))
-        
         text = "Invalid path to Weep or Wen-file!\n\n"
         error(text)
 
+    end
+
+    if realSolver
+        if inp.include_Weep == 1 && inp.cDOS_flag == 1
+            error("cDOS+W mode unavailable in real axis solver! Choose a different mode.\n\n")
+        end
     end
 
     return inp

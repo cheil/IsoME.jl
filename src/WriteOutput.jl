@@ -40,14 +40,23 @@ Start message - Eliashberg Solver
 """
 function printStartMessage(console::Dict, log_file; mode = 0)
 
+    strAuthors =  "  Authors: Christoph Heil, Dominik Spath, Eva Kogler\n"
+    strAuthors *= "           Alejandro Simon, \n\n"
+
     if mode == 0
         strLine = "-"^(sum(console["width"])+length(console["width"])+1)
 
-        strAuthors = "  Authors: Christoph Heil, Dominik Spath, Eva Kogler\n\n"
-
+        #strAuthors = "  Authors: Christoph Heil, Dominik Spath, Eva Kogler\n\n"
         strMode = "Eliashberg Solver started"
 
         printTee(log_file, strAuthors)
+    elseif mode == 1
+        strLine = "-"^(sum(console["width"])+length(console["width"])+1)
+
+        strMode = "Real Axis Solver started"
+
+        printTee(log_file, strAuthors)
+    
     else
         strLine = "-"^50
         strMode = "Iterative ACON started"
@@ -428,6 +437,7 @@ function printFlagsAsText(inp, log_file)
     if inp.material != "Material"
         text *=  " - Material: "*inp.material*" \n"
     end
+
     # search mode
     if inp.temps == [-1]
         text *= " - Tc search mode activated\n"

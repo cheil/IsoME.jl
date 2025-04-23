@@ -21,42 +21,8 @@ Read, convert, preprocess inputs for EliashbergSolver().
 function InputParser(inp::arguments, log_file; mode::Int64 = 0)
 
     ### Init table size ###
-    console = Dict()
-    if inp.include_Weep == 1 && inp.cDOS_flag == 0
-        # header table
-        console["header"] = ["it", "phic", "phiph", "znormi", "shifti", "ef-mu", "deltai", "err_delta"]
-        # width table
-        console["width"] = [8, 10, 10, 10, 10, 10, 10, 11]
-        # precision data
-        console["precision"] = [0, 2, 2, 2, 2, 2, 2, 5]
+    console = initOutputTable(inp, mode=mode)
 
-    elseif inp.include_Weep == 1 && inp.cDOS_flag == 1
-        # header table
-        console["header"] = ["it", "phic", "phiph", "znormi", "deltai", "err_delta"]
-        #width table
-        console["width"] = [8, 10, 10, 10, 10, 11]
-        # precision data
-        console["precision"] = [0, 2, 2, 2, 2, 5]
-
-    elseif inp.include_Weep == 0 && inp.cDOS_flag == 0
-        # header table
-        console["header"] = ["it", "znormi", "shifti", "ef-mu", "deltai", "err_delta"]
-        #width table
-        console["width"] = [8, 10, 10, 11, 10, 11]
-        # precision data
-        console["precision"] = [0, 2, 2, 2, 2, 5]
-
-    elseif inp.include_Weep == 0 && inp.cDOS_flag == 1
-        # header table
-        console["header"] = ["it", "znormi", "deltai", "err_delta"]
-        #width table
-        console["width"] = [8, 14, 14, 14]
-        # precision data
-        console["precision"] = [0, 4, 4, 5]
-
-    else
-        error("Unkwon mode! Check if the cDOS_flag and include_Weep flag are set correctly!")
-    end
     console = formatTableHeader(console)
 
     console = printStartMessage(console, log_file, mode = mode)
@@ -188,6 +154,62 @@ function InputParser(inp::arguments, log_file; mode::Int64 = 0)
     return inp, console, matval, ML_Tc
 end
 
+
+
+"""
+    initOutputTable(inp; mode=0)
+
+initialize output table: header names, column width and precision
+"""
+function initOutputTable(inp::arguments; mode::Int64 = 0)
+
+    console = Dict()
+    if inp.include_Weep == 1 && inp.cDOS_flag == 0
+        # header table
+        console["header"] = ["it", "phic", "phiph", "znormi", "shifti", "ef-mu", "deltai", "err_delta"]
+        # width table
+        console["width"] = [8, 10, 10, 10, 10, 10, 10, 11]
+        # precision data
+        console["precision"] = [0, 2, 2, 2, 2, 2, 2, 5]
+
+    elseif inp.include_Weep == 1 && inp.cDOS_flag == 1
+        # header table
+        console["header"] = ["it", "phic", "phiph", "znormi", "deltai", "err_delta"]
+        #width table
+        console["width"] = [8, 10, 10, 10, 10, 11]
+        # precision data
+        console["precision"] = [0, 2, 2, 2, 2, 5]
+
+    elseif inp.include_Weep == 0 && inp.cDOS_flag == 0
+        # header table
+        console["header"] = ["it", "znormi", "shifti", "ef-mu", "deltai", "err_delta"]
+        #width table
+        console["width"] = [8, 10, 10, 11, 10, 11]
+        # precision data
+        console["precision"] = [0, 2, 2, 2, 2, 5]
+
+    elseif inp.include_Weep == 0 && inp.cDOS_flag == 1
+        # header table
+        console["header"] = ["it", "znormi", "deltai", "err_delta"]
+        #width table
+        console["width"] = [8, 14, 14, 14]
+        # precision data
+        console["precision"] = [0, 4, 4, 5]
+
+    else
+        error("Unkwon mode! Check if the cDOS_flag and include_Weep flag are set correctly!")
+    end
+
+    # remove ef-mu if real axis solver
+    if mode == 1 && inp.cDOS_flag == 0
+        idxRemove = console["header"] .== "ef-mu"
+        for (key, val) in console   
+            console[key] = val[.~idxRemove]
+        end
+    end
+
+    return console
+end
 
 """
     createDirectory(inp, strIsoME)

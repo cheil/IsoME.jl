@@ -64,9 +64,8 @@ function RealAxisSolver(inp::arguments)
         Delta0 = Vector{Float64}()
         Shift0 = Vector{Float64}()
         Znorm0 = Vector{Float64}()
-        EfMu = Vector{Float64}()
         try
-            Tc, temps, Znorm0, Delta0, Shift0, EfMu = findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
+            Tc, temps, Znorm0, Delta0, Shift0 = findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
         catch ex
             # crash file
             writeToCrashFile(inp)
@@ -108,7 +107,7 @@ function RealAxisSolver(inp::arguments)
             out_vars[:, 3] = Znorm0
             if inp.cDOS_flag == 0
                 header = header * "  χ(0)/meV  ϵ_F-μ/meV"
-                out_vars = hcat(out_vars, Shift0, EfMu)
+                out_vars = hcat(out_vars, Shift0)
             end
             try
                 createSummaryFile(inp, Tc, out_vars, header)
@@ -427,7 +426,7 @@ function solve_realEliashberg(itemp, inp, console, matval, log_file)
 
         if include_Weep == 1
             # vDOS + W
-            new_data = realEliashbergEq(itemp, a2f_omega, a2f, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, mu, wgCoulomb)
+            new_data = realEliashbergEq(itemp, a2f_omega, a2f, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb)
 
             # mixing
             znormi = (1.0 - abs(broyden_beta)) .* znormi .+ abs(broyden_beta) .* new_data[1]
@@ -441,21 +440,21 @@ function solve_realEliashberg(itemp, inp, console, matval, log_file)
             err_delta = rel_delta / abs_delta
 
             # Console output
-            outputVec = [i_it, phici[idx_ef], phiphi[1], znormi[1], shifti[1], -muintr, deltai[idx_ef, 1], err_delta]
+            outputVec = [i_it, phici[idx_ef], phiphi[1], znormi[1], shifti[1], deltai[idx_ef, 1], err_delta]
 
             # data for return
-            data = [znormi[1], deltai[idx_ef, 1], shifti[1], -muintr]
+            data = [znormi[1], deltai[idx_ef, 1], shifti[1]]
 
         ##### No Weep #####
         elseif include_Weep == 0
 
             if cDOS_flag == 0
 
-                new_data = realEliashbergEq(itemp, a2f_omega, a2f, dos_en, dos, dosef, znormip, deltaip, shiftip, mu, wgCoulomb, idxShiftcut)
+                new_data = realEliashbergEq(itemp, a2f_omega, a2f, dosef, ndos, dos_en, dos, mu, znormip, deltaip, shiftip, wgCoulomb)
                 shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[3]
 
             elseif cDOS_flag == 1
-                new_data = realEliashbergEq(itemp, a2f_omega, a2f, mu, wgCoulomb, deltaip)
+                new_data = realEliashbergEq(itemp, a2f_omega, a2f, mu, deltaip, wgCoulomb)
             end
 
             # mixing
@@ -470,10 +469,10 @@ function solve_realEliashberg(itemp, inp, console, matval, log_file)
             ### Console Output ###
             if cDOS_flag == 0
                 # Console output
-                outputVec = [i_it, znormi[1], shifti[1], -muintr, deltai[1], err_delta]
+                outputVec = [i_it, znormi[1], shifti[1], deltai[1], err_delta]
 
                 # data for return
-                data = [znormi[1], deltai[1], shifti[1], -muintr]
+                data = [znormi[1], deltai[1], shifti[1]]
 
             elseif cDOS_flag == 1
                 # Console output
@@ -500,7 +499,11 @@ function solve_realEliashberg(itemp, inp, console, matval, log_file)
 
 
 
-        ##### check convergence & termination criterion #####
+        """
+            ************ ToDo ************
+            preliminary convergence criterion 
+        """
+        # convergence criterion
         minIt = 15
         if err_delta < inp.conv_thr && i_it > maximum([minIt, inp.nItFullCoul+1])
             println(replace(console["Hline"], "." => " "))
@@ -508,38 +511,13 @@ function solve_realEliashberg(itemp, inp, console, matval, log_file)
 
             println(log_file, replace(console["Hline"], "." => " "))
             printstyled(log_file, "\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
-
-            # save Z, Delta, chi, phi
-            if inp.flag_writeSelfEnergy == 1
-                try 
-                    if include_Weep == 1
-                        if inp.cDOS_flag == 0
-                            saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi, epsilon=dos_en, chi=shifti, phiph=phiphi, phic=phici)
-                        elseif inp.cDOS_flag == 1
-                            saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi, epsilon=dos_en, phiph=phiphi, phic=phici)
-                        end
-                    elseif inp.include_Weep == 0
-                        if inp.cDOS_flag == 0
-                            saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi, chi=shifti)                           
-                        elseif inp.cDOS_flag == 1
-                            saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi)                
-                        end
-                    end
-                catch ex
-                    # crash file
-                    writeToCrashFile(inp)
-
-                    # console / log file
-                    printWarning("Error while saving self energy components.", log_file, ex=ex)
-                end
-            end
             
             return data
             break
         end
 
         # Gap too small
-        if data[2] < inp.minGap && i_it > maximum([minIt, inp.nItFullCoul+1])
+        if real(data[2]) < inp.minGap && i_it > maximum([minIt, inp.nItFullCoul+1])
             println(replace(console["Hline"], "." => " "))
             printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than "*string(round(inp.minGap, digits=2))*" meV!\n\n"; bold=false)
 

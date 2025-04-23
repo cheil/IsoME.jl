@@ -326,10 +326,11 @@ function formatTableHeader(header, width)
 end
 
 
-### Format each Row of console output ###
-# change to two functions which differ in 
-#   - prec::Int = 5
-#   - prec::Vector{Int} ?
+"""
+    formatTableRow(vec, widthCol, prec=5, logConsole=true)
+    
+Format the console output s.t. it is aligned to the header
+"""
 function formatTableRow(vec, widthCol, prec=5, logConsole=true)
     """
     Format the console output s.t. it is aligned to the header

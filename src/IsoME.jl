@@ -33,6 +33,8 @@ using LsqFit
 using Roots                 
 using Term                 
 using Logging, LoggingExtras
+using TOML
+
 
 
 ### defining constants ###

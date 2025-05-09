@@ -38,6 +38,22 @@ end
 
 Start message
 """
+
+function get_current_package_version(projectname::String = "IsoME")
+    # Start from the parent of the file calling this function
+    path = normpath(joinpath(@__DIR__, ".."))  # Go up from `src/` to package root
+    project_file = joinpath(path, "Project.toml")
+
+    if isfile(project_file)
+        data = TOML.parsefile(project_file)
+        if get(data, "name", "") == projectname
+            return get(data, "version", "unknown")
+        end
+    end
+
+    return "unknown"
+end
+
 function printStartMessage(console, log_file)
 
     strLine = "-"^(sum(console["width"])+length(console["width"])+1)
@@ -46,11 +62,16 @@ function printStartMessage(console, log_file)
 
     strEliash = "Eliashberg Solver started"
 
-    #printTextCentered(log_file, "Version 1.0", strLine, false)
+    version = get_current_package_version("IsoME")
+
+    
     print(strAuthors)
+    print(log_file, strAuthors)
+    printTextCentered("Version $version", strLine, bold=false, file=log_file)
+
     print(strLine)
     # log file
-    print(log_file, strAuthors)
+    
     print(log_file, strLine)
 
     printTextCentered(strEliash, strLine, file = log_file, bold = true)
@@ -63,7 +84,6 @@ function printStartMessage(console, log_file)
     return console
                                     
 end
-
 
 """
     printADtable(console)

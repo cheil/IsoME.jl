@@ -67,6 +67,7 @@ function printStartMessage(console, log_file)
     
     print(strAuthors)
     print(log_file, strAuthors)
+
     printTextCentered("Version $version", strLine, bold=false, file=log_file)
 
     print(strLine)

@@ -1,12 +1,22 @@
-@article{IsoME.jl-2025,
-    title={IsoME: Streamlining High-Precision Eliashberg Calculations},
-    author={Eva Kogler and Dominik Spath and Roman Lucrezi and Hitoshi Mori and Zien Zhu and Zhenglu Li and Elena R. Margine and Christoph Heil},
-    year={2025},
-    eprint={2503.03559},
-    archivePrefix={arXiv},
-    primaryClass={cond-mat.supr-con},
-    url={https://arxiv.org/abs/2503.03559}, 
-    year={2025},
-    doi={},
+@article{IsoME_2025,
+    title = {IsoME: Streamlining high-precision Eliashberg calculations},
+    journal = {Computer Physics Communications},
+    volume = {315},
+    pages = {109720},
+    year = {2025},
+    issn = {0010-4655},
+    doi = {https://doi.org/10.1016/j.cpc.2025.109720},
+    url = {https://www.sciencedirect.com/science/article/pii/S001046552500222X},
+    author = {Eva Kogler and Dominik Spath and Roman Lucrezi and Hitoshi Mori and Zien Zhu and Zhenglu Li and Elena R. Margine and Christoph Heil},
+    abstract = {This paper introduces the Julia package IsoME, an easy-to-use yet accurate and robust computational tool designed to calculate 
+                superconducting properties. Multiple levels of approximation are supported, ranging from the basic McMillan-Allen-Dynes formula 
+                and its machine learning-enhanced variant to Eliashberg theory, including static Coulomb interactions derived from GW calculations, 
+                offering a fully ab initio approach to determine superconducting properties, such as the critical superconducting temperature (Tc) and 
+                the superconducting gap function (Δ). We validate IsoME by benchmarking it against various materials, demonstrating its versatility and 
+                performance across different theoretical levels. The findings indicate that the previously held assumption that Eliashberg theory 
+                overestimates Tc is no longer valid when μ⁎ is appropriately adjusted to account for the finite Matsubara frequency cutoff. Furthermore, 
+                we conclude that the constant density of states (DOS) approximation remains accurate in most cases. By unifying multiple approximation 
+                schemes within a single framework, IsoME combines first-principles precision with computational efficiency, enabling seamless integration 
+                into high-throughput workflows through its Tc search mode. This makes IsoME a powerful and reliable tool for advancing superconductivity research.}
 }
 

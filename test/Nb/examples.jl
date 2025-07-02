@@ -1,4 +1,4 @@
-```
+"""
     Example file 
 
     Several cases are provided as example:
@@ -9,12 +9,12 @@
         - 5: cDOS + W  Tc search - different smearing column 
         - 6: vDOS + W  Tc search - different smearing column
 
-```
+"""
 
 using IsoME
 
 
-``` Inputs ```
+""" Inputs """
 # output directory, we recommend to change it
 outdir = joinpath(@__DIR__, "output")
 
@@ -25,7 +25,7 @@ ind_smear = 15
 typEl = 10000
 
 
-``` Cases ```
+""" Cases """
 case = 1
 
 
@@ -86,7 +86,7 @@ elseif case == 6
 end
 
 
-``` Start the Eliashberg Solver ```
+""" Start the Eliashberg Solver """
 EliashbergSolver(inp)
 
 

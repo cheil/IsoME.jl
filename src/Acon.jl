@@ -14,9 +14,9 @@
 # TODO:
 #   - flags as input
 #   - real_c as input
-function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti = 0)
+function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti = nothing)
 
-    real_c = 100.0
+    real_c = 5000.0
 
     # sinnvoller machen
     if inp.include_Weep == 1
@@ -40,7 +40,7 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti
     lpade = 1
     if lpade == 1
         #=
-        ------- direct pade of GF, less stable -------
+        ------- direct pade of GF --> less stable -------
         ws_pade, g11_pade, gaux_pade = Pade(wsi, nsiw, real_c, g11i, gauxi)
         g12_pade = anomalousGF(g11_pade, gaux_pade)
         delta_pade = Delta_from_GF(ws_pade, g11_pade, g12_pade)
@@ -53,6 +53,10 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti
         =#
 
         delta_pade, ws_pade = Pade_separate(wsi, nsiw, real_c, deltai)
+        Z_pade, ws_pade = Pade_separate(wsi, nsiw, real_c, znormi)
+        if ~isnothing(shifti)
+            shift_pade, ws_pade = Pade_separate(wsi, nsiw, real_c, shifti)
+        end
     end
 
     ### save outputs ###
@@ -102,6 +106,10 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti
             =#
 
             plotGap(itemp, ws_pade, delta_pade, folder, inp.material, "pade")
+            if ~isnothing(shifti)
+                plotShift(itemp, ws_pade, shift_pade, folder, inp.material, "pade")
+            end
+            plotZ(itemp, ws_pade, Z_pade, folder, inp.material, "pade")
         end
     end
 
@@ -515,7 +523,7 @@ function plotGap(itemp, ws, delta, folder, material, mode= "neva")
 
     plot(ws, real(delta), label="real", color = :red)
     plot!(ws, imag(delta), label="imag", color = :blue)
-    xlims!(0, xlim_max)
+    xlims!(-xlim_max, xlim_max)
     #ylims!(0, ylim_max)
     if material != "Material"
         title!(inp.material)
@@ -523,7 +531,54 @@ function plotGap(itemp, ws, delta, folder, material, mode= "neva")
     xlabel!(L"\omega ~ \mathrm{(meV)}")
     ylabel!(L"\Delta(\omega) ~ \mathrm{(meV)}")
     savefig(folder* "/gap_"*mode*"_T" * string(itemp) * ".pdf")
+    print("hallo")
 end
+
+"""
+
+plot Z
+"""
+function plotZ(itemp, ws, Z, folder, material, mode= "neva")
+
+    xlim_max = round(maximum(ws), RoundUp)
+    xtick_val = 0:10:xlim_max
+    #ylim_max = round(maximum(delta), RoundUp)
+
+    plot(ws, real(Z), label="real", color = :red)
+    plot!(ws, imag(Z), label="imag", color = :blue)
+    xlims!(-xlim_max, xlim_max)
+    #ylims!(0, ylim_max)
+    if material != "Material"
+        title!(inp.material)
+    end
+    xlabel!(L"\omega ~ \mathrm{(meV)}")
+    ylabel!(L"Z(\omega) ~ \mathrm{(1)}")
+    savefig(folder* "/Z"*mode*"_T" * string(itemp) * ".pdf")
+end
+
+"""
+
+plot chi
+"""
+function plotShift(itemp, ws, shift, folder, material, mode= "neva")
+
+    xlim_max = round(maximum(ws), RoundUp)
+    xtick_val = 0:10:xlim_max
+    #ylim_max = round(maximum(delta), RoundUp)
+
+    plot(ws, real(shift), label="real", color = :red)
+    plot!(ws, imag(shift), label="imag", color = :blue)
+    xlims!(-xlim_max, xlim_max)
+    #ylims!(0, ylim_max)
+    if material != "Material"
+        title!(inp.material)
+    end
+    xlabel!(L"\omega ~ \mathrm{(meV)}")
+    ylabel!(L"\chi(\omega) ~ \mathrm{(meV)}")
+    savefig(folder* "/shift_"*mode*"_T" * string(itemp) * ".pdf")
+end
+
+
 
 
 """

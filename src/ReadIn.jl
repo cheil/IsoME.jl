@@ -337,6 +337,9 @@ function readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsme
     a2f_fine = a2f_int(omega_fine)
     a2f_fine[a2f_fine.<0.0] .= 0.0
 
+    omega_fine = omega_raw
+    a2f_fine = a2f_raw
+
 
     return omega_fine, a2f_fine, indSmear, unit
 

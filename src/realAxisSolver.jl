@@ -40,7 +40,6 @@ function RealAxisSolver(inp::arguments)
         try
             """ 
             ********** ToDo **********
-            - discuss which mu is needed for real axis eq.
             - adapt messages in printFlagsAsText
             - add names to start message
             """
@@ -101,7 +100,7 @@ function RealAxisSolver(inp::arguments)
 
             ### create Summary file
             header = "# T/K  Δ(0)/meV  Z(0)/1"
-            out_vars = zeros(size(Delta0, 1), 3)
+            out_vars = Array{ComplexF64}(undef, length(Delta0), 3)
             out_vars[:, 1] = temps
             out_vars[:, 2] = Delta0
             out_vars[:, 3] = Znorm0
@@ -120,10 +119,14 @@ function RealAxisSolver(inp::arguments)
             end
 
 
+            """
+            ---------------- ToDo -------------
+            plot different figures, e.g. real and imag of Delta 
+            """
             ### figures
             if inp.flag_figure == 1
                 try
-                    createFigures(inp, matval, Delta0, temps, Tc, log_file)
+                    createFigures(inp, matval, real(Delta0), temps, Tc, log_file)
                 catch ex
                     # crash file
                     writeToCrashFile(inp)
@@ -161,10 +164,16 @@ Solve the real axis eliashberg equation at the specified temperatures or with th
 function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
     inp.temps = sort(inp.temps)
     nT = size(inp.temps, 1)
-    Delta0 = Vector{Float64}()
-    Shift0 = Vector{Float64}()
-    Znorm0 = Vector{Float64}()
+    Delta0 = Vector{ComplexF64}()
+    Shift0 = Vector{ComplexF64}()
+    Znorm0 = Vector{ComplexF64}()
     Tc = [NaN, NaN]
+
+    ### Set up axis and parameters ###
+    """ ------------- ToDo -------------
+        * Parameters as input
+    """
+    W_cut, w_axis, int_axis, W_left = setUpAxis(inp, matval)
 
 
     if inp.temps == [-1]    # Tc search mode
@@ -292,8 +301,20 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
         for iT in 1:nT
             itemp = inp.temps[iT]
 
+            β = 1 / (kb * itemp)
+
+            Kp_func, Km_func = kernels(β, inp, matval, w_axis, W_left, W_cut, int_axis)
+
+            # new cheb grid
+            w_static = range(1e-4, stop=inp.real_c, length=inp.numReal_c)
+            w_dynam = reverse(inp.real_c .+ inp.real_c .* cos.((2 .* ((inp.n_cheb/2):(inp.n_cheb-1)) .+ 1) .* π ./ (2 * inp.n_cheb)))
+            W_static = repeat(transpose(w_static), length(w_dynam))
+            W_dynam = repeat(w_dynam, 1, length(w_static))
+
+            realAxisParameter = (Kp_func, Km_func, w_static, w_dynam, W_static, W_dynam)
+
             # solve Eliashberg equations
-            data = solve_realEliashberg(itemp, inp, console, matval, log_file)
+            data, gap = solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
@@ -312,6 +333,8 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
                 # upper bound Tc
                 Tc[2] = inp.temps[end]
                 break
+            else
+                plotGapAtT(inp, itemp, gap)
             end
         end
 
@@ -334,14 +357,13 @@ end
 
 Solve the eliashberg eq. self-consistently for a fixed temperature
 """
-function solve_realEliashberg(itemp, inp, console, matval, log_file)
+function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
     # destruct inputs
-    (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxShiftcut) = matval
-    (; cDOS_flag, include_Weep, real_c, numReal_c, mixing_beta, nItFullCoul, outdir, mu) = inp
+    (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap) = matval
+    (; cDOS_flag, include_Weep, numReal_c, mixing_beta, nItFullCoul, muc_ME, real_c) = inp
+    (Kp_func, Km_func, w_static, w_dynam, W_static, W_dynam)  = realAxisParameter
 
-    ### Set up real energy grid ###
-    # real_c: real energy cutoff
-    # numReal_c: number of points (maybe obsolete due to Gauss quadrature)
+    β = 1 / (kb * itemp)
    
     ##### Initialize variables #####
     if include_Weep == 1
@@ -356,6 +378,8 @@ function solve_realEliashberg(itemp, inp, console, matval, log_file)
             console["InitValues"] = [0 phici[idx_ef] phiphi[1] znormi[1] shifti[1] -muintr deltai[idx_ef, 1] nothing]
             console = printTableHeader(console, log_file)
 
+            error("Currently not supported")
+
     elseif include_Weep == 0
 
         if cDOS_flag == 0
@@ -368,13 +392,15 @@ function solve_realEliashberg(itemp, inp, console, matval, log_file)
             console["InitValues"] = [0 znormi[1] shifti[1] deltai[1] nothing]
             console = printTableHeader(console, log_file)
 
+            error("Currently not supported")
+
         elseif cDOS_flag == 1
             ### Initialize 
-            deltai = ones(ComplexF64, numReal_c) .* BCS_gap
+            deltai = ones(numReal_c) .* 0.1 .+ im*1e-4     #.* BCS_gap
             znormi = ones(ComplexF64, numReal_c) 
 
             ### Print to console & log file
-            console["InitValues"] = [0 znormi[1] deltai[1] nothing]
+            console["InitValues"] = [0 real(znormi[1]) real(deltai[1]) nothing]
             console = printTableHeader(console, log_file)
 
         end
@@ -426,64 +452,88 @@ function solve_realEliashberg(itemp, inp, console, matval, log_file)
 
         if include_Weep == 1
             # vDOS + W
-            new_data = realEliashbergEq(itemp, a2f_omega, a2f, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb)
+            #new_data = realEliashbergEq(itemp, a2f_omega, a2f, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb)
 
             # mixing
-            znormi = (1.0 - abs(broyden_beta)) .* znormi .+ abs(broyden_beta) .* new_data[1]
-            phiphi = (1.0 - abs(broyden_beta)) .* phiphi .+ abs(broyden_beta) .* new_data[2]
-            phici  = (1.0 - abs(broyden_beta)) .* phici  .+ abs(broyden_beta) .* new_data[3]
-            shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[4]
-            deltai = (phiphi' .+ phici) ./ znormi'
+            #znormi = (1.0 - abs(broyden_beta)) .* znormi .+ abs(broyden_beta) .* new_data[1]
+            #phiphi = (1.0 - abs(broyden_beta)) .* phiphi .+ abs(broyden_beta) .* new_data[2]
+            #phici  = (1.0 - abs(broyden_beta)) .* phici  .+ abs(broyden_beta) .* new_data[3]
+            #shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[4]
+            #deltai = (phiphi' .+ phici) ./ znormi'
 
-            rel_delta = sum(abs.(deltai[idx_ef, :] .- deltaip[idx_ef, :]))
-            abs_delta = sum(abs.(deltai[idx_ef, :]))
-            err_delta = rel_delta / abs_delta
+            #rel_delta = sum(abs.(deltai[idx_ef, :] .- deltaip[idx_ef, :]))
+            #abs_delta = sum(abs.(deltai[idx_ef, :]))
+            #err_delta = rel_delta / abs_delta
 
             # Console output
-            outputVec = [i_it, phici[idx_ef], phiphi[1], znormi[1], shifti[1], deltai[idx_ef, 1], err_delta]
+            #outputVec = [i_it, phici[idx_ef], phiphi[1], znormi[1], shifti[1], deltai[idx_ef, 1], err_delta]
 
             # data for return
-            data = [znormi[1], deltai[idx_ef, 1], shifti[1]]
+            #data = [znormi[1], deltai[idx_ef, 1], shifti[1]]
 
         ##### No Weep #####
         elseif include_Weep == 0
 
             if cDOS_flag == 0
 
-                new_data = realEliashbergEq(itemp, a2f_omega, a2f, dosef, ndos, dos_en, dos, mu, znormip, deltaip, shiftip, wgCoulomb)
-                shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[3]
+                #new_data = realEliashbergEq(itemp, a2f_omega, a2f, dosef, ndos, dos_en, dos, mu, znormip, deltaip, shiftip, wgCoulomb)
+                #shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[3]
 
             elseif cDOS_flag == 1
-                new_data = realEliashbergEq(itemp, a2f_omega, a2f, mu, deltaip, wgCoulomb)
+
+                    deltaip = deltai
+                    Delta_func = linear_interpolation(w_static, deltai, extrapolation_bc=Flat())
+                    gap0 = real(deltai[1])
+
+                    root_eq = x -> x - real(Delta_func(x))
+                    root = find_zero(root_eq, gap0)
+
+                    # update 
+                    w_prime = w_dynam .+ root
+                    W_prime = W_dynam .+ root
+                    W_pm = ifelse.((W_prime .< inp.real_c) .& (W_prime .> 0), W_prime, 0)
+
+                    Delta_func_eval = Delta_func.(W_pm)
+                    sqrt_eval = @. sqrt((W_pm^2 - Delta_func_eval^2))
+
+                    znormi = Z(sqrt_eval, Km_func, W_prime, w_prime, w_static, W_static, W_pm, inp.real_c)
+                    deltai = newDelta(muc_ME, β, Delta_func_eval, sqrt_eval, znormi, Kp_func, w_prime, inp.real_c, W_pm, W_static, W_prime)  
+
+                    #println("Z: ", znormi[1])
+                    #println("Delta: ", deltai[1])
+
             end
 
             # mixing
-            znormi = (1.0 - abs(broyden_beta)) .* znormi .+ abs(broyden_beta) .* new_data[1]
-            deltai = (1.0 - abs(broyden_beta)) .* deltai .+ abs(broyden_beta) .* new_data[2]
+            #znormi = (1.0 - abs(broyden_beta)) .* znormip .+ abs(broyden_beta) .* znormi
+            deltai = (1.0 - abs(broyden_beta)) .* deltai .+ abs(broyden_beta) .* deltaip
 
-            rel_delta = sum(abs.(deltai - deltaip))
-            abs_delta = sum(abs.(deltai))
-            err_delta = rel_delta / abs_delta
+            # convergence criterion
+            convergence = sqrt(mean(abs.(deltai .- deltaip) .^ 2))   
+      
 
 
             ### Console Output ###
             if cDOS_flag == 0
                 # Console output
-                outputVec = [i_it, znormi[1], shifti[1], deltai[1], err_delta]
+                #outputVec = [i_it, znormi[1], shifti[1], deltai[1], convergence]
 
                 # data for return
-                data = [znormi[1], deltai[1], shifti[1]]
+                #data = [znormi[1], deltai[1], shifti[1]]
 
             elseif cDOS_flag == 1
                 # Console output
-                outputVec = [i_it, znormi[1], deltai[1], err_delta]
+                outputVec = [i_it, real(znormi[1]), real(deltai[1]), convergence]
 
                 # data for return
                 data = [znormi[1], deltai[1]]
 
+
             end # cDOS_flag
+                                    
 
         end # include_Weep
+  
 
 
         ##### Print to console #####
@@ -504,15 +554,20 @@ function solve_realEliashberg(itemp, inp, console, matval, log_file)
             preliminary convergence criterion 
         """
         # convergence criterion
-        minIt = 15
-        if err_delta < inp.conv_thr && i_it > maximum([minIt, inp.nItFullCoul+1])
+        minIt = 10
+        if  convergence[end] / gap0 < inp.conv_thr && i_it > maximum([minIt, inp.nItFullCoul+1])
             println(replace(console["Hline"], "." => " "))
             printstyled("\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 
             println(log_file, replace(console["Hline"], "." => " "))
             printstyled(log_file, "\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
+
+            ### Remove
+            #plot(range(1e-32, 100, 100), real(deltai[1:100]), col="blue", label="Real", linewidth=2)
+            #plot!(range(1e-32, 100, 100), imag(deltai[1:100]), col="red", label="Imag", linewidth=2)
+            #savefig("Gap.png")
             
-            return data
+            return data, deltai
             break
         end
 
@@ -525,7 +580,7 @@ function solve_realEliashberg(itemp, inp, console, matval, log_file)
             printstyled(log_file, "\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than "*string(round(inp.minGap, digits=2))*" meV!\n\n"; bold=false)
 
             data[2] = NaN
-            return data
+            return data, deltai
             break
         end
 
@@ -542,7 +597,7 @@ function solve_realEliashberg(itemp, inp, console, matval, log_file)
     
 
             data[2] = NaN
-            return data
+            return data, deltai
             break
         end
 

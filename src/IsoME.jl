@@ -33,6 +33,7 @@ using LsqFit
 using Roots                 
 using Term                 
 using Logging, LoggingExtras
+using Statistics    # Real ME
 
 
 ### defining constants ###
@@ -107,8 +108,9 @@ const kb = 0.08617333262; # meV/K
 
     # real axis inputs
     # separate input struct? 
-    real_c::Float64     = 500 # real frequency cutoff
-    numReal_c::Int64  = 1000 # number of real frequency points
+    real_c::Float64     = 100 # real frequency cutoff
+    numReal_c::Int64    = 1000 # number of real frequency points
+    n_cheb::Int64       = 2000  # number of chebyshev points
 end
 
 
@@ -123,6 +125,7 @@ include("WriteOutput.jl")
 include("EliashbergEq.jl")
 include("realAxisSolver.jl")
 include("realAxisEliashbergEq.jl")
+include("RealME.jl")
 
 
 end

@@ -379,6 +379,7 @@ function formatTableRow(vec, widthCol, prec=5, logConsole=true)
             spacing = (width - (sum(numDig) + 1)) / 2
             format[k, :] = [floor(spacing), numDig[1], numDig[2], ceil(spacing)]
             out[k] = " "^Int(format[k,1])*"-"*" "^Int(format[k,4])*"|"
+        
         else
             value = round(value, digits=prec[k])
             numDig = numDigits(value)
@@ -836,4 +837,14 @@ function Base.getproperty(a::arguments, v::Symbol)
     else
         return getfield(a, v)
     end
+end
+
+
+function plotGapAtT(inp, itemp, gap)
+
+    w_real = range(0, inp.real_c, inp.numReal_c)
+    plot(w_real, real(gap), col="blue", label="Real", linewidth=2, ylabel="Δ(ω) / meV", xlabel = "ω / meV")
+    plot!(w_real, imag(gap), col="red", label="Imag", linewidth=2)
+    savefig(inp.outdir*"Gap_$itemp.png")
+
 end

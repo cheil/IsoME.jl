@@ -24,14 +24,15 @@ export EliashbergSolver, arguments, FINDAGOODNAME, iterativeAcon
 using DelimitedFiles        
 using Interpolations    
 using Plots, LaTeXStrings
-using Trapz                 
-using LinearAlgebra          
-using CSV, DataFrames       
-using Printf               
-using SparseIR              
-using LsqFit                
-using Roots                 
-using Term                 
+using Trapz                 # integration
+using LinearAlgebra         # 
+using CSV, DataFrames       # write to csv
+using Printf                # Format console output
+using SparseIR              # Intermediate basis 
+using LsqFit                # Fitting 
+using Roots                 # Root finding
+using Term                  # styled text terminal
+using Nevanlinna            # analytic continuation
 using Logging, LoggingExtras
 using Statistics    # Real ME
 
@@ -126,6 +127,7 @@ include("EliashbergEq.jl")
 include("realAxisSolver.jl")
 include("realAxisEliashbergEq.jl")
 include("RealME.jl")
+include("Acon.jl")
 
 
 end

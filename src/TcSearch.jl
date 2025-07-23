@@ -296,7 +296,34 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
                     printWarning("Error while saving self energy components.", log_file, ex=ex)
                 end
             end
-            
+
+            ### Analytic Continuation ###
+            flag_acon = 1
+            if flag_acon == 1
+                try
+                    if include_Weep == 1
+                        if inp.cDOS_flag == 0
+                            acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file, idx_ef=idx_ef, shifti = shifti)
+                        elseif inp.cDOS_flag == 1
+                            acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file, idx_ef=idx_ef)
+                        end
+                    elseif inp.include_Weep == 0
+                        if inp.cDOS_flag == 0
+                            acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file, shifti = shifti)                     
+                        elseif inp.cDOS_flag == 1
+                            acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file)          
+                        end
+                    end
+                catch ex
+                    # crash file
+                    writeToCrashFile(inp)
+
+                    # console / log file
+                    printWarning("Error in analytic continuation.", log_file, ex=ex)
+                end
+            end 
+
+
             return data
             break
         end

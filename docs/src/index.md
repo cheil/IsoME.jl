@@ -1,21 +1,27 @@
 # IsoME
-IsoME is a state-of-the-art method to solve the isotropic Eliashberg equations. 
-In addition to being one of the most accurate Eliashberg solvers currently available, it also supports high-throughput 
+IsoME is a state-of-the-art method to solve the isotropic Eliashberg equations either on the real or imaginary axis.
+These two modes can be started by calling the `RealAxisSolver()` or `EliashbergSolver()` function, respectively.
+Both functions rely on the custom datatype `arguments()` to hand over the inputs.
+
+The ``EliashbergSovler()`` is based on the [IsoME](https://doi.org/10.1016/j.cpc.2025.109720) paper.
+It consitutes on of the most accurate Eliashberg solvers on the imaginary axis currently available and also supports high-throughput 
 calculations through a fast implementation based on the constant density of states (DOS) and Morel-Anderson pseudopotential approximations.
 
 In its simplest form, IsoME requires only the Eliashberg spectral function ``\alpha^2 F`` as input to compute the superconducting critical temperature (Tc​). 
 For more advanced calculations, input files containing the DOS and the screened Coulomb interaction (W) are necessary.
 
 The package is capable of solving the isotropic Eliashberg equations within any of the following approximations:
-- constant Dos with Morel-Anderson pseudopotential ``\mu^*``
-- variable Dos with Morel-Anderson pseudopotential ``\mu^*``
-- variable Dos with screened Coulomb interaction ``W(\varepsilon,\varepsilon')``
+- cDOS``+\mu``: constant Dos with Morel-Anderson pseudopotential ``\mu^*``
+- vDOS``+\mu``: variable Dos with Morel-Anderson pseudopotential ``\mu^*``
+- vDOS``+W``: variable Dos with screened Coulomb interaction ``W(\varepsilon,\varepsilon')``
 
 Furthermore, results based on the Allen-Dynes and Allen-Dynes-McMillan formulas are provided.  
 In principle, a fourth level of approximation that combines the static Coulomb interaction ``W(\varepsilon,\varepsilon')`` with the constant DOS approximation exists. 
 However, this variant is not recommended, as it requires the same input data as the vDOS+W approach while being less rigorous and offering no notable computational advantage.
 There is also an option to save the self-energy components ``\Delta, Z, \chi, \phi`` at each temperature.  
-An analytic continuation to the real frequency axis will be implemented in a future release.
+A variant of the Pade-approximation is implemented to enable an analytic continuation to the real frequency axis.
+
+The `RealAxisSovler()` is based on the [Holcomb](https://doi.org/10.1103/PhysRevB.54.6648) method and currently only supports cDOS``+\mu`` calculations.
 
 ## Installation
 In order to run the code you need to [install](https://julialang.org/downloads/) julia 1.10 or higher.
@@ -65,6 +71,16 @@ julia> inp = arguments(
                 )
 ```
 If the energy grid is not containted within the Weep-file, it can be provided through an addional file: `Wen_file  = "Path to W energies-file"`
+
+For solving the Eliashberg equations directly on the real axis, use `RealAxisSolver()` instead:
+```julia-repl
+julia> inp = arguments(
+                a2f_file            = "Path to a2f-file", 
+                outdir              = "Path to output directory",
+                )
+
+        RealAxisSolver(inp)
+```
 
 ## Minimal example
 A minimal example can be found at [Example files](https://github.com/cheil/IsoME.jl/tree/main/test/Nb).

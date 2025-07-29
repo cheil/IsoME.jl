@@ -24,7 +24,7 @@ Solve the eliashberg eq. self-consistently for a fixed temperature
 function solve_eliashberg(itemp, inp, console, matval, log_file)
     # destruct inputs
     (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxShiftcut) = matval
-    (; cDOS_flag, include_Weep, omega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag, outdir, sparseSamplingTemp) = inp
+    (; cDOS_flag, include_Weep, omega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag, outdir, sparseSamplingTemp, flag_acon) = inp
 
     ### Matsubara frequencies ###
     beta = 1 / (kb * itemp)
@@ -262,7 +262,6 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
         end
 
 
-
         ##### check convergence & termination criterion #####
         minIt = 15
         if err_delta < inp.conv_thr && i_it > maximum([minIt, inp.nItFullCoul+1])
@@ -298,8 +297,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             end
 
             ### Analytic Continuation ###
-            flag_acon = 1
-            if flag_acon == 1
+            if flag_acon
                 try
                     if include_Weep == 1
                         if inp.cDOS_flag == 0
@@ -631,13 +629,13 @@ function EliashbergSolver(inp::arguments)
 
 
             ### create Summary file
-            header = "# T/K  Δ(0)/meV  Z(0)/1"
+            header = "# T/K   Δ(0)/meV   Z(0)/1   "
             out_vars = zeros(size(Delta0, 1), 3)
             out_vars[:, 1] = temps
             out_vars[:, 2] = Delta0
             out_vars[:, 3] = Znorm0
             if inp.cDOS_flag == 0
-                header = header * "  χ(0)/meV  ϵ_F-μ/meV"
+                header = header * "χ(0)/meV   ϵ_F-μ/meV   "
                 out_vars = hcat(out_vars, Shift0, EfMu)
             end
             try

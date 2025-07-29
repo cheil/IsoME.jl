@@ -62,6 +62,7 @@ const kb = 0.08617333262; # meV/K
     shiftcut::Float64          = 2000      # cutoff shift & Ne
     sparseSamplingTemp::Float64 = 2
     typEl::Float64          = -1 
+    flag_acon::Bool         = false     
     
     # interpolation
     itpStepSize::Vector{Int64}  = [1, 5, 50]

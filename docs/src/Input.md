@@ -1,6 +1,6 @@
 # Input
 The input parameters are handed over collectively as [compsite type](https://docs.julialang.org/en/v1/manual/types/#Composite-Types) with the name `arguments()`.  
-We highly recommend to always initialzie a new instance of this struct when running the Eliashberg solver, as some of the parameters may be overwritten during a run. Such parameters are marked by either `-1` or `""` for numeric and string variables, respectively.  
+We highly recommend to always initialzie a new instance of this struct when running the `EliashbergSolver()` or the `RealAxisSolver()`, as some of the parameters may be overwritten during a run. Such parameters are marked by either `-1` or `""` for numeric and string variables, respectively.  
 
 All energies internally are assumed to be in meV. If the input files differ from that, the units are extracted from the header and converted automatically. If this doesn't work for some reason, please double check the header of your input files or specify the units manually via the corresponding input parameters.  
 A comprehensive description of all the input parameters can be found below.
@@ -41,6 +41,15 @@ An overview of the most relevant inputs is given below. Keep in mind that all `-
 | flag_writeSelfEnergy | Int64 | 0  | Should the self-energy components be saved? | 0: No ``\\`` 1: Yes |
 | material | String | "Material" | Name of compound | Title used in plots, summary, ... |
 
+
+### Real axis solver
+For the real axis solver, some additional inputs are relevant.
+
+Name    |      Type      |   Default   | Description | Comment  |
+|:--------|:---------------|:------------|:------------|:---------|
+| real_c   |     Float64   | 100 meV     | real frequency cutoff | |
+| numReal_c|     Int64     |   1000      | number of real frequency points | |
+| n_cheb   |     Int64     |   2000      | number of chebyshev points used around the singularities |  |
 
 
 

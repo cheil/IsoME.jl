@@ -55,14 +55,15 @@ function RealAxisSolver(inp::arguments)
         end
 
         ### Print to console ###
-        printFlagsAsText(inp, log_file)
-
+        printFlagsAsText(inp, log_file, mode = "realFreq")
+        
         ########### start loop over temperatures ##########
         Tc = [NaN, NaN] 
         temps = Vector{Float64}()
         Delta0 = Vector{Float64}()
         Shift0 = Vector{Float64}()
         Znorm0 = Vector{Float64}()
+
         try
             Tc, temps, Znorm0, Delta0, Shift0 = findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
         catch ex
@@ -99,14 +100,16 @@ function RealAxisSolver(inp::arguments)
 
 
             ### create Summary file
-            header = "# T/K  Δ(0)/meV  Z(0)/1"
-            out_vars = Array{ComplexF64}(undef, length(Delta0), 3)
+            header = "# T/K   Re{Δ(0)}/meV   Im{Δ(0)}/meV   Re{Z(0)}/1   Im{Z(0)}/1   "
+            out_vars = Array{Float64}(undef, length(Delta0), 5)
             out_vars[:, 1] = temps
-            out_vars[:, 2] = Delta0
-            out_vars[:, 3] = Znorm0
-            if inp.cDOS_flag == 0
-                header = header * "  χ(0)/meV  ϵ_F-μ/meV"
-                out_vars = hcat(out_vars, Shift0)
+            out_vars[:, 2] = real(Delta0)
+            out_vars[:, 3] = imag(Delta0)
+            out_vars[:, 4] = real(Znorm0)
+            out_vars[:, 4] = imag(Znorm0)
+            if inp.cDOS_flag == 0   # for later when vDOS is implemented
+                header = header * "Re{χ(0)}/meV   Im{χ(0)}/meV   ϵ_F-μ/meV   "
+                out_vars = hcat(out_vars, real(Shift0), imag(Shift0))
             end
             try
                 createSummaryFile(inp, Tc, out_vars, header)
@@ -170,11 +173,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
     Tc = [NaN, NaN]
 
     ### Set up axis and parameters ###
-    """ ------------- ToDo -------------
-        * Parameters as input
-    """
-    W_cut, w_axis, int_axis, W_left = setUpAxis(inp, matval)
-
+    W_cut, w_axis, int_axis, W_left, G = setUpAxis(inp, matval)
 
     if inp.temps == [-1]    # Tc search mode
         # initial guess, Machine learning Tc           
@@ -188,8 +187,12 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
             # save iterations
             inp.temps = push!(inp.temps, itemp)
 
+            β = 1 / (kb * itemp)
+
+            realAxisParameter = precompute(β, inp, matval, w_axis, W_left, W_cut, int_axis)
+
             # solve Eliashberg equations
-            data = solve_realEliashberg(itemp, inp, console, matval, log_file)
+            data, selfEnergy = solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
@@ -216,6 +219,12 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
                 print("Couldn't find a Tc! \n")
 
                 break
+            elseif ~isnan(Delta0[end])         # plot self energy at each temperature
+                if inp.cDOS_flag == 0
+
+                elseif inp.cDOS_flag == 1
+                    plotSelfEnergyAtT(inp, itemp, selfEnergy)
+                end
             end
 
             order = sortperm(inp.temps)
@@ -248,10 +257,11 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
                 fitFlag = false
 
                 nnanDelta = .~isnan.(Delta0)
+                realDelta0 = real(Delta0[nnanDelta])
                 # fit gap values
-                p0 = convert(Vector{Float64}, [maximum(Delta0[nnanDelta]), 1, minimum(Delta0[nnanDelta])])
+                p0 = convert(Vector{Float64}, [maximum(realDelta0), 1, minimum(realDelta0)])
                 try
-                    fit = curve_fit(m, inp.temps[nnanDelta], Delta0[nnanDelta], p0)
+                    fit = curve_fit(m, inp.temps[nnanDelta], realDelta0, p0)
                     par = fit.param
 
                     # find root
@@ -303,18 +313,11 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
 
             β = 1 / (kb * itemp)
 
-            Kp_func, Km_func = kernels(β, inp, matval, w_axis, W_left, W_cut, int_axis)
+            @time realAxisParameter = precompute(β, inp, w_axis, W_left, W_cut, int_axis, G)
 
-            # new cheb grid
-            w_static = range(1e-4, stop=inp.real_c, length=inp.numReal_c)
-            w_dynam = reverse(inp.real_c .+ inp.real_c .* cos.((2 .* ((inp.n_cheb/2):(inp.n_cheb-1)) .+ 1) .* π ./ (2 * inp.n_cheb)))
-            W_static = repeat(transpose(w_static), length(w_dynam))
-            W_dynam = repeat(w_dynam, 1, length(w_static))
-
-            realAxisParameter = (Kp_func, Km_func, w_static, w_dynam, W_static, W_dynam)
 
             # solve Eliashberg equations
-            data, gap = solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
+            @time data, selfEnergy = solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
@@ -334,7 +337,11 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
                 Tc[2] = inp.temps[end]
                 break
             else
-                plotGapAtT(inp, itemp, gap)
+                if inp.cDOS_flag == 0
+
+                elseif inp.cDOS_flag == 1
+                    plotSelfEnergyAtT(inp, itemp, selfEnergy)
+                end
             end
         end
 
@@ -363,6 +370,8 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
     (; cDOS_flag, include_Weep, numReal_c, mixing_beta, nItFullCoul, muc_ME, real_c) = inp
     (Kp_func, Km_func, w_static, w_dynam, W_static, W_dynam)  = realAxisParameter
 
+    printTextCentered("T = "*string(itemp)*" K ", console["partingLine"], file = log_file, bold = true)
+    printTee(log_file, "\n")
     β = 1 / (kb * itemp)
    
     ##### Initialize variables #####
@@ -400,7 +409,7 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
             znormi = ones(ComplexF64, numReal_c) 
 
             ### Print to console & log file
-            console["InitValues"] = [0 real(znormi[1]) real(deltai[1]) nothing]
+            console["InitValues"] = [0 real(znormi[1]) imag(znormi[1]) real(deltai[1]) imag(deltai[1]) nothing]
             console = printTableHeader(console, log_file)
 
         end
@@ -490,17 +499,12 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
 
                     # update 
                     w_prime = w_dynam .+ root
-                    W_prime = W_dynam .+ root
-                    W_pm = ifelse.((W_prime .< inp.real_c) .& (W_prime .> 0), W_prime, 0)
+                    w_pm = ifelse.((w_prime .< inp.real_c) .& (w_prime .> 0), w_prime, 0)
 
-                    Delta_func_eval = Delta_func.(W_pm)
-                    sqrt_eval = @. sqrt((W_pm^2 - Delta_func_eval^2))
+                    Delta_func_eval = Delta_func.(w_prime)
+                    sqrt_eval = @. sqrt((w_prime^2 - Delta_func_eval^2))
 
-                    znormi = Z(sqrt_eval, Km_func, W_prime, w_prime, w_static, W_static, W_pm, inp.real_c)
-                    deltai = newDelta(muc_ME, β, Delta_func_eval, sqrt_eval, znormi, Kp_func, w_prime, inp.real_c, W_pm, W_static, W_prime)  
-
-                    #println("Z: ", znormi[1])
-                    #println("Delta: ", deltai[1])
+                    znormi, deltai = realEliashbergEq(muc_ME, β, Delta_func_eval, sqrt_eval, Kp_func, Km_func, w_prime, w_static, w_pm)
 
             end
 
@@ -521,12 +525,18 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
                 # data for return
                 #data = [znormi[1], deltai[1], shifti[1]]
 
+                # self energy 
+                #selfEnergy = (deltai, znormi, shifti)
+
             elseif cDOS_flag == 1
                 # Console output
-                outputVec = [i_it, real(znormi[1]), real(deltai[1]), convergence]
+                outputVec = [i_it, real(znormi[1]), imag(znormi[1]), real(deltai[1]), imag(deltai[1]), convergence]
 
                 # data for return
                 data = [znormi[1], deltai[1]]
+
+                # self energy 
+                selfEnergy = (deltai, znormi)
 
 
             end # cDOS_flag
@@ -567,7 +577,7 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
             #plot!(range(1e-32, 100, 100), imag(deltai[1:100]), col="red", label="Imag", linewidth=2)
             #savefig("Gap.png")
             
-            return data, deltai
+            return data, selfEnergy
             break
         end
 

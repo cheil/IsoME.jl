@@ -14,7 +14,7 @@
 # TODO:
 #   - flags as input
 #   - real_c as input
-function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti = nothing)
+function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti = 0)
 
     real_c = 5000.0
 
@@ -54,7 +54,7 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti
 
         delta_pade, ws_pade = Pade_separate(wsi, nsiw, real_c, deltai)
         Z_pade, ws_pade = Pade_separate(wsi, nsiw, real_c, znormi)
-        if ~isnothing(shifti)
+        if ~all(shifti .== 0)
             shift_pade, ws_pade = Pade_separate(wsi, nsiw, real_c, shifti)
         end
     end
@@ -106,7 +106,7 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti
             =#
 
             plotGap(itemp, ws_pade, delta_pade, folder, inp.material, "pade")
-            if ~isnothing(shifti)
+            if ~all(shifti .== 0)
                 plotShift(itemp, ws_pade, shift_pade, folder, inp.material, "pade")
             end
             plotZ(itemp, ws_pade, Z_pade, folder, inp.material, "pade")
@@ -531,7 +531,7 @@ function plotGap(itemp, ws, delta, folder, material, mode= "neva")
     xlabel!(L"\omega ~ \mathrm{(meV)}")
     ylabel!(L"\Delta(\omega) ~ \mathrm{(meV)}")
     savefig(folder* "/gap_"*mode*"_T" * string(itemp) * ".pdf")
-    print("hallo")
+
 end
 
 """

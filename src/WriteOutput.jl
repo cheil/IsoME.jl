@@ -57,9 +57,6 @@ function printStartMessage(console::Dict, log_file; mode = 0)
 
         printTee(log_file, strAuthors)
     
-    else
-        strLine = "-"^50
-        strMode = "Iterative ACON started"
     end
     printTee(log_file, strLine)
 
@@ -337,6 +334,7 @@ function formatTableRow(vec, widthCol, prec=5, logConsole=true)
     This is done by introducing a dynamic width and precision via
     "%*s" (requires Julia 1.10)
     The output can be printed via printf   
+    Remark: The use of printf could be circumvented by using just " "^width
 
     -------------------------------------------------------------------
     Input:
@@ -434,7 +432,7 @@ end
 
 Print the flag values as text to the console
 """
-function printFlagsAsText(inp, log_file)
+function printFlagsAsText(inp, log_file; mode ="Matsubara")
     text = ""
     if inp.material != "Material"
         text *=  " - Material: "*inp.material*" \n"
@@ -453,7 +451,11 @@ function printFlagsAsText(inp, log_file)
     end
     
     # cut off
-    text *= " - Matsubara cutoff: "*string(inp.omega_c)*" meV\n"
+    if mode == "Matsubara"
+        text *= " - Matsubara cutoff: "*string(inp.omega_c)*" meV\n"
+    elseif mode == "realFreq"
+        text *= " - Frequency cutoff: "*string(inp.real_c)*" meV\n"
+    end
 
     # cDos
     if inp.cDOS_flag == 0
@@ -474,6 +476,8 @@ function printFlagsAsText(inp, log_file)
         text *= "     - μ*_AD = "*string(round(inp.muc_AD, digits=3))*"\n"
         text *= "     - μ*_ME = "*string(round(inp.muc_ME, digits=3))*"\n"
     end
+
+    text *= "\n"
 
     print(text)
     
@@ -573,34 +577,47 @@ end
 
 Save Delta(0) at each temperature
 """
-function createSummaryFile(inp, Tc, out_vars, header)
+function createSummaryFile(inp::arguments, Tc, out_vars, header)
     # write to summary file
-     name = "Summary.dat"
+    name = "Summary.dat"
 
-     if isfile(inp.outdir*name)
-         rm(inp.outdir*name)
-     end
-     outfile = open(inp.outdir*name, "w")
+    if isfile(inp.outdir*name)
+        rm(inp.outdir*name)
+    end
+    outfile = open(inp.outdir*name, "w")
 
-      ### header
-      out = "# "
-      if isnan(Tc[1])
-          out = out * "Tc < " * string(Tc[2]) *" K"
-      elseif isnan(Tc[2])
-          out = out * "Tc > " * string(Tc[1]) * " K"
-      else
-          out = out * "Tc = " * string(round((Tc[2]+Tc[1])/2, digits=2)) * " (±"* string(round((Tc[2]-Tc[1])/2, digits=2)) *")" * " K"
-      end
-      out = out*"\n"*header*"\n"
-      print(outfile, out)
+    ### header
+    out = "# "
+    if isnan(Tc[1])
+        out = out * "Tc < " * string(Tc[2]) *" K"
+    elseif isnan(Tc[2])
+        out = out * "Tc > " * string(Tc[1]) * " K"
+    else
+        out = out * "Tc = " * string(round((Tc[2]+Tc[1])/2, digits=2)) * " (±"* string(round((Tc[2]-Tc[1])/2, digits=2)) *")" * " K"
+    end
+    out = out*"\n"*header*"\n"
+    print(outfile, out)
+
+    close(outfile)
       
-      # save header & gap
-      #writedlm(outfile, header)
-      writedlm(outfile, round.(out_vars, digits=2), '\t')
-
-      close(outfile)
+    # save header & gap
+    #writedlm(outfile, round.(out_vars, digits=4), '\t')
+    spacingsHeader = findall("   ", header)
+    open(inp.outdir*name, "a") do io
+        for row in eachrow(out_vars)
+            startCol = 0
+            for (val, spacing) in zip(row, spacingsHeader)
+                space = spacing[end] - startCol
+                @printf(io, "%-*.3f", space, val)       # could be changed to print whole row at once + less digits after comma for T 
+                startCol = spacing[end]+1
+            end
+            println(io)
+        end
+    end
 
 end
+
+
 
 function createFigures(inp, matval, Delta0, temps, Tc, log_file)
 
@@ -840,11 +857,21 @@ function Base.getproperty(a::arguments, v::Symbol)
 end
 
 
-function plotGapAtT(inp, itemp, gap)
+"""
+    plotSelfEnergyAtT(inp, itemp, componentSelfEnergy)
+
+plot self energy component vs omega on real axis at given temperature
+"""
+function plotSelfEnergyAtT(inp, itemp, selfEnergy)
 
     w_real = range(0, inp.real_c, inp.numReal_c)
-    plot(w_real, real(gap), col="blue", label="Real", linewidth=2, ylabel="Δ(ω) / meV", xlabel = "ω / meV")
-    plot!(w_real, imag(gap), col="red", label="Imag", linewidth=2)
-    savefig(inp.outdir*"Gap_$itemp.png")
+    names = ["Gap", "Z", "Shift"]
+    labels = ["Δ(ω) / meV", "Z(ω) / 1", "χ(ω) / meV"]
+
+    for (component, name, label) in zip(selfEnergy, names, labels)
+        plot(w_real, real(component), col="blue", label="Real", linewidth=2, ylabel=label, xlabel = "ω / meV")
+        plot!(w_real, imag(component), col="red", label="Imag", linewidth=2)
+        savefig(inp.outdir*name*"_$itemp.png")
+    end
 
 end

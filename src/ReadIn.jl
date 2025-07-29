@@ -16,9 +16,11 @@
 """
     InputParser(inp, log_file)
 
-Read, convert, preprocess inputs for EliashbergSolver().
+Read, convert, preprocess inputs for EliashbergSolver() (mode=0) and RealAxisSolver() (mode=1).
 """
 function InputParser(inp::arguments, log_file; mode::Int64 = 0)
+    # mode = 0: EliashbergSolver()
+    # mode = 1: RealAxisSolver()
 
     ### Init table size ###
     console = initOutputTable(inp, mode=mode)
@@ -161,51 +163,62 @@ end
 
 initialize output table: header names, column width and precision
 """
-function initOutputTable(inp::arguments; mode::Int64 = 0)
+function initOutputTable(inp::arguments; mode::Int64 = 0)#
+    # mode = 0: EliashbergSolver()
+    # mode = 1: RealAxisSolver()
 
     console = Dict()
-    if inp.include_Weep == 1 && inp.cDOS_flag == 0
-        # header table
-        console["header"] = ["it", "phic", "phiph", "znormi", "shifti", "ef-mu", "deltai", "err_delta"]
-        # width table
-        console["width"] = [8, 10, 10, 10, 10, 10, 10, 11]
-        # precision data
-        console["precision"] = [0, 2, 2, 2, 2, 2, 2, 5]
+    if mode == 0
+        if inp.include_Weep == 1 && inp.cDOS_flag == 0
+            # header table
+            console["header"] = ["it", "phic", "phiph", "znormi", "shifti", "ef-mu", "deltai", "err_delta"]
+            # width table
+            console["width"] = [8, 10, 10, 10, 10, 10, 10, 11]
+            # precision data
+            console["precision"] = [0, 2, 2, 2, 2, 2, 2, 5]
 
-    elseif inp.include_Weep == 1 && inp.cDOS_flag == 1
-        # header table
-        console["header"] = ["it", "phic", "phiph", "znormi", "deltai", "err_delta"]
-        #width table
-        console["width"] = [8, 10, 10, 10, 10, 11]
-        # precision data
-        console["precision"] = [0, 2, 2, 2, 2, 5]
+        elseif inp.include_Weep == 1 && inp.cDOS_flag == 1
+            # header table
+            console["header"] = ["it", "phic", "phiph", "znormi", "deltai", "err_delta"]
+            #width table
+            console["width"] = [8, 10, 10, 10, 10, 11]
+            # precision data
+            console["precision"] = [0, 2, 2, 2, 2, 5]
 
-    elseif inp.include_Weep == 0 && inp.cDOS_flag == 0
-        # header table
-        console["header"] = ["it", "znormi", "shifti", "ef-mu", "deltai", "err_delta"]
-        #width table
-        console["width"] = [8, 10, 10, 11, 10, 11]
-        # precision data
-        console["precision"] = [0, 2, 2, 2, 2, 5]
+        elseif inp.include_Weep == 0 && inp.cDOS_flag == 0
+            # header table
+            console["header"] = ["it", "znormi", "shifti", "ef-mu", "deltai", "err_delta"]
+            #width table
+            console["width"] = [8, 10, 10, 11, 10, 11]
+            # precision data
+            console["precision"] = [0, 2, 2, 2, 2, 5]
 
-    elseif inp.include_Weep == 0 && inp.cDOS_flag == 1
-        # header table
-        console["header"] = ["it", "znormi", "deltai", "err_delta"]
-        #width table
-        console["width"] = [8, 14, 14, 14]
-        # precision data
-        console["precision"] = [0, 4, 4, 5]
+        elseif inp.include_Weep == 0 && inp.cDOS_flag == 1
+            # header table
+            console["header"] = ["it", "znormi", "deltai", "err_delta"]
+            #width table
+            console["width"] = [8, 14, 14, 14]
+            # precision data
+            console["precision"] = [0, 4, 4, 5]
 
-    else
-        error("Unkwon mode! Check if the cDOS_flag and include_Weep flag are set correctly!")
-    end
-
-    # remove ef-mu if real axis solver
-    if mode == 1 && inp.cDOS_flag == 0
-        idxRemove = console["header"] .== "ef-mu"
-        for (key, val) in console   
-            console[key] = val[.~idxRemove]
+        else
+            error("Unkwon mode! Check if the cDOS_flag and include_Weep flag are set correctly!")
         end
+
+    elseif mode == 1
+
+        if inp.include_Weep == 0 && inp.cDOS_flag == 1
+            # header table
+            console["header"] = ["it", "Re(Z)", "Im(Z)", "Re(Δ)", "Im(Δ)", "Error Δ"]
+            #width table
+            console["width"] = [8, 10, 10, 10, 10, 11]
+            # precision data
+            console["precision"] = [0, 4, 4, 4, 4, 5]
+
+        else
+            error("Unkwon mode! Currently, only cDOS+μ is available on the real axis!")
+        end
+
     end
 
     return console
@@ -281,8 +294,8 @@ function checkInput(inp::arguments; realSolver::Bool = false)
     end
 
     if realSolver
-        if inp.include_Weep == 1 && inp.cDOS_flag == 1
-            error("cDOS+W mode unavailable in real axis solver! Choose a different mode.\n\n")
+        if inp.include_Weep == 1 || inp.cDOS_flag == 0
+            error("Currently, only cDOS+μ is available on the real axis!\n Check if the cDOS_flag and include_Weep flag are set correctly!\n\n")
         end
     end
 
@@ -332,14 +345,10 @@ function readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsme
     a2f_raw = a2f_data[:, indSmear+1] 
 
     ### interpolate a2F on 10x finer grid ###
-    omega_fine = range(1e-2, stop=omega_raw[end], length=10 * size(omega_raw)[1])
+    omega_fine = range(1e-2, stop=omega_raw[end], length=  size(omega_raw)[1])   # 10 *     Interpolate on same grid points
     a2f_int = linear_interpolation(omega_raw, a2f_raw, extrapolation_bc=Line())
     a2f_fine = a2f_int(omega_fine)
     a2f_fine[a2f_fine.<0.0] .= 0.0
-
-    omega_fine = omega_raw
-    a2f_fine = a2f_raw
-
 
     return omega_fine, a2f_fine, indSmear, unit
 

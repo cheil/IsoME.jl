@@ -32,7 +32,6 @@ using SparseIR              # Intermediate basis
 using LsqFit                # Fitting 
 using Roots                 # Root finding
 using Term                  # styled text terminal
-using Nevanlinna            # analytic continuation
 using Logging, LoggingExtras
 using Statistics    # Real ME
 

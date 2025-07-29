@@ -214,7 +214,10 @@ function initOutputTable(inp::arguments; mode::Int64 = 0)#
             console["width"] = [8, 10, 10, 10, 10, 11]
             # precision data
             console["precision"] = [0, 4, 4, 4, 4, 5]
-
+            # initial values
+            #console["Δ"] = ones(inp.numReal_c) .* 0.1 .+ im*1e-4  
+            #console["Z"] = ones(ComplexF64, inp.numReal_c) 
+ 
         else
             error("Unkwon mode! Currently, only cDOS+μ is available on the real axis!")
         end

@@ -39,45 +39,39 @@ function setUpAxis(inp, matval)
     return W_cut, w_axis, int_axis, W_left, G
 end
 
-function kernel_integral_helper(s_rel, int_axis, W_cut, W_left, G, n, flag = false)
+function kernel_integral_helper(s_rel::StepRangeLen{Float64}, int_axis::Vector{Float64}, W_cut::Float64, W_left::Float64, G::AbstractInterpolation, n)
 
-@time begin
-    
     N = length(s_rel)
     M = length(int_axis)
     integrand_1 = zeros(N, M)
-    integrand_2 = zeros(N,M)
-        @inbounds for i in 1:N, j in 1:M
-            s = s_rel[i]
-            wz = int_axis[j]
+    integrand_2 = zeros(N, M)
+    @inbounds for i in 1:N, j in 1:M
+        s = s_rel[i]
+        wz = int_axis[j]
 
+        included = s > 0 && s < W_cut
+        if included
             G1 = G(wz + s + W_left)
-            n1 = n(wz +s +W_left)
-            included = s > 0 && s < W_cut
-            if included && G1 > 0
+            if G1 > 0
                 integrand_1[i, j] = G1 / wz
 
-                integrand_2[i,j] = G1*n1 /wz
+                integrand_2[i, j] = integrand_1[i, j] * n(wz + s + W_left)
             end
-
+        else
             G2 = G(wz + W_left)
-            n2 = n(wz+W_left)
-            if !included && G2 > 0
+            if G2 > 0
                 integrand_1[i, j] = G2 / (wz - s)
-
-                integrand_2[i,j] = G2 * n2 / (wz - s)
+ 
+                integrand_2[i, j] = integrand_1[i, j] * n(wz + W_left)
             end
         end
     end
 
-        integrand_1[isnan.(integrand_1)] .= 0.0
-        integrand_2[isnan.(integrand_2)] .= 0.0
+    integrand_1[isnan.(integrand_1)] .= 0.0
+    integrand_2[isnan.(integrand_2)] .= 0.0
 
-        integral_1 = trapz(int_axis, integrand_1)
-        integral_2 = trapz(int_axis, integrand_2)
-
-
-
+    integral_1 = trapz(int_axis, integrand_1)
+    integral_2 = trapz(int_axis, integrand_2)
 
 
     return integral_1, integral_2
@@ -89,7 +83,7 @@ function precompute_integrals(num_w, w_max, W_left, W_cut, int_axis, G, n)
 
     s1_idx = 0:2*(num_w-1)
     s1_rel = (s1_idx .- 2*(num_w-1)) .* dw .- W_left
-    @time I1_1, I1_2 = kernel_integral_helper(s1_rel, int_axis, W_cut, W_left, G, n, true)
+    I1_1, I1_2 = kernel_integral_helper(s1_rel, int_axis, W_cut, W_left, G, n)
 
     s2_idx = 0:2*(num_w-1)
     s2_rel = (s2_idx .- (num_w-1)) .* dw .- W_left
@@ -107,7 +101,7 @@ function compute_real_kernels(w_axis, num_w, w_max, W_left, W_cut, int_axis, f, 
     w2_grid = repeat(w_axis, 1, length(w_axis))
     i1_grid = repeat((1:num_w)', num_w)
     i2_grid = repeat(1:num_w, 1, num_w)
-    @time integrals = precompute_integrals(num_w, w_max, W_left, W_cut, int_axis, G, n) #slow
+    integrals = precompute_integrals(num_w, w_max, W_left, W_cut, int_axis, G, n) #slow
 
     idx_a = @. -i1_grid - i2_grid + 2*num_w+1
     idx_b = @. i1_grid - i2_grid + num_w
@@ -137,7 +131,7 @@ function compute_imag_kernels(w_axis, f, n, G)
     im_part4 = zeros(N, N)
 
 
-    @time @inbounds for i in 1:N, j in 1:N
+    @inbounds for i in 1:N, j in 1:N
         w1 = w_axis[i]  
         w2 = w_axis[j]              
 
@@ -174,12 +168,8 @@ function kernels(β, inp, w_axis, W_left, W_cut, int_axis, G)
     n = x -> x == 0 ? 0.0 : abs(1 / (exp(β * x) - 1))
 
     # Compute real and imaginary parts of kernels
-    println("kernels:")
     Kp_imag, Km_imag = compute_imag_kernels(w_axis, f, n, G)
-    
-    println("real:")
-    @time Kp_real, Km_real = compute_real_kernels(w_axis, inp.numReal_c, inp.real_c, W_left, W_cut, int_axis, f, n, G)
-    println("real end")
+    Kp_real, Km_real = compute_real_kernels(w_axis, inp.numReal_c, inp.real_c, W_left, W_cut, int_axis, f, n, G)
 
     # Combine into complex kernels
     Kp = Kp_real .+ im .* Kp_imag

@@ -455,6 +455,7 @@ function printFlagsAsText(inp, log_file; mode ="Matsubara")
         text *= " - Matsubara cutoff: "*string(inp.omega_c)*" meV\n"
     elseif mode == "realFreq"
         text *= " - Frequency cutoff: "*string(inp.real_c)*" meV\n"
+        text *= " - Frequency grid: "*string(inp.numReal_c)*" points\n"
     end
 
     # cDos
@@ -829,6 +830,26 @@ function saveSelfEnergyComponents(itemp, inp, iwn, Delta, Z; epsilon=nothing,  c
 end
 
 
+"""
+    plotSelfEnergyAtT(inp, itemp, componentSelfEnergy)
+
+plot self energy component vs omega on real axis at given temperature
+"""
+function plotSelfEnergyAtT(inp, itemp, selfEnergy)
+
+    w_real = range(0, inp.real_c, inp.numReal_c)
+    names = ["Gap", "Z", "Shift"]
+    labels = ["Δ(ω) / meV", "Z(ω) / 1", "χ(ω) / meV"]
+
+    for (component, name, label) in zip(selfEnergy, names, labels)
+        plot(w_real, real(component), col="blue", label="Real", linewidth=2, ylabel=label, xlabel = "ω / meV")
+        plot!(w_real, imag(component), col="red", label="Imag", linewidth=2)
+        savefig(inp.outdir*name*"_$itemp.png")
+    end
+
+end
+
+
 
 """
      Base.getproperty(a::arguments, v::Symbol)
@@ -856,22 +877,3 @@ function Base.getproperty(a::arguments, v::Symbol)
     end
 end
 
-
-"""
-    plotSelfEnergyAtT(inp, itemp, componentSelfEnergy)
-
-plot self energy component vs omega on real axis at given temperature
-"""
-function plotSelfEnergyAtT(inp, itemp, selfEnergy)
-
-    w_real = range(0, inp.real_c, inp.numReal_c)
-    names = ["Gap", "Z", "Shift"]
-    labels = ["Δ(ω) / meV", "Z(ω) / 1", "χ(ω) / meV"]
-
-    for (component, name, label) in zip(selfEnergy, names, labels)
-        plot(w_real, real(component), col="blue", label="Real", linewidth=2, ylabel=label, xlabel = "ω / meV")
-        plot!(w_real, imag(component), col="red", label="Imag", linewidth=2)
-        savefig(inp.outdir*name*"_$itemp.png")
-    end
-
-end

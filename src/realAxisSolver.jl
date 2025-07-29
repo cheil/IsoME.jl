@@ -313,11 +313,11 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
 
             β = 1 / (kb * itemp)
 
-            @time realAxisParameter = precompute(β, inp, w_axis, W_left, W_cut, int_axis, G)
+            realAxisParameter = precompute(β, inp, w_axis, W_left, W_cut, int_axis, G)
 
 
             # solve Eliashberg equations
-            @time data, selfEnergy = solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
+            data, selfEnergy = solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
@@ -405,8 +405,8 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
 
         elseif cDOS_flag == 1
             ### Initialize 
-            deltai = ones(numReal_c) .* 0.1 .+ im*1e-4     #.* BCS_gap
-            znormi = ones(ComplexF64, numReal_c) 
+            deltai = ones(inp.numReal_c) .* 0.1 .+ im*1e-4      #.* BCS_gap
+            znormi = ones(ComplexF64, inp.numReal_c)
 
             ### Print to console & log file
             console["InitValues"] = [0 real(znormi[1]) imag(znormi[1]) real(deltai[1]) imag(deltai[1]) nothing]
@@ -572,10 +572,9 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
             println(log_file, replace(console["Hline"], "." => " "))
             printstyled(log_file, "\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 
-            ### Remove
-            #plot(range(1e-32, 100, 100), real(deltai[1:100]), col="blue", label="Real", linewidth=2)
-            #plot!(range(1e-32, 100, 100), imag(deltai[1:100]), col="red", label="Imag", linewidth=2)
-            #savefig("Gap.png")
+            # initial guess for next temp
+            #console["Δ"] = deltai
+            #console["Z"] = znormi
             
             return data, selfEnergy
             break

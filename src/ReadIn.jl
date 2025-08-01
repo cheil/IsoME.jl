@@ -18,7 +18,7 @@
 
 Read, convert, preprocess inputs for EliashbergSolver() (mode=0) and RealAxisSolver() (mode=1).
 """
-function InputParser(inp::arguments, log_file; mode::Int64 = 0)
+function InputParser(inp::arguments, log_file; mode::Int64=0)
     # mode = 0: EliashbergSolver()
     # mode = 1: RealAxisSolver()
 
@@ -27,8 +27,8 @@ function InputParser(inp::arguments, log_file; mode::Int64 = 0)
 
     console = formatTableHeader(console)
 
-    console = printStartMessage(console, log_file, mode = mode)
-  
+    console = printStartMessage(console, log_file, mode=mode)
+
 
     ########## READ-IN ##########
     ####### a2f file #######
@@ -36,9 +36,9 @@ function InputParser(inp::arguments, log_file; mode::Int64 = 0)
 
 
     ########## Dos and Weep ##########
-    if isfile(inp.dos_file)     
+    if isfile(inp.dos_file)
         # read dos
-        dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.ef, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos, outdir = inp.outdir, logFile = log_file)
+        dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.ef, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos, outdir=inp.outdir, logFile=log_file)
         inp.ef = ef
 
         # remove zeros at begining/end of dos
@@ -46,29 +46,29 @@ function InputParser(inp::arguments, log_file; mode::Int64 = 0)
 
         ### Interpolation ###
         # Interpolation Object DoS
-        epsilonItp = range(dos_en[1], dos_en[end], length(dos_en))      
-        itpDos = scale(interpolate(dos, BSpline(Cubic())), epsilonItp) 
+        epsilonItp = range(dos_en[1], dos_en[end], length(dos_en))
+        itpDos = scale(interpolate(dos, BSpline(Cubic())), epsilonItp)
 
         # encut in meV
-        if (inp.encut > dos_en[end]) || (-inp.encut < dos_en[1])    
+        if (inp.encut > dos_en[end]) || (-inp.encut < dos_en[1])
             text = "Energy cutoff exceeds range of DOS!"
             printWarning(text, log_file)
         end
 
-        if inp.include_Weep == 1 || ((isfile(inp.Weep_file) && (isempty(inp.Wen_file) || isfile(inp.Wen_file))) && inp.mu == -1)  
+        if inp.include_Weep == 1 || ((isfile(inp.Weep_file) && (isempty(inp.Wen_file) || isfile(inp.Wen_file))) && inp.mu == -1)
             # read Weep + energy grid points
-            Weep, Wen, inp.efW, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.Wen_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, outdir = inp.outdir, logFile = log_file)
+            Weep, Wen, inp.efW, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.Wen_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, outdir=inp.outdir, logFile=log_file)
 
             ### Interpolation ###
             # Interpolation Object Weep
-            epsilonItp = range(Wen[1], Wen[end], length(Wen))       
-            itpWeep = scale(interpolate(Weep, BSpline(Constant())), (epsilonItp, epsilonItp)) 
+            epsilonItp = range(Wen[1], Wen[end], length(Wen))
+            itpWeep = scale(interpolate(Weep, BSpline(Constant())), (epsilonItp, epsilonItp))
 
             # interpolate 
-            dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut, itpWeep = itpWeep, Wen = Wen)
+            dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut, itpWeep=itpWeep, Wen=Wen)
 
             # mu, idxWef = idx_ef
-            (inp.mu != -1) || (idxWef = findmin(abs.(dos_en))[2]; inp.mu = dos[idxWef].*Weep[idxWef,idxWef])
+            (inp.mu != -1) || (idxWef = findmin(abs.(dos_en))[2]; inp.mu = dos[idxWef] .* Weep[idxWef, idxWef])
 
         else
             # interpolate 
@@ -105,22 +105,29 @@ function InputParser(inp::arguments, log_file; mode::Int64 = 0)
     end
 
     ### calc mu*'s
+    phonon_cutoff = 0
+    if mode == 0
+        phonon_cutoff = inp.omega_c
+    elseif mode == 1
+        phonon_cutoff = inp.real_c
+    end
+
     if inp.mu == -1 && inp.muc_ME == -1 && inp.muc_AD == -1
         # defaut value
         inp.muc_AD = 0.12
-        calcMucME(inp, a2f, a2f_omega, log_file)
+        calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
 
     elseif inp.muc_AD == -1 && inp.muc_ME == -1
         if inp.typEl != -1
-            calcMucs(inp, inp.typEl, a2f, a2f_omega, log_file)
-        
+            calcMucs(inp, inp.typEl, a2f, a2f_omega, phonon_cutoff, log_file)
+
         elseif ~(isnothing(ef) || ef == -1 || ef == 0)
             inp.typEl = ef
-            calcMucs(inp, inp.typEl, a2f, a2f_omega, log_file)
+            calcMucs(inp, inp.typEl, a2f, a2f_omega, phonon_cutoff, log_file)
 
         elseif ~(inp.efW == -1 || inp.efW == 0)
             inp.typEl = inp.efW
-            calcMucs(inp, inp.typEl, a2f, a2f_omega, log_file)
+            calcMucs(inp, inp.typEl, a2f, a2f_omega, phonon_cutoff, log_file)
 
         else
             text = "Unable to calculate μ* from μ without a typical electron energy!"
@@ -129,14 +136,14 @@ function InputParser(inp::arguments, log_file; mode::Int64 = 0)
             printWarning(text, log_file)
 
             inp.muc_AD = 0.12
-            calcMucME(inp, a2f, a2f_omega, log_file)
+            calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
         end
 
-    elseif  inp.include_Weep == 0 && inp.muc_AD != -1 && inp.muc_ME == -1   
-        calcMucME(inp, a2f, a2f_omega, log_file)
+    elseif inp.include_Weep == 0 && inp.muc_AD != -1 && inp.muc_ME == -1
+        calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
 
-    elseif  inp.muc_ME != -1 && inp.muc_AD == -1 # Wenn nur μ*_ME gegeben wird kein μ*_AD berechnet falls mit W und μ* sollen nur berechnet werden falls -1
-        calcMucAD(inp, a2f, a2f_omega)
+    elseif inp.muc_ME != -1 && inp.muc_AD == -1 # Wenn nur μ*_ME gegeben wird kein μ*_AD berechnet falls mit W und μ* sollen nur berechnet werden falls -1
+        calcMucAD(inp, a2f, a2f_omega, phonon_cutoff)
     end
 
     ### determine superconducting properties from Allen-Dynes McMillan equation based on interpolated a2F
@@ -163,7 +170,7 @@ end
 
 initialize output table: header names, column width and precision
 """
-function initOutputTable(inp::arguments; mode::Int64 = 0)#
+function initOutputTable(inp::arguments; mode::Int64=0)#
     # mode = 0: EliashbergSolver()
     # mode = 1: RealAxisSolver()
 
@@ -217,7 +224,7 @@ function initOutputTable(inp::arguments; mode::Int64 = 0)#
             # initial values
             #console["Δ"] = ones(inp.numReal_c) .* 0.1 .+ im*1e-4  
             #console["Z"] = ones(ComplexF64, inp.numReal_c) 
- 
+
         else
             error("Unkwon mode! Currently, only cDOS+μ is available on the real axis!")
         end
@@ -239,22 +246,22 @@ function createDirectory(inp::arguments, strIsoME::String)
         errorLogger = SimpleLogger(log_file, Logging.Error)
     else
         # create output directory
-        if isempty(inp.outdir) 
+        if isempty(inp.outdir)
             inp.outdir = "./"
         elseif ~(inp.outdir[end] == '/' || inp.outdir[end] == '\\')
-            inp.outdir = inp.outdir*"/"
+            inp.outdir = inp.outdir * "/"
         end
 
         # check if directory exists
         idxDir = 1
         tempDir = inp.outdir[1:end-1]
         while isdir(inp.outdir)
-            inp.outdir = tempDir*"_"*string(idxDir)*"/"
-            idxDir+=1
+            inp.outdir = tempDir * "_" * string(idxDir) * "/"
+            idxDir += 1
         end
 
         try
-            mkpath(inp.outdir)   
+            mkpath(inp.outdir)
         catch ex
             error("Couldn't write into " * inp.outdir * "! Outdir may not writable or an invalid path.\n\n")
         end
@@ -280,16 +287,16 @@ end
 Check which input files (a2f, dos, weep) exist.
 For real axis solver: Additionally check if cDOS+W mode has been chosen
 """
-function checkInput(inp::arguments; realSolver::Bool = false)
+function checkInput(inp::arguments; realSolver::Bool=false)
 
     # check input files / cDOS & Weep
     if ~isfile(inp.a2f_file)
         error("Invalid path to a2f-file!")
-        
+
     elseif ~isfile(inp.dos_file) && (inp.cDOS_flag == 0 || inp.include_Weep == 1)
         text = "Invalid path to Dos-file!\n\n"
         error(text)
-    
+
     elseif inp.include_Weep == 1 && ((~isfile(inp.Weep_file)) || (~isempty(inp.Wen_file) && ~isfile(inp.Wen_file)))
         text = "Invalid path to Weep or Wen-file!\n\n"
         error(text)
@@ -313,18 +320,18 @@ Read in a2f file to solve the isotropic Migdal-Eliashberg equations
 
 The first column must contain the energies, the second column onwards a2F values for different smearings
 """
-function readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsmear=-1)   
+function readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsmear=-1)
     ### Read in a2f file ###
-    a2f_data = readdlm(a2f_file);
+    a2f_data = readdlm(a2f_file)
 
     ### Define defaults
-    (nheader != -1) || (nheader = findfirst(isa.(a2f_data[:,1], Number))-1)
-    (nfooter != -1) || (nfooter = size(a2f_data, 1) - findlast(isa.(a2f_data[:,1], Number)))
-    (nsmear != -1) || (nsmear = length(a2f_data[nheader+1, isa.(a2f_data[nheader+1,:], Number)])-1)
-    (indSmear != -1) || (indSmear = Int64(ceil(nsmear/2)))
+    (nheader != -1) || (nheader = findfirst(isa.(a2f_data[:, 1], Number)) - 1)
+    (nfooter != -1) || (nfooter = size(a2f_data, 1) - findlast(isa.(a2f_data[:, 1], Number)))
+    (nsmear != -1) || (nsmear = length(a2f_data[nheader+1, isa.(a2f_data[nheader+1, :], Number)]) - 1)
+    (indSmear != -1) || (indSmear = Int64(ceil(nsmear / 2)))
 
     ### Remove header & footer
-    header = join(a2f_data[1:nheader,:], " ")
+    header = join(a2f_data[1:nheader, :], " ")
     a2f_data = Float64.(a2f_data[nheader+1:end-nfooter, 1:nsmear+1])  # previous version: nheader+1:end-nfooter
 
     ### Convert omega ###
@@ -333,22 +340,22 @@ function readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsme
     if "meV" == unit
         omega_raw = omega_raw
     elseif "eV" == unit
-        omega_raw = omega_raw*1000
+        omega_raw = omega_raw * 1000
     elseif "THz" == unit
-            omega_raw = omega_raw * THz2meV
+        omega_raw = omega_raw * THz2meV
     elseif "Ry" == unit
         omega_raw = omega_raw * Ry2meV
-    elseif  "Ha" == unit     # Hartree
-        omega_raw = omega_raw .* Ry2meV*2
+    elseif "Ha" == unit     # Hartree
+        omega_raw = omega_raw .* Ry2meV * 2
     else
         error("Invalid Unit! Please check the header of the a2F-file and try again!")
     end
 
     ### a2f for one smearing ###
-    a2f_raw = a2f_data[:, indSmear+1] 
+    a2f_raw = a2f_data[:, indSmear+1]
 
     ### interpolate a2F on 10x finer grid ###
-    omega_fine = range(1e-2, stop=omega_raw[end], length=  size(omega_raw)[1])   # 10 *     Interpolate on same grid points
+    omega_fine = range(1e-2, stop=omega_raw[end], length=size(omega_raw)[1])   # 10 *     Interpolate on same grid points
     a2f_int = linear_interpolation(omega_raw, a2f_raw, extrapolation_bc=Line())
     a2f_fine = a2f_int(omega_fine)
     a2f_fine[a2f_fine.<0.0] .= 0.0
@@ -366,10 +373,10 @@ Read the dos file. All quantities are converted to meV.
 
 The energies must be in column 1 and the dos in column 2
 """
-function readIn_Dos(dos_file, ef =-1, spin=2, unit="", nheader=-1, nfooter=-1; outdir ="./", logFile = nothing)
+function readIn_Dos(dos_file, ef=-1, spin=2, unit="", nheader=-1, nfooter=-1; outdir="./", logFile=nothing)
 
     ### Read in dos file ###
-    dos_data = readdlm(dos_file) 
+    dos_data = readdlm(dos_file)
 
     ### Default values ###
     (nheader != -1) || (nheader = findfirst(isa.(dos_data[:, 1], Number)) - 1)
@@ -390,7 +397,7 @@ function readIn_Dos(dos_file, ef =-1, spin=2, unit="", nheader=-1, nfooter=-1; o
 
     ### Fermi energy
     if ef == -1
-        ef = extractFermiEnergy(header, unit, "Weep", outdir = outdir, logFile = logFile)
+        ef = extractFermiEnergy(header, unit, "Weep", outdir=outdir, logFile=logFile)
     end
 
     ### Convert 
@@ -406,9 +413,9 @@ function readIn_Dos(dos_file, ef =-1, spin=2, unit="", nheader=-1, nfooter=-1; o
     elseif unit == "Ry"
         energies = energies .* Ry2meV
         dos = dos ./ Ry2meV
-    elseif  "Ha" == unit     # Hartree
-        energies = Weep.*Ry2meV*2
-        dos = Wen ./ Ry2meV*2
+    elseif "Ha" == unit     # Hartree
+        energies = Weep .* Ry2meV * 2
+        dos = Wen ./ Ry2meV * 2
     else
         error("Invalid Unit! Either set the unit manually via dos_unit or check the header of the Dos-file and try again!")
     end
@@ -426,32 +433,32 @@ end
 Read in Weep file containing the sreened coulomb interaction.
 Weep data must be in column 3
 """
-function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=-1, unit = "", nheader=-1, nfooter=-1,  nheaderWen=-1, nfooterWen=-1; outdir = "./", logFile = nothing)
+function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=-1, unit="", nheader=-1, nfooter=-1, nheaderWen=-1, nfooterWen=-1; outdir="./", logFile=nothing)
 
     ### Read in Weep file ###
-    Weep_data = readdlm(Weep_file);
+    Weep_data = readdlm(Weep_file)
 
     # Default values
-    (nheader != -1) || (nheader = findfirst(isa.(Weep_data[:,1], Number))-1)
-    (nfooter != -1) || (nfooter = size(Weep_data,1) - findlast(isa.(Weep_data[:,1], Number)))
+    (nheader != -1) || (nheader = findfirst(isa.(Weep_data[:, 1], Number)) - 1)
+    (nfooter != -1) || (nfooter = size(Weep_data, 1) - findlast(isa.(Weep_data[:, 1], Number)))
 
     # Remove header & footer
-    header = Weep_data[1:nheader,:]
+    header = Weep_data[1:nheader, :]
     Weep = Float64.(Weep_data[nheader+1:end-nfooter, Weep_col])
-    
+
     # reshape to matrix
     numWens = Int(sqrt(size(Weep, 1)))
     Weep = transpose(reshape(Weep, numWens, numWens))
 
     # remove outliers from Weep 
-    Weep[Weep .< 0] .= 0
+    Weep[Weep.<0] .= 0
 
     # unit
     (~isempty(unit)) || (unit = getUnit(join(header, " "), "Weep"))
 
     ### Fermi energy
     if ef == -1
-        ef = extractFermiEnergy(header, unit, "Weep", outdir = outdir, logFile = logFile)
+        ef = extractFermiEnergy(header, unit, "Weep", outdir=outdir, logFile=logFile)
     end
 
     ### read in W energies ###
@@ -466,15 +473,15 @@ function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=-1, unit 
     if "meV" == unit    # meV
         Weep = Weep
         Wen = Wen
-    elseif  "eV" == unit     # eV
-        Weep = Weep.*1000
-        Wen = Wen.*1000
-    elseif  "Ry" == unit      # Ry
-        Weep = Weep.*Ry2meV
-        Wen = Wen.*Ry2meV
-    elseif  "Ha" == unit     # Hartree
-        Weep = Weep.*Ry2meV*2
-        Wen = Wen.*Ry2meV*2
+    elseif "eV" == unit     # eV
+        Weep = Weep .* 1000
+        Wen = Wen .* 1000
+    elseif "Ry" == unit      # Ry
+        Weep = Weep .* Ry2meV
+        Wen = Wen .* Ry2meV
+    elseif "Ha" == unit     # Hartree
+        Weep = Weep .* Ry2meV * 2
+        Wen = Wen .* Ry2meV * 2
     elseif unit == "THz"
         Weep = Weep .* THz2meV
         Wen = Wen .* THz2meV
@@ -497,10 +504,10 @@ Energy grid for Weep
 """
 function readIn_Wen(Wen_file, Wen_col, nheader=-1, nfooter=-1)
     ### Read in Weep file ###
-    Wen_data = readdlm(Wen_file);
+    Wen_data = readdlm(Wen_file)
 
     ### Default values ###
-    (nheader != -1) || (nheader = findfirst(isa.(Wen_data[:,1], Number))-1)
+    (nheader != -1) || (nheader = findfirst(isa.(Wen_data[:, 1], Number)) - 1)
     (nfooter != -1) || (nfooter = size(Wen_data, 1) - findlast(isa.(Wen_data[:, 1], Number)))
 
     ### Remove header & footer
@@ -517,15 +524,15 @@ end
 
 Extract the fermi energy from the header of the input files
 """
-function extractFermiEnergy(header, unit, nameFile=nothing; outdir = "./", logFile = nothing)
+function extractFermiEnergy(header, unit, nameFile=nothing; outdir="./", logFile=nothing)
 
     ef = -1
     try
         logNums = isa.(header, Number)
-        if sum(logNums) == 1 
+        if sum(logNums) == 1
             ef = Float64(only(header[logNums]))
-        elseif sum(logNums[:, 2:end] .& (header[:, 1:end-1] .== "=" )) == 1 
-            ef = Float64(only(header[:, 2:end][logNums[:, 2:end] .& (header[:, 1:end-1] .== "=" )]))
+        elseif sum(logNums[:, 2:end] .& (header[:, 1:end-1] .== "=")) == 1
+            ef = Float64(only(header[:, 2:end][logNums[:, 2:end].&(header[:, 1:end-1].=="=")]))
         else
             nameFermi = ["efermi", "ef", "fermi", "e_fermi"]
             lcHeader = map(x -> isa(x, AbstractString) ? lowercase(x) : x, header)
@@ -538,7 +545,7 @@ function extractFermiEnergy(header, unit, nameFile=nothing; outdir = "./", logFi
                     ef = Float64.(only(header[row, findfirst(isa.(header[row, col:end], Number))+col-1]))
                     break
                 end
-            end 
+            end
         end
 
         ### Convert ###
@@ -551,7 +558,7 @@ function extractFermiEnergy(header, unit, nameFile=nothing; outdir = "./", logFi
         elseif "Ha" == unit     # Hartree
             ef = ef .* Ry2meV * 2
         else
-            error("Invalid Unit! Consider setting the unit manually ("*nameFile*"_unit) or check the header of the "*nameFile*"-file and try again!")
+            error("Invalid Unit! Consider setting the unit manually (" * nameFile * "_unit) or check the header of the " * nameFile * "-file and try again!")
         end
 
     catch ex
@@ -578,13 +585,13 @@ function getUnit(header, nameFile=nothing)
             return unit
         end
     end
-    
-    println("Auto-extraction of unit from "*nameFile*"-file failed! Please type the correct unit case sensitive into the console (it might be that you need to type it twice due to a bug in julia):")
-    unit = readline();
+
+    println("Auto-extraction of unit from " * nameFile * "-file failed! Please type the correct unit case sensitive into the console (it might be that you need to type it twice due to a bug in julia):")
+    unit = readline()
 
     return unit
 
-    
+
 end
 
 
@@ -597,7 +604,7 @@ function discardZeros(Dos::Vector{Float64}, energies::Vector{Float64})
     idxLower = findfirst(Dos .!= 0)
     idxUpper = findlast(Dos .!= 0)
 
-    return     Dos[idxLower:idxUpper], energies[idxLower:idxUpper]
+    return Dos[idxLower:idxUpper], energies[idxLower:idxUpper]
 end
 
 
@@ -608,8 +615,8 @@ Calculate μ*_ME from μ*_AD using formula as in
 Pellegrini, Ab initio methods for superconductivity 
 DOI: 10.1038/s42254-024-00738-9
 """
-function calcMucME(inp, a2f, a2f_omega, log_file)
-    inp.muc_ME = inp.muc_AD / (1 + inp.muc_AD * log(maximum(a2f_omega[a2f.>0.01]) / inp.omega_c))
+function calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
+    inp.muc_ME = inp.muc_AD / (1 + inp.muc_AD * log(maximum(a2f_omega[a2f.>0.01]) / phonon_cutoff))
 
     if inp.muc_ME < 0 || inp.muc_ME > 0.8 || inp.muc_ME > 3 * inp.muc_AD
         inp.muc_ME = minimum([3 * inp.muc_AD, 0.8])
@@ -629,10 +636,10 @@ Calculate μ*_AD from μ*_ME using formula (30) in
 Pellegrini, Ab initio methods for superconductivity 
 DOI: 10.1038/s42254-024-00738-9
 """
-function calcMucAD(inp, a2f, a2f_omega)
-    inp.muc_AD = inp.muc_ME / (1 - inp.muc_ME * log(maximum(a2f_omega[a2f.>0.01]) / inp.omega_c))
+function calcMucAD(inp, a2f, a2f_omega, phonon_cutoff)
+    inp.muc_AD = inp.muc_ME / (1 - inp.muc_ME * log(maximum(a2f_omega[a2f.>0.01]) / phonon_cutoff))
 
-    if inp.muc_AD < 0 || inp.muc_AD > 0.2 
+    if inp.muc_AD < 0 || inp.muc_AD > 0.2
         inp.muc_AD = 0.12   # default
     end
 end
@@ -645,10 +652,10 @@ Calculate μ*_ME and μ*_AD from μ using formulas as in
 Pellegrini, Ab initio methods for superconductivity 
 DOI: 10.1038/s42254-024-00738-9
 """
-function calcMucs(inp, ef, a2f, a2f_omega, log_file)
+function calcMucs(inp, ef, a2f, a2f_omega, phonon_cutoff, log_file)
     # μ*_ME < 4*μ
-    if inp.omega_c > ef * exp(3 / (4 * inp.mu))
-        inp.omega_c = ef * exp(3 / (4 * inp.mu))
+    if phonon_cutoff > ef * exp(3 / (4 * inp.mu))
+        phonon_cutoff = ef * exp(3 / (4 * inp.mu))
 
         text = "Matsubara cutoff would lead to μ*_ME > 4*μ."
         text *= "\nomega_c has been set to a smaller value."
@@ -658,6 +665,6 @@ function calcMucs(inp, ef, a2f, a2f_omega, log_file)
 
     inp.muc_AD = inp.mu / (1 + inp.mu * log(ef / maximum(a2f_omega[a2f.>0.01])))
     if inp.include_Weep == 0
-        inp.muc_ME = inp.mu / (1 + inp.mu * log(ef / inp.omega_c))
+        inp.muc_ME = inp.mu / (1 + inp.mu * log(ef / phonon_cutoff))
     end
 end

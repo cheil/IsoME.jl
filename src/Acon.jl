@@ -16,7 +16,7 @@
 #   - real_c as input
 function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti = 0)
 
-    real_c = 5000.0
+    real_c = 1000.0
 
     # sinnvoller machen
     if inp.include_Weep == 1
@@ -521,8 +521,8 @@ function plotGap(itemp, ws, delta, folder, material, mode= "neva")
     xtick_val = 0:10:xlim_max
     #ylim_max = round(maximum(delta), RoundUp)
 
-    plot(ws, real(delta), label="real", color = :red)
-    plot!(ws, imag(delta), label="imag", color = :blue)
+    plot(ws, real(delta), label="real", color = :blue)
+    plot!(ws, imag(delta), label="imag", color = :red)
     xlims!(-xlim_max, xlim_max)
     #ylims!(0, ylim_max)
     if material != "Material"
@@ -530,7 +530,7 @@ function plotGap(itemp, ws, delta, folder, material, mode= "neva")
     end
     xlabel!(L"\omega ~ \mathrm{(meV)}")
     ylabel!(L"\Delta(\omega) ~ \mathrm{(meV)}")
-    savefig(folder* "/gap_"*mode*"_T" * string(itemp) * ".pdf")
+    savefig(folder* "/gap_"*mode*"_T" * string(itemp) * ".png")
 
 end
 
@@ -544,8 +544,8 @@ function plotZ(itemp, ws, Z, folder, material, mode= "neva")
     xtick_val = 0:10:xlim_max
     #ylim_max = round(maximum(delta), RoundUp)
 
-    plot(ws, real(Z), label="real", color = :red)
-    plot!(ws, imag(Z), label="imag", color = :blue)
+    plot(ws, real(Z), label="real", color = :blue)
+    plot!(ws, imag(Z), label="imag", color = :red)
     xlims!(-xlim_max, xlim_max)
     #ylims!(0, ylim_max)
     if material != "Material"
@@ -553,7 +553,7 @@ function plotZ(itemp, ws, Z, folder, material, mode= "neva")
     end
     xlabel!(L"\omega ~ \mathrm{(meV)}")
     ylabel!(L"Z(\omega) ~ \mathrm{(1)}")
-    savefig(folder* "/Z"*mode*"_T" * string(itemp) * ".pdf")
+    savefig(folder* "/Z"*mode*"_T" * string(itemp) * ".png")
 end
 
 """
@@ -566,8 +566,8 @@ function plotShift(itemp, ws, shift, folder, material, mode= "neva")
     xtick_val = 0:10:xlim_max
     #ylim_max = round(maximum(delta), RoundUp)
 
-    plot(ws, real(shift), label="real", color = :red)
-    plot!(ws, imag(shift), label="imag", color = :blue)
+    plot(ws, real(shift), label="real", color = :blue)
+    plot!(ws, imag(shift), label="imag", color = :red)
     xlims!(-xlim_max, xlim_max)
     #ylims!(0, ylim_max)
     if material != "Material"
@@ -575,7 +575,7 @@ function plotShift(itemp, ws, shift, folder, material, mode= "neva")
     end
     xlabel!(L"\omega ~ \mathrm{(meV)}")
     ylabel!(L"\chi(\omega) ~ \mathrm{(meV)}")
-    savefig(folder* "/shift_"*mode*"_T" * string(itemp) * ".pdf")
+    savefig(folder* "/shift_"*mode*"_T" * string(itemp) * ".png")
 end
 
 

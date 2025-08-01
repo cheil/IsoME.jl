@@ -106,7 +106,7 @@ function RealAxisSolver(inp::arguments)
             out_vars[:, 2] = real(Delta0)
             out_vars[:, 3] = imag(Delta0)
             out_vars[:, 4] = real(Znorm0)
-            out_vars[:, 4] = imag(Znorm0)
+            out_vars[:, 5] = imag(Znorm0)
             if inp.cDOS_flag == 0   # for later when vDOS is implemented
                 header = header * "Re{χ(0)}/meV   Im{χ(0)}/meV   ϵ_F-μ/meV   "
                 out_vars = hcat(out_vars, real(Shift0), imag(Shift0))
@@ -175,6 +175,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
     ### Set up axis and parameters ###
     W_cut, w_axis, int_axis, W_left, G = setUpAxis(inp, matval)
 
+
     if inp.temps == [-1]    # Tc search mode
         # initial guess, Machine learning Tc           
         itemp = maximum([1.0, round(ML_Tc)])
@@ -189,10 +190,10 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
 
             β = 1 / (kb * itemp)
 
-            realAxisParameter = precompute(β, inp, matval, w_axis, W_left, W_cut, int_axis)
+            realAxisParameter = precompute(β, inp, w_axis, W_left, W_cut, int_axis, G)
 
             # solve Eliashberg equations
-            data, selfEnergy = solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
+            data = solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
@@ -219,12 +220,6 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
                 print("Couldn't find a Tc! \n")
 
                 break
-            elseif ~isnan(Delta0[end])         # plot self energy at each temperature
-                if inp.cDOS_flag == 0
-
-                elseif inp.cDOS_flag == 1
-                    plotSelfEnergyAtT(inp, itemp, selfEnergy)
-                end
             end
 
             order = sortperm(inp.temps)
@@ -317,7 +312,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
 
 
             # solve Eliashberg equations
-            data, selfEnergy = solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
+            data = solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
@@ -336,12 +331,6 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
                 # upper bound Tc
                 Tc[2] = inp.temps[end]
                 break
-            else
-                if inp.cDOS_flag == 0
-
-                elseif inp.cDOS_flag == 1
-                    plotSelfEnergyAtT(inp, itemp, selfEnergy)
-                end
             end
         end
 
@@ -558,11 +547,6 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
         end
 
 
-
-        """
-            ************ ToDo ************
-            preliminary convergence criterion 
-        """
         # convergence criterion
         minIt = 10
         if  convergence[end] / gap0 < inp.conv_thr && i_it > maximum([minIt, inp.nItFullCoul+1])
@@ -572,11 +556,29 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
             println(log_file, replace(console["Hline"], "." => " "))
             printstyled(log_file, "\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 
-            # initial guess for next temp
-            #console["Δ"] = deltai
-            #console["Z"] = znormi
+            if inp.cDOS_flag == 1
+                plotSelfEnergyAtT(inp, itemp, selfEnergy)
+            end
+            # elseif when new modes included
+
+            # save self energy
+            if inp.flag_writeSelfEnergy == 1
+                try
+                    if inp.cDOS_flag == 1
+                        w_real = range(0, inp.real_c, inp.numReal_c)
+                        saveSelfEnergyComponents(itemp, inp, w_real, deltai, znormi)
+                    end
+                catch ex
+                    # crash file
+                    writeToCrashFile(inp)
+
+                    # console / log file
+                    printWarning("Error while saving self energy components.", log_file, ex=ex)
+                end
+            end
+
             
-            return data, selfEnergy
+            return data
             break
         end
 
@@ -589,7 +591,7 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
             printstyled(log_file, "\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than "*string(round(inp.minGap, digits=2))*" meV!\n\n"; bold=false)
 
             data[2] = NaN
-            return data, deltai
+            return data
             break
         end
 
@@ -606,7 +608,7 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
     
 
             data[2] = NaN
-            return data, deltai
+            return data
             break
         end
 

@@ -59,7 +59,7 @@ function kernel_integral_helper(s_rel::StepRangeLen{Float64}, int_axis::Vector{F
             end
         else
             G2 = G(wz + W_left)
-            if G2 > 0
+            if G2 > 0 
                 integrand_1[i, j] = G2 / (wz - s)
  
                 integrand_2[i, j] = integrand_1[i, j] * n(wz + W_left)
@@ -130,10 +130,9 @@ function compute_imag_kernels(w_axis, f, n, G)
     im_part3 = zeros(N, N)
     im_part4 = zeros(N, N)
 
-
     @inbounds for i in 1:N, j in 1:N
         w1 = w_axis[i]  
-        w2 = w_axis[j]              
+        w2 = w_axis[j]          
 
         dw = w1 - w2
         pw = w1 + w2

@@ -33,7 +33,7 @@ using LsqFit                # Fitting
 using Roots                 # Root finding
 using Term                  # styled text terminal
 using Logging, LoggingExtras
-using Statistics    # Real ME
+using Statistics    # Real ME, just for mean of error
 
 
 ### defining constants ###

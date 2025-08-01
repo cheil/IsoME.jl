@@ -16,7 +16,7 @@ An overview of the most relevant inputs is given below. Keep in mind that all `-
  mu      | Float64        |   -1  | ``\mu=N(e_f)*W(e_f,e_f)`` | Measure for the Coulomb strength |
 | muc_AD     | Float64     |  -1 | Morel-Anderson Pseudopotential Allen-Dynes ``\mu^*_{AD}`` | - |
 | muc_ME  | Float64        | -1 | Morel-Anderson Pseudopotential Migdal-Eliashberg ``\mu^*_{ME}`` | - |
-| typEl | Float64|  -1 | typical electronic energy |  used to calculate ``\mu^*`` from ``\mu`` |
+| typEl | Float64|  -1 | typical electronic energy | in meV, used to calculate ``\mu^*`` from ``\mu`` |
 | omega_c | Float64        | 7000 | Matsubara cutoff ``\omega_c`` in meV | |
 | encut  | Float64 |  5000  | Cutoff for integration | in meV |
 | shiftcut  | Float64 | 2000   | Cutoff for integration of shift. Always smaller than encut | in meV |

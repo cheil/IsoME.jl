@@ -768,7 +768,7 @@ end
 
 Save the self-energy components into separate files
 """
-function saveSelfEnergyComponents(itemp, inp, iwn, Delta, Z; epsilon=nothing,  chi=nothing, phiph=nothing, phic=nothing)
+function saveSelfEnergyComponents(itemp, inp, iwn, Delta, Z; epsilon=nothing,  chi=nothing, phiph=nothing, phic=nothing, mode = "Matsubara")
 
     folder = inp.outdir*"SelfEnergy/"
 
@@ -779,52 +779,65 @@ function saveSelfEnergyComponents(itemp, inp, iwn, Delta, Z; epsilon=nothing,  c
     # consistent folder names
     itemp = Float64(itemp)
 
-    # Z
-    open(folder*"Z_"*string(itemp)*"K.dat", "w") do io
-        write(io, "#  iωₙ / meV      Z(iωₙ) / 1 \n")
-        writedlm(io, [iwn Z], '\t')
-    end
-
-    # Delta 
-    if inp.include_Weep == 1
-        open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
-            write(io, "# ε / meV      iωₙ / meV      Δ(ϵ, iωₙ) / meV \n")
-            writedlm(io, [repeat(epsilon, inner=length(iwn)) repeat(iwn, length(epsilon)) Delta'[:]], '\t')
+    if mode == "Matsubara"
+        # Z
+        open(folder*"Z_"*string(itemp)*"K.dat", "w") do io
+            write(io, "#  iωₙ / meV      Z(iωₙ) / 1 \n")
+            writedlm(io, [iwn Z], '\t')
         end
-        
-        # w/o epsilon and mat.freqs.
-        #open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
-        #    write(io, "# Δ(ϵ, iωₙ) / meV \n")
-        #    writedlm(io, [Delta], '\t')
-        #end
-    elseif inp.include_Weep == 0
+
+        # Delta 
+        if inp.include_Weep == 1
+            open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
+                write(io, "# ε / meV      iωₙ / meV      Δ(ϵ, iωₙ) / meV \n")
+                writedlm(io, [repeat(epsilon, inner=length(iwn)) repeat(iwn, length(epsilon)) Delta'[:]], '\t')
+            end
+            
+            # w/o epsilon and mat.freqs.
+            #open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
+            #    write(io, "# Δ(ϵ, iωₙ) / meV \n")
+            #    writedlm(io, [Delta], '\t')
+            #end
+        elseif inp.include_Weep == 0
+            open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
+                write(io, "#  iωₙ / meV      Δ(iωₙ) / meV \n")
+                writedlm(io, [iwn Delta], '\t')
+            end
+        end
+
+        # Chi
+        if ~isnothing(chi)
+            open(folder*"Chi_"*string(itemp)*"K.dat", "w") do io
+                write(io, "#  iωₙ / meV      Χ(iωₙ) / meV \n")
+                writedlm(io, [iwn chi], '\t')
+            end
+        end
+
+        # Phiph
+        if ~isnothing(phiph)
+            open(folder*"Phiph_"*string(itemp)*"K.dat", "w") do io
+                write(io, "#  iωₙ / meV      Φp(iωₙ) / meV \n")
+                writedlm(io, [iwn phiph], '\t')
+            end
+        end
+
+        # Phic
+        if ~isnothing(phic)
+            open(folder*"Phic_"*string(itemp)*"K.dat", "w") do io
+                write(io, "#  ϵ / meV      Φc(ϵ) / meV \n")
+                writedlm(io, [epsilon phic], '\t')
+            end
+        end
+    elseif mode == "realAxis"
+         # Z
+        open(folder*"Z_"*string(itemp)*"K.dat", "w") do io
+            write(io, "#  ω / meV      Z(ω) / 1 \n")
+            writedlm(io, [iwn Z], '\t')
+        end
+
         open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
-            write(io, "#  iωₙ / meV      Δ(iωₙ) / meV \n")
+            write(io, "#  ω / meV      Δ(ω) / meV \n")
             writedlm(io, [iwn Delta], '\t')
-        end
-     end
-
-    # Chi
-    if ~isnothing(chi)
-        open(folder*"Chi_"*string(itemp)*"K.dat", "w") do io
-            write(io, "#  iωₙ / meV      Χ(iωₙ) / meV \n")
-            writedlm(io, [iwn chi], '\t')
-        end
-    end
-
-    # Phiph
-    if ~isnothing(phiph)
-        open(folder*"Phiph_"*string(itemp)*"K.dat", "w") do io
-            write(io, "#  iωₙ / meV      Φp(iωₙ) / meV \n")
-            writedlm(io, [iwn phiph], '\t')
-        end
-    end
-
-    # Phic
-    if ~isnothing(phic)
-        open(folder*"Phic_"*string(itemp)*"K.dat", "w") do io
-            write(io, "#  ϵ / meV      Φc(ϵ) / meV \n")
-            writedlm(io, [epsilon phic], '\t')
         end
     end
 end
@@ -837,6 +850,13 @@ plot self energy component vs omega on real axis at given temperature
 """
 function plotSelfEnergyAtT(inp, itemp, selfEnergy)
 
+    folder = inp.outdir*"Plots/"
+
+    if ~isdir(folder)
+        mkdir(folder)
+    end
+
+
     w_real = range(0, inp.real_c, inp.numReal_c)
     names = ["Gap", "Z", "Shift"]
     labels = ["Δ(ω) / meV", "Z(ω) / 1", "χ(ω) / meV"]
@@ -844,7 +864,7 @@ function plotSelfEnergyAtT(inp, itemp, selfEnergy)
     for (component, name, label) in zip(selfEnergy, names, labels)
         plot(w_real, real(component), col="blue", label="Real", linewidth=2, ylabel=label, xlabel = "ω / meV")
         plot!(w_real, imag(component), col="red", label="Imag", linewidth=2)
-        savefig(inp.outdir*name*"_$itemp.png")
+        savefig(folder*name*"_$itemp.png")
     end
 
 end

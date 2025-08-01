@@ -24,8 +24,8 @@ function setUpAxis(inp, matval)
     G = linear_interpolation(a2f_omega, a2f, extrapolation_bc=Flat())
 
     # nonzero values of a2F, ensure endpoints are zero
-    idx_left = findfirst(a2f .> 0) -1   
-    idx_right = findlast(a2f .> 0) +1
+    idx_left = findfirst(a2f .> 1e-6) -1   
+    idx_right = findlast(a2f .> 1e-6) +1
 
     W_left = a2f_omega[idx_left]
     W_right = a2f_omega[idx_right]

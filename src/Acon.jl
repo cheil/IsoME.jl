@@ -25,6 +25,7 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti
 
     g11i, gauxi = calcGF(wsi, deltai, znormi, shifti)
     lneva = 0
+    #=
     if lneva == 1
         ws, g11, gaux = NAC(wsi, real_c, g11i, gauxi)
         g12 = anomalousGF(g11, gaux)
@@ -34,8 +35,8 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti
         # spectral function
         A11 = -imag.(g11) / pi
         A12 = -imag.(g12) / pi
-
     end
+    =#
 
     lpade = 1
     if lpade == 1
@@ -65,9 +66,11 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti
         mkdir(folder)
     end
 
+    #=
     if lneva == 1
         saveACON(itemp, folder, ws, delta, A11, A12, "neva")
     end
+    =#
 
     if lpade == 1
         # saveACON(itemp, folder, ws_pade, delta_pade, A11_pade, A12_pade, "pade") # direct Pade of GF
@@ -87,6 +90,7 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti
         )
 
         # NAC
+        #=
         if lneva == 1
             plotSpectralFunction(itemp, ws, A11, A12, folder, inp.material)
 
@@ -94,6 +98,7 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti
 
             plotGap(itemp, ws, delta, folder, inp.material)
         end
+        =#
 
         # Pade
         if lpade == 1
@@ -341,6 +346,7 @@ end
 
 Use Nevanlinna package to analytically continue
 """
+#=
 function NAC(wsi, real_c, g11i, gauxi)
     """
     --------------------------------------------------------------------
@@ -383,6 +389,7 @@ function NAC(wsi, real_c, g11i, gauxi)
     gaux = -sol_aux.reals.val   # NAC package for some reason flips sign
     return ws, g11, gaux
 end
+=#
 
 """
     anomalousGF(g11, gaux)

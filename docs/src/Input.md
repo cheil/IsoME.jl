@@ -17,7 +17,7 @@ An overview of the most relevant inputs is given below. Keep in mind that all `-
 | muc_AD     | Float64     |  -1 | Morel-Anderson Pseudopotential Allen-Dynes ``\mu^*_{AD}`` | - |
 | muc_ME  | Float64        | -1 | Morel-Anderson Pseudopotential Migdal-Eliashberg ``\mu^*_{ME}`` | - |
 | typEl | Float64|  -1 | typical electronic energy | in meV, used to calculate ``\mu^*`` from ``\mu`` |
-| omega_c | Float64        | 7000 | Matsubara cutoff ``\omega_c`` in meV | |
+| imOmega_c | Float64        | 7000 | Matsubara cutoff ``\omega_c`` in meV | |
 | encut  | Float64 |  5000  | Cutoff for integration | in meV |
 | shiftcut  | Float64 | 2000   | Cutoff for integration of shift. Always smaller than encut | in meV |
 | mixing_beta | Number     | Iteration ``\\`` dependent | Linear mixing factor | |
@@ -47,7 +47,7 @@ For the real axis solver, some additional inputs are relevant.
 
 Name    |      Type      |   Default   | Description | Comment  |
 |:--------|:---------------|:------------|:------------|:---------|
-| real_c   |     Float64   | 100 meV     | real frequency cutoff | |
+| reOmega_c  |     Float64   | 100 meV     | real frequency cutoff, also used for Pade | |
 | numReal_c|     Int64     |   1000      | number of real frequency points | |
 | n_cheb   |     Int64     |   2000      | number of chebyshev points used around the singularities |  |
 

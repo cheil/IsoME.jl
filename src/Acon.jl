@@ -11,12 +11,9 @@
 
 """
 
-# TODO:
-#   - flags as input
-#   - real_c as input
 function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti = 0)
 
-    real_c = 1000.0
+    real_c = inp.reOmega_c
 
     # sinnvoller machen
     if inp.include_Weep == 1

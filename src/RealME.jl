@@ -33,7 +33,7 @@ function setUpAxis(inp, matval)
     # Parameters 
     W_cut = W_right - W_left
     # Frequency and integration grids
-    w_axis = make_kernel_grid(inp.real_c, inp.numReal_c)
+    w_axis = make_kernel_grid(inp.reOmega_c, inp.numReal_c)
     int_axis = make_integration_axis(W_left, W_right, 300, 300, 3)
 
     return W_cut, w_axis, int_axis, W_left, G
@@ -168,7 +168,7 @@ function kernels(β, inp, w_axis, W_left, W_cut, int_axis, G)
 
     # Compute real and imaginary parts of kernels
     Kp_imag, Km_imag = compute_imag_kernels(w_axis, f, n, G)
-    Kp_real, Km_real = compute_real_kernels(w_axis, inp.numReal_c, inp.real_c, W_left, W_cut, int_axis, f, n, G)
+    Kp_real, Km_real = compute_real_kernels(w_axis, inp.numReal_c, inp.reOmega_c, W_left, W_cut, int_axis, f, n, G)
 
     # Combine into complex kernels
     Kp = Kp_real .+ im .* Kp_imag
@@ -186,8 +186,8 @@ function precompute(β, inp, w_axis, W_left, W_cut, int_axis, G)
     Kp_func, Km_func = kernels(β, inp, w_axis, W_left, W_cut, int_axis, G)
 
      # new cheb grid
-    w_static = range(1e-4, stop=inp.real_c, length=inp.numReal_c)
-    w_dynam = reverse(inp.real_c .+ inp.real_c .* cos.((2 .* ((inp.n_cheb/2):(inp.n_cheb-1)) .+ 1) .* π ./ (2 * inp.n_cheb)))
+    w_static = range(1e-4, stop=inp.reOmega_c, length=inp.numReal_c)
+    w_dynam = reverse(inp.reOmega_c .+ inp.reOmega_c .* cos.((2 .* ((inp.n_cheb/2):(inp.n_cheb-1)) .+ 1) .* π ./ (2 * inp.n_cheb)))
     W_static = repeat(transpose(w_static), length(w_dynam))
     W_dynam = repeat(w_dynam, 1, length(w_static))
 

@@ -47,7 +47,7 @@ const kb = 0.08617333262; # meV/K
     # Parameters
     temps::Vector{Number}   = [-1]        
     muc_AD::Float64         = -1
-    omega_c::Float64        = 7000.0
+    imOmega_c::Float64        = 7000.0
     muc_ME::Float64         = -1
     mu::Float64             = -1  
     ef::Float64             = -1
@@ -109,7 +109,7 @@ const kb = 0.08617333262; # meV/K
 
     # real axis inputs
     # separate input struct? 
-    real_c::Float64     = 100 # real frequency cutoff
+    reOmega_c::Float64     = 100 # real frequency cutoff
     numReal_c::Int64    = 1000 # number of real frequency points
     n_cheb::Int64       = 2000  # number of chebyshev points
 end

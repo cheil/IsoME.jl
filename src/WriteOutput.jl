@@ -452,9 +452,9 @@ function printFlagsAsText(inp, log_file; mode ="Matsubara")
     
     # cut off
     if mode == "Matsubara"
-        text *= " - Matsubara cutoff: "*string(inp.omega_c)*" meV\n"
+        text *= " - Matsubara cutoff: "*string(inp.imOmega_c)*" meV\n"
     elseif mode == "realFreq"
-        text *= " - Frequency cutoff: "*string(inp.real_c)*" meV\n"
+        text *= " - Frequency cutoff: "*string(inp.reOmega_c)*" meV\n"
         text *= " - Frequency grid: "*string(inp.numReal_c)*" points\n"
     end
 
@@ -857,7 +857,7 @@ function plotSelfEnergyAtT(inp, itemp, selfEnergy)
     end
 
 
-    w_real = range(0, inp.real_c, inp.numReal_c)
+    w_real = range(0, inp.reOmega_c, inp.numReal_c)
     names = ["Gap", "Z", "Shift"]
     labels = ["Δ(ω) / meV", "Z(ω) / 1", "χ(ω) / meV"]
 

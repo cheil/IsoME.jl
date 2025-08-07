@@ -111,7 +111,7 @@ function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxSh
         #vline(p, [mu0, mu1], label="mu")
         savefig(outdir*"muError.png")
 
-        error("The number of electrons decreases with increasing mu! Try a larger omega_c")
+        error("The number of electrons decreases with increasing mu! Try a larger Matsubara cutoff imOmega_c")
     end
 
     ### find minimum interval around ef in which a sign change occurs

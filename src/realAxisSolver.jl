@@ -356,7 +356,7 @@ Solve the eliashberg eq. self-consistently for a fixed temperature
 function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
     # destruct inputs
     (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap) = matval
-    (; cDOS_flag, include_Weep, numReal_c, mixing_beta, nItFullCoul, muc_ME, real_c) = inp
+    (; cDOS_flag, include_Weep, numReal_c, mixing_beta, nItFullCoul, muc_ME, reOmega_c) = inp
     (Kp_func, Km_func, w_static, w_dynam, W_static, W_dynam)  = realAxisParameter
 
     printTextCentered("T = "*string(itemp)*" K ", console["partingLine"], file = log_file, bold = true)
@@ -488,7 +488,7 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
 
                     # update 
                     w_prime = w_dynam .+ root
-                    w_pm = ifelse.((w_prime .< inp.real_c) .& (w_prime .> 0), w_prime, 0)
+                    w_pm = ifelse.((w_prime .< inp.reOmega_c) .& (w_prime .> 0), w_prime, 0)
 
                     Delta_func_eval = Delta_func.(w_prime)
                     sqrt_eval = @. sqrt((w_prime^2 - Delta_func_eval^2))
@@ -565,7 +565,7 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
             if inp.flag_writeSelfEnergy == 1
                 try
                     if inp.cDOS_flag == 1
-                        w_real = range(0, inp.real_c, inp.numReal_c)
+                        w_real = range(0, inp.reOmega_c, inp.numReal_c)
                         saveSelfEnergyComponents(itemp, inp, w_real, deltai, znormi)
                     end
                 catch ex

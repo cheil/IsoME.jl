@@ -107,9 +107,9 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
     ### calc mu*'s
     phonon_cutoff = 0
     if mode == 0
-        phonon_cutoff = inp.omega_c
+        phonon_cutoff = inp.imOmega_c
     elseif mode == 1
-        phonon_cutoff = inp.real_c
+        phonon_cutoff = inp.reOmega_c
     end
 
     if inp.mu == -1 && inp.muc_ME == -1 && inp.muc_AD == -1

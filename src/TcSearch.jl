@@ -24,18 +24,18 @@ Solve the eliashberg eq. self-consistently for a fixed temperature
 function solve_eliashberg(itemp, inp, console, matval, log_file)
     # destruct inputs
     (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxShiftcut) = matval
-    (; cDOS_flag, include_Weep, omega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag, outdir, sparseSamplingTemp, flag_acon) = inp
+    (; cDOS_flag, include_Weep, imOmega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag, outdir, sparseSamplingTemp, flag_acon) = inp
 
     ### Matsubara frequencies ###
     beta = 1 / (kb * itemp)
-    M = ceil(Int, (omega_c / (pi * kb * itemp) - 1) / 2)
+    M = ceil(Int, (imOmega_c / (pi * kb * itemp) - 1) / 2)
     wsi = collect((2 * (0:M) .+ 1) .* π .* kb .* itemp)
     nsiw = size(wsi, 1)
 
     ### sparse sampling
     if itemp < sparseSamplingTemp    
         sparse_sampling_flag = 1
-        ind_mat_freq = initSparseSampling(beta, omega_c, M)       
+        ind_mat_freq = initSparseSampling(beta, imOmega_c, M)       
 
         # write to console
         printTextCentered("T = "*string(itemp)*" K ", console["partingLine"], file = log_file, bold = true)

@@ -42,9 +42,9 @@ The naive approach would be to initialze the input structure once and just overw
     EliashbergSolver(inp)
     ```
 
-The output of these two runs is astonishingly exactly the same.
-Reason for that is, that the value for $\mu^*_{ME}$ has been overwritten in the first run and in the second run, the code assumes that a $\mu^*_{ME}$ value has been specified manually and does not overwrite.   
-To make this work, the $\mu^*_{ME}$ value has to be reseted as well.
+Both of these runs will produce exactly the same results.
+The reason is that the value of $\mu^*_{ME}$ is overwritten during the first run. In the second run, the same $\mu^*_{ME}$ is used at it is assumed to be user-defined.
+To ensure correct behavior, the $\mu^*_{ME}$  value must therefore be reset as well.
 
 !!! warning "Not recommended"
     ```julia
@@ -64,7 +64,7 @@ The most convenient and recommended way to do this is just by overwriting the wh
     inp = arguments(some input, muc_AD = 0.14)
     EliashbergSolver(inp)
     ```
-By using this strategy, it is impossible to hand-over any unexpected input to the `EliashbergSolver()`.
+Using this strategy makes it impossible to pass any unexpected input to `EliashbergSolver()`.
 
 
 ## Convergence 
@@ -76,7 +76,7 @@ Accurate results can only be achieved through carefully conducted convergence te
 Considerable effort has been invested in selecting default parameters that, in most cases, ensure both computational efficiency and robust convergence.
 Nevertheless, convergence should always be checked.
 Convergence parameter include the Matsubara cutoff *omega_c* and the energy cutoff *encut*.
-In both cases, the ideal cutoff is bounded from above as the adaption formula of *muc_ME* breaks down for very large *omega_c* and arbitrary high *encut*'s are against the spirit of the isotropic approximation.
+In both cases, the ideal cutoff is bounded from above as the adaption formula of *muc_ME* breaks down for very large *omega_c* and an arbitrary high *encut* conflicts with the isotropic approximation.approximation.
 
 Furthermore, the energy gird around the Fermi surface must be sufficiently dense. The steps and interpolation boundaries can be adapted through *itpStepSize* and *itpBounds*.
 

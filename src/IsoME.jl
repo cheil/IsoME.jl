@@ -18,8 +18,7 @@
 module IsoME
 
 
-export EliashbergSolver, arguments, FINDAGOODNAME, iterativeAcon
-
+export EliashbergSolver, arguments
 
 using DelimitedFiles        
 using Interpolations    

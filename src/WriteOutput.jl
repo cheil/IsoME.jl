@@ -367,7 +367,7 @@ function formatTableRow(vec, widthCol, prec=5, logConsole=true)
     end
 
     out = Array{String}(undef, length(vec))
-    format = zeros(length(vec), 4)
+    format = zeros(Int, length(vec), 4)
     for k in eachindex(vec)
         value = vec[k]
         width = widthCol[k]
@@ -375,7 +375,7 @@ function formatTableRow(vec, widthCol, prec=5, logConsole=true)
         if isnothing(value) || isnan(value)
             numDig = [0,0]
             spacing = (width - (sum(numDig) + 1)) / 2
-            format[k, :] = [floor(spacing), numDig[1], numDig[2], ceil(spacing)]
+            format[k, :] = [Int(floor(spacing)), Int(numDig[1]), Int(numDig[2]), Int(ceil(spacing))]
             out[k] = " "^Int(format[k,1])*"-"*" "^Int(format[k,4])*"|"
         
         else
@@ -391,15 +391,15 @@ function formatTableRow(vec, widthCol, prec=5, logConsole=true)
                 out[k] = "|%*s%*.*f%*s|"
                 if logConsole
                     spacing = (width - (numDig[1])) / 2
-                    format[k, :] = [floor(spacing), numDig[1], 0, ceil(spacing)]
+                    format[k, :] = [Int(floor(spacing)), Int(numDig[1]), Int(0), Int(ceil(spacing))]
                 else
                     spacing = (width - (sum(numDig) + 1)) / 2
-                    format[k, :] = [floor(spacing), numDig[1], numDig[2], ceil(spacing)]
+                    format[k, :] = [Int(floor(spacing)), Int(numDig[1]), Int(numDig[2]), Int(ceil(spacing))]
                 end
             else
                 out[k] = "%*s%*.*f%*s|"
                 spacing = (width - (sum(numDig) + 1)) / 2
-                format[k, :] = [floor(spacing), numDig[1], numDig[2], ceil(spacing)]
+                format[k, :] = [Int(floor(spacing)), Int(numDig[1]), Int(numDig[2]), Int(ceil(spacing))]
             end
         end
     end
@@ -417,7 +417,7 @@ end
 Gives the number of digits before and after the comma
 """
 function numDigits(x)
-    digits = zeros(length(x), 2)
+    digits = zeros(Int, length(x), 2)
     for k in eachindex(x)
         str = split(string(x[k]), ".")
         digits[k,:] = [length(str[1]), length(str[2])]
@@ -636,9 +636,9 @@ function createFigures(inp, matval, Delta0, temps, Tc, log_file)
     )
 
     # print a2F vs. energy
-    xlim_max = round(maximum(a2f_omega_fine) / 10 * 1.01, RoundUp) * 10
+    xlim_max = Int(round(maximum(a2f_omega_fine) / 10 * 1.01, RoundUp) * 10)
     xtick_val = 0:10:xlim_max
-    ylim_max = round(maximum(a2f_fine), RoundUp)
+    ylim_max = Int(round(maximum(a2f_fine), RoundUp))
 
     plot(a2f_omega_fine, a2f_fine,1)
     xlims!(0, xlim_max)

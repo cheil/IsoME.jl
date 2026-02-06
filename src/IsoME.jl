@@ -25,14 +25,13 @@ using Interpolations
 using Plots, LaTeXStrings
 using Trapz                 # integration
 using LinearAlgebra         # 
-using CSV, DataFrames       # write to csv
+using CSV       # write to csv
 using Printf                # Format console output
 using SparseIR              # Intermediate basis 
-using LsqFit                # Fitting 
+using LsqFit                # Curve fit in Tc search mode 
 using Roots                 # Root finding
 using Term                  # styled text terminal
 using Logging, LoggingExtras
-using Statistics    # Real ME, just for mean of error
 
 
 ### defining constants ###
@@ -110,7 +109,7 @@ const kb = 0.08617333262; # meV/K
     # separate input struct? 
     reOmega_c::Float64     = 100 # real frequency cutoff
     numReal_c::Int64    = 1000 # number of real frequency points
-    n_cheb::Int64       = 2000  # number of chebyshev points
+    n_cheb::Int64       = 1000  # number of chebyshev points
 end
 
 

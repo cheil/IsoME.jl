@@ -32,7 +32,7 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
 
     ########## READ-IN ##########
     ####### a2f file #######
-    a2f_omega, a2f, inp.ind_smear, inp.a2f_unit = readIn_a2f(inp.a2f_file, inp.ind_smear, inp.a2f_unit, inp.nheader_a2f, inp.nfooter_a2f, inp.nsmear)
+    a2f_omega, a2f, a2f_itp, inp.ind_smear, inp.a2f_unit = readIn_a2f(inp.a2f_file, inp.ind_smear, inp.a2f_unit, inp.nheader_a2f, inp.nfooter_a2f, inp.nsmear)
 
 
     ########## Dos and Weep ##########
@@ -142,7 +142,7 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
     elseif inp.include_Weep == 0 && inp.muc_AD != -1 && inp.muc_ME == -1
         calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
 
-    elseif inp.muc_ME != -1 && inp.muc_AD == -1 # Wenn nur μ*_ME gegeben wird kein μ*_AD berechnet falls mit W und μ* sollen nur berechnet werden falls -1
+    elseif inp.muc_ME != -1 && inp.muc_AD == -1 
         calcMucAD(inp, a2f, a2f_omega, phonon_cutoff)
     end
 
@@ -160,7 +160,7 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
     # material specific values
     matval = (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxShiftcut)
 
-    return inp, console, matval, ML_Tc
+    return inp, console, matval, ML_Tc, a2f_itp
 end
 
 
@@ -225,8 +225,19 @@ function initOutputTable(inp::arguments; mode::Int64=0)#
             #console["Δ"] = ones(inp.numReal_c) .* 0.1 .+ im*1e-4  
             #console["Z"] = ones(ComplexF64, inp.numReal_c) 
 
+        elseif inp.include_Weep == 0 && inp.cDOS_flag == 0
+                        # header table
+            console["header"] = ["it", "Re(Z)", "Im(Z)", "Re(χ)", "Im(χ)", "Re(Δ)", "Im(Δ)", "Error Δ"]
+            #width table
+            console["width"] = [8, 10, 10, 10, 10, 10, 10, 11]
+            # precision data
+            console["precision"] = [0, 4, 4, 4, 4, 4, 4, 5]
+            # initial values
+            #console["Δ"] = ones(inp.numReal_c) .* 0.1 .+ im*1e-4  
+            #console["Z"] = ones(ComplexF64, inp.numReal_c) 
+
         else
-            error("Unkwon mode! Currently, only cDOS+μ is available on the real axis!")
+            error("Invalid Mode! Currently, only the μ approximation is available on the real axis!")
         end
 
     end
@@ -304,8 +315,8 @@ function checkInput(inp::arguments; realSolver::Bool=false)
     end
 
     if realSolver
-        if inp.include_Weep == 1 || inp.cDOS_flag == 0
-            error("Currently, only cDOS+μ is available on the real axis!\n Check if the cDOS_flag and include_Weep flag are set correctly!\n\n")
+        if inp.include_Weep == 1
+            error("Currently, only the μ approximation is available on the real axis!\n Check if the cDOS_flag and include_Weep flag are set correctly!\n\n")
         end
     end
 
@@ -355,12 +366,12 @@ function readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsme
     a2f_raw = a2f_data[:, indSmear+1]
 
     ### interpolate a2F on 10x finer grid ###
-    omega_fine = range(1e-2, stop=omega_raw[end], length=size(omega_raw)[1])   # 10 *     Interpolate on same grid points
-    a2f_int = linear_interpolation(omega_raw, a2f_raw, extrapolation_bc=Line())
-    a2f_fine = a2f_int(omega_fine)
+    omega_fine = range(1e-2, stop=omega_raw[end], length=size(omega_raw)[1])   
+    a2f_itp = linear_interpolation(omega_raw, a2f_raw, extrapolation_bc=Flat())     
+    a2f_fine = a2f_itp(omega_fine)
     a2f_fine[a2f_fine.<0.0] .= 0.0
 
-    return omega_fine, a2f_fine, indSmear, unit
+    return omega_fine, a2f_fine, a2f_itp, indSmear, unit
 
 end
 

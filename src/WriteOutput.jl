@@ -85,7 +85,7 @@ function printADtable(console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log, log_fil
     delimiter = "|"
 
     # table Results
-    ADvalues = [(round(ML_Tc, digits=2)) (round(AD_Tc, digits=2)) (round(BCS_gap, digits=2)) (round(lambda, digits=2)) (round(omega_log, digits=2))]
+    ADvalues = [(round(max(ML_Tc, 0), digits=2)) (round(max(AD_Tc, 0), digits=2)) (round(BCS_gap, digits=2)) (round(lambda, digits=2)) (round(omega_log, digits=2))]
 
     # table header
     header  = ["Tc_ML", "Tc_AD", "BCS_gap", "lambda", "omega_log"]

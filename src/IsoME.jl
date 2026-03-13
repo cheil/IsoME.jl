@@ -18,19 +18,20 @@
 module IsoME
 
 
-export EliashbergSolver, arguments
+export EliashbergSolver, arguments, RealAxisSolver
 
-using DelimitedFiles        
-using Interpolations    
+
+using DelimitedFiles        # read in files   
+using Interpolations        
 using Plots, LaTeXStrings
 using Trapz                 # integration
 using LinearAlgebra         # 
-using CSV       # write to csv
-using Printf                # Format console output
+using CSV                   # write to csv
+using Printf                # Format console output, removable
 using SparseIR              # Intermediate basis 
-using LsqFit                # Curve fit in Tc search mode 
+using LsqFit                # Curve fit in Tc search mode, removable
 using Roots                 # Root finding
-using Term                  # styled text terminal
+using Term                  # styled text terminal, removable
 using Logging, LoggingExtras
 
 

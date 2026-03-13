@@ -3,8 +3,6 @@
 
 """
 
-export RealAxisSolver
-
 
 """ 
 
@@ -163,7 +161,7 @@ end
 """
     findTc(inp, console, matval, ML_Tc, log_file)
 
-Solve the real axis eliashberg equation at the specified temperatures or with the tc search mode
+Solve the real axis eliashberg equation at the specified temperatures or with the Tc search mode
 """
 function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
     inp.temps = sort(inp.temps)
@@ -208,9 +206,9 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
             # Escape
             if itemp < 1 && isnan(Delta0[end])
                 # log file
-                print(log_file, "Lowest temperature of Tc search mode reached. If you want to search at even lower temperatures consider setting them manually!\n")
-
-                print("Lowest temperature of Tc search mode reached. If you want to search at even lower temperatures consider setting them manually!\n")
+                text = "Lowest temperature of Tc search mode reached. To search at lower temperatures, set them manually.\n"
+                print(log_file, text)
+                print(text)
 
                 Tc = [NaN, 0.5]
                 break
@@ -275,7 +273,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
                                     2 * sqrt(13 * c^6 + 30 * a * c^6 + 36 * a^2 * c^6))^(1 / 3)
                     itemp = round(itemp)
                     # formula works only if a,c are far away from the Tc
-                    # if a,c close to Tc the estimated T will be too small but this case is caputred by the sanity check
+                    # if a,c are close to Tc the estimated T will be too small but this case is caputred by the sanity check
                 end
 
                 # sanity check
@@ -357,16 +355,19 @@ Solve the eliashberg eq. self-consistently for a fixed temperature
 function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
     # destruct inputs
     (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap) = matval
-    (; cDOS_flag, include_Weep, numReal_c, mixing_beta, nItFullCoul, muc_ME, reOmega_c) = inp
+    (; cDOS_flag, include_Weep, numReal_c, reOmega_c, mixing_beta, nItFullCoul, 
+        muc_ME, mu_flag, N_it, conv_thr, flag_writeSelfEnergy, minGap) = inp
     (Kp_func, Km_func, w_static, w_dynam) = realAxisParameter
 
     printTextCentered("T = " * string(itemp) * " K ", console["partingLine"], file=log_file, bold=true)
     printTee(log_file, "\n")
     β = 1 / (kb * itemp)
 
-    ##### Initialize variables #####
-    if include_Weep == 1
 
+    ######################################################
+    # -------------- Initialize variables -------------- #
+    ######################################################
+    if include_Weep == 1
         if cDOS_flag == 1
             printWarning("cDos+W is not supported for the real axis solver. Using vDos+W instead!", log_file, ex=ex)
             cDOS_flag = 0
@@ -378,9 +379,10 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
         shifti = -zeros(ComplexF64, numReal_c)
         phici = -ones(ComplexF64, ndos) .* 0.1
         phiphi = ones(ComplexF64, numReal_c) .* maximum([BCS_gap, 2 * phici[1]])
+        fermi_level = 0.0
 
         ### Print to console & log file
-        console["InitValues"] = [0 phici[idx_ef] phiphi[1] znormi[1] shifti[1] -muintr deltai[idx_ef, 1] nothing]
+        console["InitValues"] = [0 phici[idx_ef] phiphi[1] znormi[1] shifti[1] -fermi_level deltai[idx_ef, 1] nothing]
         console = printTableHeader(console, log_file)
 
         error("Currently not supported")
@@ -389,18 +391,19 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
 
         if cDOS_flag == 0
             ### Initialize 
-            deltai = ones(inp.numReal_c) .* 0.1 .+ im * 1e-4      #.* BCS_gap
-            znormi = ones(ComplexF64, inp.numReal_c)
-            shifti = zeros(ComplexF64, inp.numReal_c)
+            deltai = ones(numReal_c) .* 0.1 .+ im * 1e-4      #.* BCS_gap
+            znormi = ones(ComplexF64, numReal_c)
+            shifti = zeros(ComplexF64, numReal_c)
+            fermi_level = 0.0
 
             ### Print to console & log file
-            console["InitValues"] = [0 real(znormi[1]) imag(znormi[1]) real(shifti[1]) imag(shifti[1]) real(deltai[1]) imag(deltai[1]) nothing]
+            console["InitValues"] = [0 real(znormi[1]) imag(znormi[1]) real(shifti[1]) imag(shifti[1]) -fermi_level real(deltai[1]) imag(deltai[1]) nothing]
             console = printTableHeader(console, log_file)
 
         elseif cDOS_flag == 1
             ### Initialize 
-            deltai = ones(inp.numReal_c) .* 0.1 .+ im * 1e-4      #.* BCS_gap
-            znormi = ones(ComplexF64, inp.numReal_c)
+            deltai = ones(numReal_c) .* 0.1 .+ im * 1e-4      #.* BCS_gap
+            znormi = ones(ComplexF64, numReal_c)
 
             ### Print to console & log file
             console["InitValues"] = [0 real(znormi[1]) imag(znormi[1]) real(deltai[1]) imag(deltai[1]) nothing]
@@ -417,7 +420,7 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
 
     ##### Start iterations #####
     err_delta = 0
-    for i_it in 1:inp.N_it
+    for i_it in 1:N_it
         if include_Weep == 1
             if cDOS_flag == 0
                 deltaip = copy(deltai)
@@ -447,6 +450,7 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
 
         # weight coulomb interaction (for damping)
         wgCoulomb = minimum([1, i_it / nItFullCoul])
+        gap0 = real(deltai[1])
 
         if include_Weep == 1
             # vDOS + W
@@ -478,40 +482,16 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
 
             if cDOS_flag == 0
                 # !! NOT FINISHED !!
+                if mu_flag == 1 && i_it > 1
+                    #fermi_level = update_fermi_level_realAxis()
+                    fermi_level = 0.0
+                end
 
-                Delta_func = linear_interpolation(w_static, deltai, extrapolation_bc=Flat())
-                gap0 = real(deltai[1])
-
-                root_eq = x -> x - real(Delta_func(x))
-                root = find_zero(root_eq, gap0)
-
-                # update 
-                w_prime = w_dynam .+ root   # shift chebyshev grid to root
-                w_pm = ifelse.((w_prime .< inp.reOmega_c) .& (w_prime .> 0), w_prime, 0.0)
-
-                # delta on chebyshev grid
-                Delta_func_eval = Delta_func.(w_prime)
-                sqrt_eval = @. sqrt((w_prime^2 - Delta_func_eval^2))
-
-                znormi, deltai, shifti = realEliashbergEq(muc_ME, β, Delta_func_eval, sqrt_eval, Kp_func, Km_func, w_prime, w_static, w_pm)
+                znormi, deltai, shifti = realEliashbergEq(muc_ME, β, znormip, deltaip, shiftip, Kp_func, Km_func, w_dynam, w_static, reOmega_c, dosef, dos_en, dos, fermi_level)
 
             elseif cDOS_flag == 1
-
-                Delta_func = linear_interpolation(w_static, deltai, extrapolation_bc=Flat())
-                gap0 = real(deltai[1])
-
-                root_eq = x -> x - real(Delta_func(x))
-                root = find_zero(root_eq, gap0)
-
-                # update 
-                w_prime = w_dynam .+ root    # shift chebyshev grid to pole of Θ(ω')
-                w_pm = ifelse.((w_prime .< inp.reOmega_c) .& (w_prime .> 0), w_prime, 0.0)
-
-                # delta on chebyshev grid
-                Delta_func_eval = Delta_func.(w_pm)
-                sqrt_eval = @. sqrt((w_pm^2 - Delta_func_eval^2))
                 
-                znormi, deltai = realEliashbergEq(muc_ME, β, Delta_func_eval, sqrt_eval, Kp_func, Km_func, w_prime, w_static, w_pm)
+                znormi, deltai = realEliashbergEq(muc_ME, β, deltaip, Kp_func, Km_func, w_dynam, w_static, reOmega_c)
 
             end
 
@@ -566,23 +546,23 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
 
         # convergence criterion
         minIt = 10
-        if convergence[end] / gap0 < inp.conv_thr && i_it > maximum([minIt, inp.nItFullCoul + 1])
+        if convergence[end] / gap0 < conv_thr && i_it > maximum([minIt, nItFullCoul + 1])       
             println(replace(console["Hline"], "." => " "))
             printstyled("\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 
             println(log_file, replace(console["Hline"], "." => " "))
             printstyled(log_file, "\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 
-            if inp.cDOS_flag == 1
+            if cDOS_flag == 1
                 plotSelfEnergyAtT(inp, itemp, selfEnergy)
             end
             # elseif when new modes included
 
             # save self energy
-            if inp.flag_writeSelfEnergy == 1
+            if flag_writeSelfEnergy == 1
                 try
-                    if inp.cDOS_flag == 1
-                        w_real = range(0, inp.reOmega_c, inp.numReal_c)
+                    if cDOS_flag == 1
+                        w_real = range(0, reOmega_c, numReal_c)
                         saveSelfEnergyComponents(itemp, inp, w_real, deltai, znormi)
                     end
                 catch ex
@@ -600,12 +580,12 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
         end
 
         # Gap too small
-        if real(data[2]) < inp.minGap && i_it > maximum([minIt, inp.nItFullCoul + 1])
+        if real(data[2]) < minGap && i_it > maximum([minIt, nItFullCoul + 1])   
             println(replace(console["Hline"], "." => " "))
-            printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than " * string(round(inp.minGap, digits=2)) * " meV!\n\n"; bold=false)
+            printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than " * string(round(minGap, digits=2)) * " meV!\n\n"; bold=false)
 
             println(log_file, replace(console["Hline"], "." => " "))
-            printstyled(log_file, "\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than " * string(round(inp.minGap, digits=2)) * " meV!\n\n"; bold=false)
+            printstyled(log_file, "\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than " * string(round(minGap, digits=2)) * " meV!\n\n"; bold=false)
 
             data[2] = NaN
             return data
@@ -613,14 +593,14 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
         end
 
         # max number iterations reached
-        if i_it == inp.N_it
+        if i_it == N_it
             println(replace(console["Hline"], "." => " "))
-            printstyled("\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"; bold=true)
+            printstyled("\nConvergence not achieved within " * string(N_it) * " iterations\n"; bold=true)
             println("\n")
 
             # log file
             println(log_file, replace(console["Hline"], "." => " "))
-            printstyled(log_file, "\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"; bold=true)
+            printstyled(log_file, "\nConvergence not achieved within " * string(N_it) * " iterations\n"; bold=true)
             println(log_file, "\n")
 
 

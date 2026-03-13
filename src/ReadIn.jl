@@ -227,11 +227,11 @@ function initOutputTable(inp::arguments; mode::Int64=0)#
 
         elseif inp.include_Weep == 0 && inp.cDOS_flag == 0
                         # header table
-            console["header"] = ["it", "Re(Z)", "Im(Z)", "Re(χ)", "Im(χ)", "Re(Δ)", "Im(Δ)", "Error Δ"]
+            console["header"] = ["it", "Re(Z)", "Im(Z)", "Re(χ)", "Im(χ)", "ef-mu", "Re(Δ)", "Im(Δ)", "Error Δ"]
             #width table
-            console["width"] = [8, 10, 10, 10, 10, 10, 10, 11]
+            console["width"] = [8, 10, 10, 10, 10, 10, 10, 10, 11]
             # precision data
-            console["precision"] = [0, 4, 4, 4, 4, 4, 4, 5]
+            console["precision"] = [0, 4, 4, 4, 4, 2, 4, 4, 5]
             # initial values
             #console["Δ"] = ones(inp.numReal_c) .* 0.1 .+ im*1e-4  
             #console["Z"] = ones(ComplexF64, inp.numReal_c) 

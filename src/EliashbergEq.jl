@@ -39,7 +39,7 @@ end
 ##### Eliashberg equations - Variable Dos - Weep #####
 """
     eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, 
-                   znormip, phiphip, phicip, shiftip, wgCoulomb, muintr)
+                   znormip, phiphip, phicip, shiftip, wgCoulomb, fermi_level)
 
 Evaluate the isotropic Eliashberg equations, vDOS & Weep
 
@@ -48,7 +48,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
                         sparse_sampling_flag::Int64, lambdai::Vector{Float64}, dosef::Float64, ndos::Int64, 
                         dos_en::Vector{Float64}, dos::Vector{Float64}, Weep::Matrix{Float64}, znormip::Vector{Float64}, 
                         phiphip::Vector{Float64}, phicip::Vector{Float64}, shiftip::Vector{Float64}, wgCoulomb::Float64, 
-                        muintr::Float64, idxShiftcut::Vector{Int64})
+                        fermi_level::Float64, idxShiftcut::Vector{Int64})
 
 
     znormi  = zeros(nsiw)
@@ -59,13 +59,13 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     nsiw_vec = [1:nsiw;]
 
     # 1/theta matrix, NxM, i.e. ndos x nsiw
-    theta_inv = 1 ./ ((znormip' .* wsi') .^ 2 .+ (phiphip' .+ phicip) .^ 2 .+ (dos_en .- muintr .+ shiftip') .^ 2)
+    theta_inv = 1 ./ ((znormip' .* wsi') .^ 2 .+ (phiphip' .+ phicip) .^ 2 .+ (dos_en .- fermi_level .+ shiftip') .^ 2)
 
     # matsubara sum, Nx1
-    ckernel = sum(theta_inv .* (phiphip' .+ phicip), dims=2) - sum(phicip ./ (wsi' .^ 2 .+ (dos_en .- muintr) .^ 2 .+ phicip .^ 2), dims=2)
+    ckernel = sum(theta_inv .* (phiphip' .+ phicip), dims=2) - sum(phicip ./ (wsi' .^ 2 .+ (dos_en .- fermi_level) .^ 2 .+ phicip .^ 2), dims=2)
 
     # add analytic part, NxN
-    ckernel = dos' .* wgCoulomb .* Weep .* (2 * kb * itemp .* ckernel' .+ 1 / 2 .* phicip' .* tanh.(1 / (2 * kb * itemp) .* sqrt.((dos_en' .- muintr)  .^ 2 .+ phicip' .^ 2)) ./ (sqrt.((dos_en' .- muintr) .^ 2 .+ phicip' .^ 2)))
+    ckernel = dos' .* wgCoulomb .* Weep .* (2 * kb * itemp .* ckernel' .+ 1 / 2 .* phicip' .* tanh.(1 / (2 * kb * itemp) .* sqrt.((dos_en' .- fermi_level)  .^ 2 .+ phicip' .^ 2)) ./ (sqrt.((dos_en' .- fermi_level) .^ 2 .+ phicip' .^ 2)))
 
     # integrate phic, Nx1    
     phici = -trapz(dos_en, ckernel)
@@ -75,7 +75,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     # ph kernel, NxM
     phkernel = dos .* theta_inv .* (phiphip' .+ phicip)
     # shift kernel, NxM
-    shkernel = dos[idxShiftcut[1]:idxShiftcut[2]] .* theta_inv[idxShiftcut[1]:idxShiftcut[2],:] .* (dos_en[idxShiftcut[1]:idxShiftcut[2]] .- muintr .+ shiftip')
+    shkernel = dos[idxShiftcut[1]:idxShiftcut[2]] .* theta_inv[idxShiftcut[1]:idxShiftcut[2],:] .* (dos_en[idxShiftcut[1]:idxShiftcut[2]] .- fermi_level .+ shiftip')
 
     # integrate over energy, gives vector of matsubara summands, Mx1
     ziwp = trapz(dos_en, zkernel')
@@ -197,14 +197,14 @@ end
 ##### Eliashberg equations - Variable Dos - mu* #####
 """
     eliashberg_eqn( itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, 
-                    dos, dosef, znormip, deltaip, shiftip, muc, muintr, wgCoulomb, idxShiftcut)
+                    dos, dosef, znormip, deltaip, shiftip, muc, fermi_level, wgCoulomb, idxShiftcut)
 
 Evaluate the isotropic Eliashberg equations, variable dos, mu*
 """
 function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_mat_freq::Vector{Int64}, 
                         sparse_sampling_flag::Int64, lambdai::Vector{Float64}, dos_en::Vector{Float64}, 
                         dos::Vector{Float64}, dosef::Float64, znormip::Vector{Float64}, deltaip::Vector{Float64}, 
-                        shiftip::Vector{Float64}, muc::Float64, muintr::Float64, wgCoulomb::Float64, idxShiftcut::Vector{Int64})
+                        shiftip::Vector{Float64}, muc::Float64, fermi_level::Float64, wgCoulomb::Float64, idxShiftcut::Vector{Int64})
 
 
     deltai = zeros(nsiw)
@@ -212,10 +212,10 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     shifti = zeros(nsiw)
     nsiw_vec = [1:nsiw;]
 
-    theta_inv = 1 ./ (znormip' .^ 2 .* (wsi' .^ 2 .+ deltaip' .^ 2) .+ (dos_en .- muintr .+ shiftip') .^ 2)
+    theta_inv = 1 ./ (znormip' .^ 2 .* (wsi' .^ 2 .+ deltaip' .^ 2) .+ (dos_en .- fermi_level .+ shiftip') .^ 2)
     zkernel = dos .* theta_inv .* wsi' .* znormip'
     dekernel = dos .* theta_inv .* deltaip' .* znormip'
-    shkernel = dos[idxShiftcut[1]:idxShiftcut[2]] .* theta_inv[idxShiftcut[1]:idxShiftcut[2],:] .* (dos_en[idxShiftcut[1]:idxShiftcut[2]] .- muintr .+ shiftip')
+    shkernel = dos[idxShiftcut[1]:idxShiftcut[2]] .* theta_inv[idxShiftcut[1]:idxShiftcut[2],:] .* (dos_en[idxShiftcut[1]:idxShiftcut[2]] .- fermi_level .+ shiftip')
 
     ziwp = trapz(dos_en, zkernel') 
     deiwp = trapz(dos_en, dekernel') 

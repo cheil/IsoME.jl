@@ -14,7 +14,6 @@
 # inspired by the EPW implementation
 # 2023-10-17 - Christoph Heil
 
-export EliashbergSolver
 
 """
     solve_eliashberg(itemp, inp, console, matval, log_file)
@@ -73,10 +72,10 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             shifti = -zeros(nsiw)
             phici = -ones(ndos).*0.1
             phiphi = ones(nsiw) .* maximum([BCS_gap, 2*phici[1]])
-            muintr = 0.0
+            fermi_level = 0.0
 
             ### Print to console & log file
-            console["InitValues"] = [0 phici[idx_ef] phiphi[1] znormi[1] shifti[1] -muintr deltai[idx_ef, 1] nothing]
+            console["InitValues"] = [0 phici[idx_ef] phiphi[1] znormi[1] shifti[1] -fermi_level deltai[idx_ef, 1] nothing]
             console = printTableHeader(console, log_file)
 
         elseif cDOS_flag == 1
@@ -99,10 +98,10 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             deltai = ones(nsiw) .* BCS_gap
             znormi = ones(nsiw) 
             shifti = zeros(nsiw)
-            muintr = 0.0
+            fermi_level = 0.0
 
             ### Print to console & log file
-            console["InitValues"] = [0 znormi[1] shifti[1] -muintr deltai[1] nothing]
+            console["InitValues"] = [0 znormi[1] shifti[1] -fermi_level deltai[1] nothing]
             console = printTableHeader(console, log_file)
 
         elseif cDOS_flag == 1
@@ -166,10 +165,10 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             if cDOS_flag == 0
                 ### mu update 
                 if mu_flag == 1 && i_it > 1
-                    muintr = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, outdir)
+                    fermi_level = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, outdir)
                 end
 
-                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb, muintr, idxShiftcut)
+                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb, fermi_level, idxShiftcut)
                 shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[4]
 
                 ### Constant DoS ###
@@ -191,10 +190,10 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             ### Console Output ###
             if cDOS_flag == 0
                 # Console output
-                outputVec = [i_it, phici[idx_ef], phiphi[1], znormi[1], shifti[1], -muintr, deltai[idx_ef, 1], err_delta]
+                outputVec = [i_it, phici[idx_ef], phiphi[1], znormi[1], shifti[1], -fermi_level, deltai[idx_ef, 1], err_delta]
 
                 # data for return
-                data = [znormi[1], deltai[idx_ef, 1], shifti[1], -muintr]
+                data = [znormi[1], deltai[idx_ef, 1], shifti[1], -fermi_level]
 
             elseif cDOS_flag == 1
                 # Console output
@@ -212,10 +211,10 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             if cDOS_flag == 0
                 ### mu update
                 if mu_flag == 1 && i_it > 1
-                    muintr = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, outdir)
+                    fermi_level = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, outdir)
                 end
 
-                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, muintr, wgCoulomb, idxShiftcut)
+                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, fermi_level, wgCoulomb, idxShiftcut)
                 shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[3]
 
             elseif cDOS_flag == 1
@@ -233,10 +232,10 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             ### Console Output ###
             if cDOS_flag == 0
                 # Console output
-                outputVec = [i_it, znormi[1], shifti[1], -muintr, deltai[1], err_delta]
+                outputVec = [i_it, znormi[1], shifti[1], -fermi_level, deltai[1], err_delta]
 
                 # data for return
-                data = [znormi[1], deltai[1], shifti[1], -muintr]
+                data = [znormi[1], deltai[1], shifti[1], -fermi_level]
 
             elseif cDOS_flag == 1
                 # Console output

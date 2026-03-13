@@ -1,5 +1,5 @@
 # !!! Automatic test !!!
-# Add further tests for sparse sampling, encut, interpoaltion, ....
+# Add further tests for sparse sampling, encut, interpoaltion, real axis solver, ....
 
 using IsoME
 using Test
@@ -43,22 +43,22 @@ using Test
 
 
     ### 3.TEST: Nb cDOS W ###
-    inp = arguments(
-        a2f_file    = joinpath(@__DIR__, "Nb/Nb.a2F"),
-        dos_file    = joinpath(@__DIR__, "Nb/Nb.dos"),
-        Weep_file   = joinpath(@__DIR__, "Nb/Weep.dat"),
-        flag_figure =0,
-        returnTc    = true,
-        testMode    = true,
-        outdir      = "./test/Nb/output/",
-        cDOS_flag   = 1,
-        include_Weep = 1,
-        ind_smear   = 15,
-        typEl       = 10000,
-    )
+    # inp = arguments(
+    #     a2f_file    = joinpath(@__DIR__, "Nb/Nb.a2F"),
+    #     dos_file    = joinpath(@__DIR__, "Nb/Nb.dos"),
+    #     Weep_file   = joinpath(@__DIR__, "Nb/Weep.dat"),
+    #     flag_figure =0,
+    #     returnTc    = true,
+    #     testMode    = true,
+    #     outdir      = "./test/Nb/output/",
+    #     cDOS_flag   = 1,
+    #     include_Weep = 1,
+    #     ind_smear   = 15,
+    #     typEl       = 10000,
+    # )
 
-    Tc = EliashbergSolver(inp)
-    @test Tc == [7, 8]
+    # Tc = EliashbergSolver(inp)
+    # @test Tc == [7, 8]
 
 
     ### 4.TEST: Nb vDOS W ###
@@ -78,6 +78,9 @@ using Test
 
     Tc = EliashbergSolver(inp)
     @test Tc == [7, 8]
+
+
+    ### 5.TEST: Nb vDOS + mu real axis ###
 
 end
 

@@ -47,7 +47,7 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
         ### Interpolation ###
         # Interpolation Object DoS
         epsilonItp = range(dos_en[1], dos_en[end], length(dos_en))
-        itpDos = scale(interpolate(dos, BSpline(Cubic())), epsilonItp)
+        itpDos = scale(interpolate(dos, BSpline(Linear())), epsilonItp)
 
         # encut in meV
         if (inp.encut > dos_en[end]) || (-inp.encut < dos_en[1])
@@ -64,15 +64,22 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
             epsilonItp = range(Wen[1], Wen[end], length(Wen))
             itpWeep = scale(interpolate(Weep, BSpline(Constant())), (epsilonItp, epsilonItp))
 
-            # interpolate 
-            dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut, itpWeep=itpWeep, Wen=Wen)
+            if mode == 0
+                # interpolate 
+                dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut, itpWeep=itpWeep, Wen=Wen)
+            end
 
             # mu, idxWef = idx_ef
             (inp.mu != -1) || (idxWef = findmin(abs.(dos_en))[2]; inp.mu = dos[idxWef] .* Weep[idxWef, idxWef])
 
         else
-            # interpolate 
-            dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut)
+            if mode == 0
+                # interpolate 
+                dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut)
+            else 
+                # no interpolation of dos
+                Weep = nothing
+            end
         end
 
         # idx 
@@ -366,12 +373,12 @@ function readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsme
     a2f_raw = a2f_data[:, indSmear+1]
 
     ### interpolate a2F on 10x finer grid ###
-    omega_fine = range(1e-2, stop=omega_raw[end], length=size(omega_raw)[1])   
+    omega = range(1e-2, stop=omega_raw[end], length=size(omega_raw)[1])   
     a2f_itp = linear_interpolation(omega_raw, a2f_raw, extrapolation_bc=Flat())     
-    a2f_fine = a2f_itp(omega_fine)
-    a2f_fine[a2f_fine.<0.0] .= 0.0
+    a2f = a2f_itp(omega)
+    a2f[a2f.<0.0] .= 0.0
 
-    return omega_fine, a2f_fine, a2f_itp, indSmear, unit
+    return omega, a2f, a2f_itp, indSmear, unit
 
 end
 

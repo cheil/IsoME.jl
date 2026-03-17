@@ -392,8 +392,8 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
         if cDOS_flag == 0
             ### Initialize 
             deltai = ones(numReal_c) .* 0.1 .+ im * 1e-4      #.* BCS_gap
-            znormi = ones(ComplexF64, numReal_c)
-            shifti = zeros(ComplexF64, numReal_c)
+            znormi = ones(numReal_c)    .+ im *1e-4
+            shifti = zeros(numReal_c)   .+ im *1e-4
             fermi_level = 0.0
 
             ### Print to console & log file
@@ -489,6 +489,8 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
 
                 znormi, deltai, shifti = realEliashbergEq(muc_ME, β, znormip, deltaip, shiftip, Kp_func, Km_func, w_dynam, w_static, reOmega_c, dosef, dos_en, dos, fermi_level)
 
+                shifti = (1.0 - abs(broyden_beta)) .* shiftip .+ abs(broyden_beta) .* shifti
+
             elseif cDOS_flag == 1
                 
                 znormi, deltai = realEliashbergEq(muc_ME, β, deltaip, Kp_func, Km_func, w_dynam, w_static, reOmega_c)
@@ -506,17 +508,17 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
             ### Console Output ###
             if cDOS_flag == 0
                 # Console output
-                #outputVec = [i_it, znormi[1], shifti[1], deltai[1], convergence]
+                outputVec = [i_it, real(znormi[1]), imag(znormi[1]), real(shifti[1]), imag(shifti[1]), fermi_level, real(deltai[1]), imag(deltai[1]), abs(convergence / gap0)]
 
                 # data for return
-                #data = [znormi[1], deltai[1], shifti[1]]
+                data = [znormi[1], deltai[1], shifti[1]]
 
                 # self energy 
-                #selfEnergy = (deltai, znormi, shifti)
+                selfEnergy = (deltai, znormi, shifti)
 
             elseif cDOS_flag == 1
                 # Console output
-                outputVec = [i_it, real(znormi[1]), imag(znormi[1]), real(deltai[1]), imag(deltai[1]), convergence / gap0]
+                outputVec = [i_it, real(znormi[1]), imag(znormi[1]), real(deltai[1]), imag(deltai[1]), abs(convergence / gap0)]
 
                 # data for return
                 data = [znormi[1], deltai[1]]

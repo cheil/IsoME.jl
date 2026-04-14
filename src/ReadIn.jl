@@ -114,7 +114,7 @@ function InputParser(inp::arguments, log_file)
         # default values
         dos = []
         dos_en = []
-        ef = nothing
+        ef = inp.ef
         idxShiftcut = -1
         Weep = nothing
     end
@@ -167,7 +167,7 @@ function InputParser(inp::arguments, log_file)
     elseif  inp.include_Weep == 0 && inp.muc_AD != -1 && inp.muc_ME == -1   
         calcMucME(inp, a2f, a2f_omega, log_file)
 
-    elseif  inp.muc_ME != -1 && inp.muc_AD == -1 # Wenn nur μ*_ME gegeben wird kein μ*_AD berechnet falls mit W und μ* sollen nur berechnet werden falls -1
+    elseif  inp.muc_ME != -1 && inp.muc_AD == -1 
         calcMucAD(inp, a2f, a2f_omega)
     end
 
@@ -347,7 +347,7 @@ function readIn_Dos(dos_file, ef =-1, spin=2, unit="", nheader=-1, nfooter=-1; o
 
     ### Fermi energy
     if ef == -1
-        ef = extractFermiEnergy(header, unit, "Weep", outdir = outdir, logFile = logFile)
+        ef = extractFermiEnergy(header, unit, "Dos", outdir = outdir, logFile = logFile)
     end
 
     ### Convert 
@@ -364,8 +364,8 @@ function readIn_Dos(dos_file, ef =-1, spin=2, unit="", nheader=-1, nfooter=-1; o
         energies = energies .* Ry2meV
         dos = dos ./ Ry2meV
     elseif  "Ha" == unit     # Hartree
-        energies = Weep.*Ry2meV*2
-        dos = Wen ./ Ry2meV*2
+        energies = energies.*Ry2meV*2
+        dos = dos ./ Ry2meV*2
     else
         error("Invalid Unit! Either set the unit manually via dos_unit or check the header of the Dos-file and try again!")
     end

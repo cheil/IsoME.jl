@@ -12,34 +12,71 @@ Comments:
 
 """
 
+
+"""
+    printAsciiArt()
+
+print IsoME as Ascii art
+"""
+function printIsoME()
+    strIsoME = "\n\n"
+    strIsoME = strIsoME*"   _                 __  __   ______ \n"
+    strIsoME = strIsoME*"  | |               |  \\/  | |  ____|\n"
+    strIsoME = strIsoME*"  | |  ___    ___   | \\  / | | |__   \n"
+    strIsoME = strIsoME*"  | | / __|  / _ \\  | |\\/| | |  __|  \n"
+    strIsoME = strIsoME*"  | | \\__ \\ | (_) | | |  | | | |____ \n"
+    strIsoME = strIsoME*"  |_| |___/  \\___/  |_|  |_| |______|\n\n"
+
+    print(strIsoME)
+
+    return strIsoME
+end
+
+
 """
     printStartMessage(console)
 
 Start message
 """
-function printStartMessage(console, log_file)
 
-    strIsoMe = "\n\n"
-    strIsoMe = strIsoMe*"   _                 __  __   ______ \n"
-    strIsoMe = strIsoMe*"  (_)               |  \\/  | |  ____|\n"
-    strIsoMe = strIsoMe*"   _   ___    ___   | \\  / | | |__   \n"
-    strIsoMe = strIsoMe*"  | | / __|  / _ \\  | |\\/| | |  __|  \n"
-    strIsoMe = strIsoMe*"  | | \\__ \\ | (_) | | |  | | | |____ \n"
-    strIsoMe = strIsoMe*"  |_| |___/  \\___/  |_|  |_| |______|\n\n"
+function get_current_package_version(projectname::String = "IsoME")
+    # Start from the parent of the file calling this function
+    path = normpath(joinpath(@__DIR__, ".."))  # Go up from `src/` to package root
+    project_file = joinpath(path, "Project.toml")
+
+    if isfile(project_file)
+        data = TOML.parsefile(project_file)
+        if get(data, "name", "") == projectname
+            return get(data, "version", "unknown")
+        end
+    end
+
+    return "unknown"
+end
+
+function printStartMessage(console, log_file)
 
     strLine = "-"^(sum(console["width"])+length(console["width"])+1)
 
-    strAuthors = "  Authors: Christoph Heil, Eva Kogler, Dominik Spath\n\n"
+    strAuthors = "  Authors: Christoph Heil, Eva Kogler, Dominik Spath\n"
 
     strEliash = "Eliashberg Solver started"
 
-    print(strIsoMe)
-    #printTextCentered(log_file, "Version 1.0", strLine, false)
+    version = get_current_package_version("IsoME")
+
+    strVersion = "  Version: $version\n\n"
+
+    
     print(strAuthors)
+    print(log_file, strAuthors)
+
+
+    print(strVersion)
+    print(log_file, strVersion)
+
     print(strLine)
     # log file
-    print(log_file, strIsoMe)
-    print(log_file, strAuthors)
+    
     print(log_file, strLine)
 
     printTextCentered(strEliash, strLine, file = log_file, bold = true)
@@ -52,7 +89,6 @@ function printStartMessage(console, log_file)
     return console
                                     
 end
-
 
 """
     printADtable(console)
@@ -161,16 +197,13 @@ function printSummary(inp, Tc, log_file)
         text = text * "\n - " * inp.material * " is a superconductor"
         text = text * "\n - Highest given temperature reached"
         text = text * "\n - Tc > " * string(Tc[1]) * " K"
-    elseif (Tc[2]-Tc[1]) <= 1
-        text = text * "\n - " * inp.material * " is a superconductor"
-        text = text * "\n - Tc = " * string(Tc[1]) * " K!"
     else
         text = text * "\n - " * inp.material * " is a superconductor"
-        text = text * "\n - Tc = " * string(Tc[1]) * " - " * string(Tc[2]) * " K!"
+        text = text * "\n - Tc = " * string(round((Tc[2]+Tc[1])/2, digits=2)) * " (±"* string(round((Tc[2]-Tc[1])/2, digits=2)) *")" * " K"
     end
 
     printstyled("\nSummary:", bold=true)
-    println(text)
+    println(text*"\n")
 
     # log file
     print(log_file, "\nSummary:"*text*"\n")
@@ -183,23 +216,30 @@ end
 
 print a text centered within a line consisting of delimiters
 """
-function printTextCentered(text, hline; file = nothing, bold = false, blanks=3, delimiter = "-")
+function printTextCentered(text, hline; file = "", bold = false, blanks=3, delimiter = "-", newline = "\n", consoleFlag = true)
 
     lenLeft = Int(ceil((length(hline) - length(text))/2) - blanks)
     lenRight = Int(floor((length(hline) - length(text))/2) - blanks)
 
-    print("\n"*delimiter^lenLeft*" "^blanks)
-    if bold
-        print(@bold text)
-    else
-        print(text)
-    end
-    print(" "^blanks * delimiter^lenRight*"\n")
+    leftText = newline*delimiter^lenLeft*" "^blanks
+    rightText = " "^blanks * delimiter^lenRight*"\n"
 
-    if ~isnothing(file)
-        print(file, "\n"*"-"^lenLeft*" "^blanks)
+    # print to console
+    if consoleFlag
+        print(leftText)
+        if bold
+            print(@bold text)
+        else
+            print(text)
+        end
+        print(rightText)
+    end
+
+    # print to file
+    if ~isa(file, IOBuffer) && isfile(file)
+        print(file, leftText)
         print(file, text)
-        print(file, " "^blanks * "-"^lenRight*"\n")
+        print(file, rightText)
     end
 
 end
@@ -260,6 +300,7 @@ function printTableHeader(console, log_file)
         if isnothing(initValues[i])
             print(log_file, strFormat[i])
         else
+
             Printf.format(log_file, Printf.Format(strFormat[i]), format[i, 1], " ", format[i, 2], format[i, 3], initValues[i], format[i, 4], " ")
         end
     end
@@ -345,7 +386,7 @@ function formatTableRow(vec, widthCol, prec=5, logConsole=true)
     end
 
     out = Array{String}(undef, length(vec))
-    format = zeros(length(vec), 4)
+    format = zeros(Int, length(vec), 4)
     for k in eachindex(vec)
         value = vec[k]
         width = widthCol[k]
@@ -368,15 +409,15 @@ function formatTableRow(vec, widthCol, prec=5, logConsole=true)
                 out[k] = "|%*s%*.*f%*s|"
                 if logConsole
                     spacing = (width - (numDig[1])) / 2
-                    format[k, :] = [floor(spacing), numDig[1], 0, ceil(spacing)]
+                    format[k, :] = [Int(floor(spacing)), Int(numDig[1]), Int(0), Int(ceil(spacing))]
                 else
                     spacing = (width - (sum(numDig) + 1)) / 2
-                    format[k, :] = [floor(spacing), numDig[1], numDig[2], ceil(spacing)]
+                    format[k, :] = [Int(floor(spacing)), Int(numDig[1]), Int(numDig[2]), Int(ceil(spacing))]
                 end
             else
                 out[k] = "%*s%*.*f%*s|"
                 spacing = (width - (sum(numDig) + 1)) / 2
-                format[k, :] = [floor(spacing), numDig[1], numDig[2], ceil(spacing)]
+                format[k, :] = [Int(floor(spacing)), Int(numDig[1]), Int(numDig[2]), Int(ceil(spacing))]
             end
         end
     end
@@ -415,28 +456,20 @@ function printFlagsAsText(inp, log_file)
         text *=  " - Material: "*inp.material*" \n"
     end
     # search mode
-    if inp.TcSearchMode_flag == 0
-        if length(inp.temps) == 1
-            text *= " - Tc search area: "*string(inp.temps[1])*" K\n"
-        else
-            text *= " - Tc search area: "*string(minimum(inp.temps))*" - "*string(maximum(inp.temps))*" K\n"
-        end
-    elseif inp.TcSearchMode_flag == 1
+    if inp.temps == [-1]
         text *= " - Tc search mode activated\n"
+    else 
+        if length(inp.temps) == 1
+            text *= " - Tc search range: "*string(inp.temps[1])*" K\n"
+        else
+            text *= " - Tc search range: "*string(minimum(inp.temps))*" - "*string(maximum(inp.temps))*" K\n"
+        end
+
     end
     
     # cut off
     text *= " - Matsubara cutoff: "*string(inp.omega_c)*" meV\n"
 
-    # Wcut
-    if inp.cDOS_flag == 0 
-        if inp.encut == -1
-            text *= " - encut: full dos\n"
-        else
-            text *= " - encut: "*string(inp.encut)*" meV\n"
-        end
-    end
-    
     # cDos
     if inp.cDOS_flag == 0
         if inp.mu_flag == 1
@@ -467,88 +500,124 @@ end
 
 
 """
-    writeToOutFile(Tc ,inp, out_vars, header)
-
-Save results of each iteration and input parameters in a file Summary.txt
 """
-function writeToOutFile(Tc ,inp, out_vars, header)
-    # write to output file
-    name = ""
-    if inp.material != "Material"
-        name = name*inp.material*"_"
+function printTee(log_file, text)
+    print(text)
+    print(log_file, text)
+end
+
+"""
+    printError(text, ex, log_file, errorLogger)
+
+print a formatted error message to the console and log_file
+"""
+function printError(text, ex, log_file, errorLogger)
+
+    print(log_file, "\n")
+    with_logger(errorLogger) do
+        @error text exception = ex
     end
-    name = name*"Summary.txt"
+    print(log_file, "\nFor further information please refer to the CRASH file\n\n")
+    flush(log_file)
+    close(log_file) 
+
+    print("\n")
+    rethrow(ex)
+end
+
+
+"""
+    printWarning(text, ex, log_file)
+
+print a formatted warning message to the console and log_file
+"""
+function printWarning(text, log_file; ex = nothing)
+
+    printTee(log_file, "\n")
+    if isnothing(ex)
+        @warn text
+        printTee(log_file, "\n")
+    else
+        @warn text exception = ex
+        printTee(log_file, "For further information please refer to the CRASH file\n")
+    end
+
+end
+
+
+"""
+    writeToCrashFile(inp)
+
+Save exception in CRASH file
+"""
+function writeToCrashFile(inp)
+    if inp.testMode
+        crashFile = IOBuffer()
+    else
+        crashFile = open(inp.outdir * "CRASH", "a")
+    end
+    print(crashFile, current_exceptions())
+    print(crashFile, "\n\n")
+    close(crashFile)
+end
+
+
+"""
+    writeInputFlags(Tc ,inp, out_vars, header)
+
+Save results of each iteration and input parameters in a file Info.txt
+"""
+function createInfoFile(inp)
+    # write to output file
+    name = "Info.txt"
 
     if isfile(inp.outdir*name)
         rm(inp.outdir*name)
     end
     outfile = open(inp.outdir*name, "w")
     
-    ### write Tc
-    out = ""
-    if isnan(Tc[1])
-        out = out * "Tc < " * string(Tc[2]) *" K"
-    elseif isnan(Tc[2])
-        out = out * "Tc > " * string(Tc[1]) * " K"
-    elseif (Tc[2]-Tc[1]) <= 1
-        out = out * "Tc = " * string(Tc[1]) * " K!"
-    else
-        out = out * "Tc = " * string(Tc[1]) * " - " * string(Tc[2]) * " K!"
-    end
-    out = out*"\n\n"
-
-    ### calc width of each column
-    width = minimum([length.(header) .+ 2])
-    width[width .< 12] .= 12
-    header = formatTableHeader(header, width)
-
-    ### Define boundary ###
-    tableHline = ""
-    for w in width
-        tableHline = tableHline*"."*"-"^w
-    end
-    tableHline = tableHline*"."
-
-    ### Define table header ###
-    delimiter = "|"
-    out = out*tableHline*"\n"*delimiter
-    for k in eachindex(header)
-        value = header[k]
-
-        out = out*string(value)*delimiter
-    end
-
-    ### parting line ###
-    out = out*"\n"*replace(tableHline, "." => "|")*"\n"
-
-    ### write to outfile ###
-    print(outfile, out)
-
-    ### write values to out file ###
-    for i in axes(out_vars, 1)
-        var = out_vars[i,:]
-        precision = [1; Int64.(2*ones(length(var)-1,1))]
-        var, strFormat, format = formatTableRow(var, width, precision, false)
-        for j in eachindex(var)
-            # print
-            if isnan(var[j])
-                print(outfile, strFormat[j])
-            else
-                Printf.format(outfile, Printf.Format(strFormat[j]), format[j, 1], " ", format[j, 2], format[j, 3], var[j], format[j, 4], " ")
-            end
-        end
-    end
-
-    print(outfile, replace(tableHline, "." => " ")*"\n")
-
     ### Input parameters ###
-    print(outfile, "\n\n"*join(inp.all, "\n"))
+    print(outfile, replace(replace(replace(join(inp.all, "\n"), "-1.0"=>"-"), "Number[-1]"=>"-"), "-1"=>"-"))
 
     close(outfile)
 end
 
 
-function createFigures(inp, matval, Delta0, temps, log_file)
+"""
+    summarizeResults(Tc, out_vars, header)
+
+Save Delta(0) at each temperature
+"""
+function createSummaryFile(inp, Tc, out_vars, header)
+    # write to summary file
+     name = "Summary.dat"
+
+     if isfile(inp.outdir*name)
+         rm(inp.outdir*name)
+     end
+     outfile = open(inp.outdir*name, "w")
+
+      ### header
+      out = "# "
+      if isnan(Tc[1])
+          out = out * "Tc < " * string(Tc[2]) *" K"
+      elseif isnan(Tc[2])
+          out = out * "Tc > " * string(Tc[1]) * " K"
+      else
+          out = out * "Tc = " * string(round((Tc[2]+Tc[1])/2, digits=2)) * " (±"* string(round((Tc[2]-Tc[1])/2, digits=2)) *")" * " K"
+      end
+      out = out*"\n"*header*"\n"
+      print(outfile, out)
+      
+      # save header & gap
+      #writedlm(outfile, header)
+      writedlm(outfile, round.(out_vars, digits=2), '\t')
+
+      close(outfile)
+
+end
+
+function createFigures(inp, matval, Delta0, temps, Tc, log_file)
 
     # values
     a2f_omega_fine, a2f_fine = matval
@@ -568,12 +637,14 @@ function createFigures(inp, matval, Delta0, temps, log_file)
     xtick_val = 0:10:xlim_max
     ylim_max = round(maximum(a2f_fine), RoundUp)
 
-    plot(a2f_omega_fine, a2f_fine)
+    plot(a2f_omega_fine, a2f_fine,1)
     xlims!(0, xlim_max)
     ylims!(0, ylim_max)
-    title!(inp.material)
+    if inp.material != "Material"
+        title!(inp.material)
+    end
     xlabel!(L"\omega ~ \mathrm{(meV)}")
-    ylabel!(L"\alpha^2F ~ \mathrm{(1/meV)}")
+    ylabel!(L"\alpha^2F ~ \mathrm{(1)}")
     savefig(inp.outdir * "/a2F_sm" * string(inp.ind_smear) * ".pdf")
 
     if all(isnan.(Delta0))
@@ -583,38 +654,96 @@ function createFigures(inp, matval, Delta0, temps, log_file)
         print(log_file,  "Info: No superconducting gap found - skipping plot\n")
     else
         # print gap vs. temperature
-        Delta0_plot = Delta0
-        Delta0_plot[isnan.(Delta0)] .= 0
-        order = sortperm(temps)
-        temps_plot = temps[order]
+        Delta0_plot = Delta0[.~isnan.(Delta0)]
+        temps_plot = temps[.~isnan.(Delta0)]
+        order = sortperm(temps_plot)
+        temps_plot = temps_plot[order]
         Delta0_plot = Delta0_plot[order]
-
-        plot_font = "Computer Modern"
 
         if maximum(temps_plot) < 10
             xlim_max = round(maximum(temps_plot) * 1.1, RoundUp)
             xtick_val = 0:1:xlim_max
+        elseif maximum(temps_plot) < 20
+            xlim_max = round(maximum(temps_plot) * 1.1, RoundUp)
+            xtick_val = 0:2:xlim_max
         else
             xlim_max = round(maximum(temps_plot) / 10 * 1.01, RoundUp) * 10
             xtick_val = 0:10:xlim_max
         end
+        ylim_max = round(maximum(Delta0_plot)*1.11, RoundUp)
+        
+        # Create a custom gradient
+        my_gradient = cgrad(:RdBu, rev=true) 
+        # Define gradient range
+        max_gradient_blue = 77               # Blue Gradient applies up to this value
+        max_gradient_red = 273               # Red Gradient applies up to this value
+        
+        # normalize x 
+        color_values_blue = temps_plot[temps_plot.<=max_gradient_blue]/max_gradient_blue/2
+        color_values_red = (temps_plot[temps_plot.>max_gradient_blue].-max_gradient_blue)/(max_gradient_red-max_gradient_blue)/2 .+0.5
+        
+        # Map colors: Use blue gradient for values <= max_gradient_val, red gradient for rest
+        marker_colors = append!(my_gradient[color_values_blue], [v < 1.0 ? my_gradient[v] : my_gradient[end] for v in color_values_red])
+        
+        h=scatter(temps_plot, Delta0_plot, color=marker_colors, colorbar=false, markerstrokewidth=1, ms=6, xticks=xtick_val)
+        if length(temps_plot) > 1
+            try
+                #p[1] = Delta[1], exp(p[2])+max(temps_plot) = Tc, p[3] = fit parameter adjusting the curvature
+                Delta(T,p) = p[1]* tanh.((π*kb*(exp(p[2])+maximum(temps_plot)))/p[1]*sqrt.(p[3] * ((exp(p[2])+maximum(temps_plot))./T .− 1) ))
+                pGuess = convert(Vector{Float64}, [(Delta0_plot[1]), 0, 1])
+            
+                fit = curve_fit(Delta, temps_plot, Delta0_plot, pGuess)
+                par = fit.param
+                TcFit = exp(par[2])+maximum(temps_plot)
+                Delta0Fit = abs(par[1])     # Delta(T) is symmetric wrt Delta0
+            
+                # second derivative
+                A = π*kb*TcFit/Delta0Fit
+                a = par[3]
+                DeltaSecDer(T) = @. -(a^2 * A * TcFit * sech(A * sqrt(a * (TcFit/T - 1)))^2 * 
+                        (-3*TcFit + 4*T + 2*A * TcFit * sqrt(a * (TcFit - T) / T) * 
+                        tanh(A * sqrt(a * (TcFit/T - 1))))) / 
+                        (4 * (a * (TcFit - T) / T)^(3/2) * T^4)
 
-        if maximum(Delta0_plot) < 10
-            ylim_max = round(maximum(Delta0_plot), RoundUp)
+                # 
+                temps_fit = collect(range(0.01, TcFit, 100))
+                Delta_fit = Delta(temps_fit, par)
+                
+                # plot if negative curvature
+                if all(DeltaSecDer(temps_fit).<0) && (TcFit > Tc[1]) #&& (TcFit < Tc[2] || isnan(Tc[2])) && TcFit < 1e3 # plot only if TcFit is reasonable ??
+                    plot!(temps_fit, Delta_fit, linestyle=:dash, linewidth=1, color=:gray, z_order=:back)
+            
+                    # adjust limits
+                    xlim_max = maximum([xlim_max, TcFit+1])
+                    ylim_max = maximum([ylim_max, Delta0Fit+1])
+            
+                    if xlim_max <= 10
+                        xtick_val = 0:1:xlim_max
+                    elseif xlim_max > 1e3
+                        error("TcFit unreasonbale")
+                    elseif xlim_max <= 20
+                        xtick_val = 0:2:xlim_max
+                    else
+                        xtick_val = 0:10:xlim_max
+                    end
+                end
+            catch  ex
+                printWarning("Unable to produce fit of gap function. Potentially too few temperature points.", log_file)
+                #rethrow(ex)
+            end
         else
-            ylim_max = round(maximum(Delta0_plot) / 10, RoundUp) * 10
+            printWarning("Unable to produce fit of gap function. Too few temperatures.", log_file)
         end
-
-        plot(temps_plot, Delta0_plot, marker=:circle)
         plot!(xticks=xtick_val)
         xlims!(0, xlim_max)
         ylims!(0, ylim_max)
-        title!(inp.material)
-        xlabel!(L"T ~ \mathrm{(K)}")
-        ylabel!(L"\Delta_0 ~ \mathrm{(meV)}")
-
+        xlabel!(L"T ~ [\mathrm{K}]")
+        ylabel!(L"\Delta_0 ~ [\mathrm{meV}]")
+        
+        #display(h)
+        
         namePlot = "Delta0"
-        if inp.material != "material"
+        if inp.material != "Material"
             namePlot = namePlot * "_" * inp.material
         end
         if inp.cDOS_flag == 1
@@ -649,44 +778,50 @@ function saveSelfEnergyComponents(itemp, inp, iwn, Delta, Z; epsilon=nothing,  c
 
     # Z
     open(folder*"Z_"*string(itemp)*"K.dat", "w") do io
-        write(io, "#  iωₙ  Z(iωₙ) \n")
-        writedlm(io, [iwn Z])
+        write(io, "#  iωₙ / meV      Z(iωₙ) / 1 \n")
+        writedlm(io, [iwn Z], '\t')
     end
 
     # Delta 
     if inp.include_Weep == 1
         open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
-            write(io, "# Δ(ϵ, iωₙ) \n")
-            writedlm(io, Delta)
+            write(io, "# ε / meV      iωₙ / meV      Δ(ϵ, iωₙ) / meV \n")
+            writedlm(io, [repeat(epsilon, inner=length(iwn)) repeat(iwn, length(epsilon)) Delta'[:]], '\t')
         end
+        
+        # w/o epsilon and mat.freqs.
+        #open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
+        #    write(io, "# Δ(ϵ, iωₙ) / meV \n")
+        #    writedlm(io, [Delta], '\t')
+        #end
     elseif inp.include_Weep == 0
         open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
-            write(io, "#  iωₙ  Δ(iωₙ) \n")
-            writedlm(io, [iwn Delta])
+            write(io, "#  iωₙ / meV      Δ(iωₙ) / meV \n")
+            writedlm(io, [iwn Delta], '\t')
         end
      end
 
     # Chi
     if ~isnothing(chi)
         open(folder*"Chi_"*string(itemp)*"K.dat", "w") do io
-            write(io, "#  iωₙ  Χ(iωₙ) \n")
-            writedlm(io, [iwn chi])
+            write(io, "#  iωₙ / meV      Χ(iωₙ) / meV \n")
+            writedlm(io, [iwn chi], '\t')
         end
     end
 
     # Phiph
     if ~isnothing(phiph)
         open(folder*"Phiph_"*string(itemp)*"K.dat", "w") do io
-            write(io, "#  iωₙ  Φp(iωₙ) \n")
-            writedlm(io, [iwn phiph])
+            write(io, "#  iωₙ / meV      Φp(iωₙ) / meV \n")
+            writedlm(io, [iwn phiph], '\t')
         end
     end
 
     # Phic
     if ~isnothing(phic)
         open(folder*"Phic_"*string(itemp)*"K.dat", "w") do io
-            write(io, "#  ϵ  Φc(ϵ) \n")
-            writedlm(io, [epsilon phic])
+            write(io, "#  ϵ / meV      Φc(ϵ) / meV \n")
+            writedlm(io, [epsilon phic], '\t')
         end
     end
 end

@@ -17,38 +17,25 @@
 export EliashbergSolver
 
 """
-    solve_eliashberg(itemp, inp, console, matval)
+    solve_eliashberg(itemp, inp, console, matval, log_file)
 
 Solve the eliashberg eq. self-consistently for a fixed temperature
 """
 function solve_eliashberg(itemp, inp, console, matval, log_file)
     # destruct inputs
-    (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxEncut) = matval
-    (; cDOS_flag, include_Weep, omega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag, outdir) = inp
+    (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxShiftcut) = matval
+    (; cDOS_flag, include_Weep, omega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag, outdir, sparseSamplingTemp) = inp
 
     ### Matsubara frequencies ###
     beta = 1 / (kb * itemp)
     M = ceil(Int, (omega_c / (pi * kb * itemp) - 1) / 2)
-    wsi = (2 * collect(1:M+1) .- 1) .* π .* kb .* itemp
+    wsi = collect((2 * (0:M) .+ 1) .* π .* kb .* itemp)
     nsiw = size(wsi, 1)
 
-    ### sparse sampling, consider only subset of mat frequencies up to M
-    # only reasonable if T < 1 K
-    if itemp < 5
+    ### sparse sampling
+    if itemp < sparseSamplingTemp    
         sparse_sampling_flag = 1
-        ind_mat_freq = initSparseSampling(beta, omega_c, M)
-
-        
-        # sparse sampling, roman fbw paper
-        #=
-        fsparse = 1.0
-        ind_mat_freq = cumsum(Int64.(round.(exp.(collect(1:nsiw)./(nsiw*fsparse)))))
-        ind_mat_freq = ind_mat_freq[ind_mat_freq .<= nsiw]
-        if ind_mat_freq[end] != nsiw
-            ind_mat_freq = push!(ind_mat_freq, nsiw)
-        end
-        =#
-        
+        ind_mat_freq = initSparseSampling(beta, omega_c, M)       
 
         # write to console
         printTextCentered("T = "*string(itemp)*" K ", console["partingLine"], file = log_file, bold = true)
@@ -77,13 +64,12 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
     lambdai = calcLambda(itemp, M, a2f_omega_fine, a2f_fine)
 
 
-
     ##### Initialize variables #####
     if include_Weep == 1
         if cDOS_flag == 0
             ### Initialize
             deltai = ones(ndos, nsiw) .* BCS_gap
-            znormi = ones(nsiw) #.* 2 ./(1 .+ exp.(wsi .- round(nsiw/4))) .+1  # sigmoid function
+            znormi = ones(nsiw) 
             shifti = -zeros(nsiw)
             phici = -ones(ndos).*0.1
             phiphi = ones(nsiw) .* maximum([BCS_gap, 2*phici[1]])
@@ -96,7 +82,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
         elseif cDOS_flag == 1
             ### Initialize
             deltai = ones(ndos, nsiw) .* BCS_gap
-            znormi = ones(nsiw) #.* 2 ./(1 .+ exp.(wsi .- round(nsiw/4))) .+1  # sigmoid function
+            znormi = ones(nsiw) 
             phici = -ones(ndos).*0.1
             phiphi = ones(nsiw) .* maximum([BCS_gap, 2*phici[1]])
 
@@ -111,7 +97,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
         if cDOS_flag == 0
             ### Initialize 
             deltai = ones(nsiw) .* BCS_gap
-            znormi = ones(nsiw) #.* 2 ./(1 .+ exp.(wsi .- round(nsiw/4))) .+1  # sigmoid function
+            znormi = ones(nsiw) 
             shifti = zeros(nsiw)
             muintr = 0.0
 
@@ -122,7 +108,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
         elseif cDOS_flag == 1
             ### Initialize 
             deltai = ones(nsiw) .* BCS_gap
-            znormi = ones(nsiw) #.* 2 ./(1 .+ exp.(wsi .- round(nsiw/4))) .+1  # sigmoid function
+            znormi = ones(nsiw) 
 
             ### Print to console & log file
             console["InitValues"] = [0 znormi[1] deltai[1] nothing]
@@ -131,7 +117,6 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
         end
 
     else
-        print(log_file, "ERROR: Unkwon mode! Check if the cDOS_flag and include_Weep flag are set correctly!")
         @error "Unkwon mode! Check if the cDOS_flag and include_Weep flag are set correctly!"
     end
 
@@ -181,10 +166,10 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             if cDOS_flag == 0
                 ### mu update 
                 if mu_flag == 1 && i_it > 1
-                    muintr = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxEncut, outdir)
+                    muintr = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, outdir)
                 end
 
-                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb, muintr, idxEncut)
+                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb, muintr, idxShiftcut)
                 shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[4]
 
                 ### Constant DoS ###
@@ -227,10 +212,10 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             if cDOS_flag == 0
                 ### mu update
                 if mu_flag == 1 && i_it > 1
-                    muintr = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxEncut, outdir)
+                    muintr = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, outdir)
                 end
 
-                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, muintr, wgCoulomb, idxEncut)
+                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, muintr, wgCoulomb, idxShiftcut)
                 shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[3]
 
             elseif cDOS_flag == 1
@@ -304,50 +289,25 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
                         end
                     end
                 catch ex
-
                     # crash file
-                    crashFile = open(inp.outdir * "CRASH", "a")
-                    error_msg = sprint(showerror, ex)
-                    st = sprint((io,v) -> show(io, "text/plain", v), stacktrace(catch_backtrace()))
-                    print(crashFile, error_msg*"\n"*st)
-                    print("\n\n")
-                    close(crashFile)
-        
-                    # log file
-                    print(log_file, "\n\nERROR while saving self energy components: ")
-                    showerror(log_file, ex)
-                    print(log_file, "\n\nFor further information please refer to the CRASH file\n\n")
-        
-                    # console
-                    print(@red "\n\nERROR")
-                    print(" while saving self energy components: ")
-                    showerror(stdout, ex)
-                    print("\n\nFor further information please refer to the CRASH file\n\n")
+                    writeToCrashFile(inp)
+
+                    # console / log file
+                    printWarning("Error while saving self energy components.", log_file, ex=ex)
                 end
             end
             
-
-#=
-            plot(wsi, shifti)
-            savefig("shift_nomu_"*string(inp.Wcut)*".png")
-
-            plot(wsi, znormip)
-            savefig("Z_nomu_"*string(inp.Wcut)*".png")
-
-            plot(wsi, deltai)
-            savefig("delta_nomu_"*string(inp.Wcut)*".png")
-=#
             return data
             break
         end
 
         # Gap too small
-        if data[2] < 0.1 && i_it > maximum([minIt, inp.nItFullCoul+1])
+        if data[2] < inp.minGap && i_it > maximum([minIt, inp.nItFullCoul+1])
             println(replace(console["Hline"], "." => " "))
-            printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than 0.1 meV!\n\n"; bold=false)
+            printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than "*string(round(inp.minGap, digits=2))*" meV!\n\n"; bold=false)
 
             println(log_file, replace(console["Hline"], "." => " "))
-            printstyled(log_file, "\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than 0.1 meV!\n\n"; bold=false)
+            printstyled(log_file, "\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than "*string(round(inp.minGap, digits=2))*" meV!\n\n"; bold=false)
 
             data[2] = NaN
             return data
@@ -375,8 +335,12 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
     end
 end
 
+ 
+"""
+    solve_eliashberg(inp, console, matval, ML_Tc, log_file)
 
-# For each temperature solve eliashberg equations
+Start the Tc search mode or solve the eliashberg equations for each temperature
+"""
 function findTc(inp, console, matval, ML_Tc, log_file)
     inp.temps = sort(inp.temps)
     nT = size(inp.temps, 1)
@@ -387,7 +351,129 @@ function findTc(inp, console, matval, ML_Tc, log_file)
     Tc = [NaN, NaN]
 
 
-    if inp.TcSearchMode_flag == 0
+    if inp.temps == [-1]    # Tc search mode
+        # initial guess, Machine learning Tc           
+        itemp = maximum([1.0, round(ML_Tc)])
+
+        # expansion of a + b*log(c-x) at x = 0, a=Delta(T2), b=1, c=Delta(T1)
+        m(x, p) = p[1] + log(p[3]) .- p[2] * x ./ p[3] .- p[2] * x .^ 2 / (2 * p[3]^2) .- p[2] * x .^ 3 / (3 * p[3]^3) .- p[2] * x .^ 4 / (4 * p[3]^4) .- p[2] * x .^ 5 / (5 * p[3]^5)
+        inp.temps = Vector{Float64}()
+        fitFlag = true
+        while true
+            # save iterations
+            inp.temps = push!(inp.temps, itemp)
+
+            # solve Eliashberg equations
+            data = solve_eliashberg(itemp, inp, console, matval, log_file)
+            if inp.cDOS_flag == 0
+                Znorm0 = push!(Znorm0, data[1])
+                Delta0 = push!(Delta0, data[2])
+                Shift0 = push!(Shift0, data[3])
+                EfMu   = push!(EfMu, data[4])
+            elseif inp.cDOS_flag == 1
+                Znorm0 = push!(Znorm0, data[1])
+                Delta0 = push!(Delta0, data[2])
+            end
+
+
+            # Escape
+            if itemp < 1 && isnan(Delta0[end])
+                # log file
+                print(log_file, "Lowest temperature of Tc search mode reached. If you want to search at even lower temperatures consider setting them manually!\n")
+
+                print("Lowest temperature of Tc search mode reached. If you want to search at even lower temperatures consider setting them manually!\n")
+
+                Tc = [NaN, 0.5]
+                break
+            elseif length(inp.temps) > 500
+                # log file
+                print(log_file, "Couldn't find a Tc! \n")
+
+                print("Couldn't find a Tc! \n")
+
+                break
+            end
+
+            order = sortperm(inp.temps)
+            if length(Delta0) >= 2 && any(diff(inp.temps[order]) .<= 1 .& (.~isnan.(Delta0[order][1:end-1]) .& isnan.(Delta0[order][2:end])))
+                # converged and sort
+                inp.temps = inp.temps[order]
+                Delta0 = Delta0[order]
+                Tc = [maximum(inp.temps[.~isnan.(Delta0)]), minimum(inp.temps[isnan.(Delta0)])]
+                break
+
+            elseif all(isnan.(Delta0))
+                # temperature too high
+                if itemp > 1
+                    itemp = ceil(itemp / 2)
+                else
+                    # lowest T
+                    itemp = 1/2 
+                end
+
+            elseif sum(.~isnan.(Delta0)) == 1 
+                # get a second gap value
+                if length(Delta0) == 1
+                    itemp = itemp + round(maximum([itemp / 2, 2]))      
+                else
+                    itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
+                end
+
+            elseif sum(.~isnan.(Delta0)) == 2 && fitFlag
+                # fit only once
+                fitFlag = false
+
+                nnanDelta = .~isnan.(Delta0)
+                # fit gap values
+                p0 = convert(Vector{Float64}, [maximum(Delta0[nnanDelta]), 1, minimum(Delta0[nnanDelta])])
+                try
+                    fit = curve_fit(m, inp.temps[nnanDelta], Delta0[nnanDelta], p0)
+                    par = fit.param
+
+                    # find root
+                    m2(x) = m(x, par)
+                    itemp = floor(find_zero(m2, par[2]))
+   
+                catch                   
+                    # expansion to third order --> analytical formula for root (only one real root)
+                    a=p0[1]
+                    c=p0[3]
+                    itemp = -c / 2
+                    itemp += -(3 * c^2) / (2 * (5 * c^3 + 12 * a * c^3 + 
+                                2 * sqrt(13 * c^6 + 30 * a * c^6 + 36 * a^2 * c^6))^(1/3))
+                    itemp += 0.5 * (5 * c^3 + 12 * a * c^3 + 
+                                2 * sqrt(13 * c^6 + 30 * a * c^6 + 36 * a^2 * c^6))^(1/3)
+                    itemp = round(itemp)
+                    # formula works only if a,c are far away from the Tc
+                    # if a,c close to Tc the estimated T will be too small but this case is caputred by the sanity check
+                end
+
+                # sanity check
+                if length(Delta0) == 2  # no nans
+                    if itemp < maximum(inp.temps)       # error in fit
+                        itemp = ceil(maximum(inp.temps)*3/2)
+                    elseif itemp == maximum(inp.temps)  # fit equals highest converged value
+                        itemp += maximum([2, round(itemp/10)])
+                    end
+                elseif length(Delta0) >= 2
+                    # prevent search below converged T, above not converged T
+                    if itemp <= maximum(inp.temps[nnanDelta]) || itemp >= minimum(inp.temps[isnan.(Delta0)])
+                        itemp = ceil((maximum(inp.temps[nnanDelta]) + minimum(inp.temps[isnan.(Delta0)]))/2)
+                    end
+
+                end
+            else
+                # search around fit value
+                if any(isnan.(Delta0)) 
+                    itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
+                else
+                    itemp += maximum([2, round(itemp/5)])
+                end
+            end
+            
+        end
+
+    else    # given temperatures
         for iT in 1:nT
             itemp = inp.temps[iT]
 
@@ -420,122 +506,6 @@ function findTc(inp, console, matval, ML_Tc, log_file)
             Tc[1] = inp.temps[end]
         end
 
-    elseif inp.TcSearchMode_flag == 1
-
-        # initial guess, Machine learning Tc           
-        itemp = round(ML_Tc)
-        # rewrite s.t. user can specify array of temps which are all used for fitting ?
-
-        # expansion of a + b*log(c-x) at x = 0, use other function instead??
-        m(x, p) = p[1] + log(p[3]) .- p[2] * x ./ p[3] .- p[2] * x .^ 2 / (2 * p[3]^2) .- p[2] * x .^ 3 / (3 * p[3]^3) .- p[2] * x .^ 4 / (4 * p[3]^4) .- p[2] * x .^ 5 / (5 * p[3]^5)
-        inp.temps = Vector{Float64}()
-        fitFlag = true
-        while true
-            # save iterations
-            inp.temps = push!(inp.temps, itemp)
-
-            # solve Eliashberg equations
-            data = solve_eliashberg(itemp, inp, console, matval, log_file)
-            if inp.cDOS_flag == 0
-                Znorm0 = push!(Znorm0, data[1])
-                Delta0 = push!(Delta0, data[2])
-                Shift0 = push!(Shift0, data[3])
-                EfMu = push!(EfMu, data[4])
-            elseif inp.cDOS_flag == 1
-                Znorm0 = push!(Znorm0, data[1])
-                Delta0 = push!(Delta0, data[2])
-            end
-
-
-            # Escape
-            if itemp < 1 && isnan(Delta0[end])
-                # log file
-                print(log_file, "\nTemperature already below 1 K. Material is most likely not a superconductor!\n")
-
-
-                print("\nTemperature already below 1 K. Material is most likely not a superconductor!\n")
-
-                break
-            elseif length(inp.temps) > 500
-                # log file
-                print(log_file, "Couldn't find a Tc! \n")
-
-
-                print("Couldn't find a Tc! \n")
-
-                break
-            end
-
-            order = sortperm(inp.temps)
-            if length(Delta0) >= 2 && any(diff(inp.temps[order]) .<= 1 .& (.~isnan.(Delta0[order][1:end-1]) .& isnan.(Delta0[order][2:end])))
-                # converged and sort
-                inp.temps = inp.temps[order]
-                Delta0 = Delta0[order]
-                Tc = [maximum(inp.temps[.~isnan.(Delta0)]), minimum(inp.temps[isnan.(Delta0)])]
-                break
-
-            elseif all(isnan.(Delta0))
-                # temperature too high
-                if itemp > 1
-                    itemp = ceil(itemp / 2)
-                else
-                    # lowest T
-                    itemp = 1/2 
-                end
-
-            elseif sum(.~isnan.(Delta0)) == 1 
-                # get a second gap value
-                if length(Delta0) == 1
-                    itemp = itemp + round(maximum([itemp / 3, 2]))
-                else
-                    itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
-                end
-
-            elseif sum(.~isnan.(Delta0)) == 2 && fitFlag
-                # fit only once
-                fitFlag = false
-
-                nnanDelta = .~isnan.(Delta0)
-                try
-                    # fit gap values
-                    p0 = convert(Vector{Float64}, [maximum(Delta0[nnanDelta]), 1, minimum(Delta0[nnanDelta])])
-                    fit = curve_fit(m, inp.temps[nnanDelta], Delta0[nnanDelta], p0)
-                    par = fit.param
-
-                    # find root
-                    m2(x) = m(x, par)
-                    itemp = floor(find_zero(m2, par[2]))
-                catch
-                    itemp = maximum(inp.temps[nnanDelta]) + sum(inp.temps[nnanDelta]) / 2
-                end
-
-                # sanity check
-                if length(Delta0) == 2  # no nans
-                    if itemp < maximum(inp.temps)       # error in fit
-                        itemp = ceil(maximum(inp.temps)*3/2)
-                    elseif itemp == maximum(inp.temps)  # fit equals highest value
-                        itemp += maximum([2, round(itemp/10)])
-                    end
-                elseif length(Delta0) >= 2
-                    # prevent search below converged T, above not converged T
-                    if itemp <= maximum(inp.temps[.~isnan.(Delta0)]) || itemp >= minimum(inp.temps[isnan.(Delta0)])
-                        itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
-                    end
-
-                end
-            else
-                # search around fit value
-                if any(isnan.(Delta0)) 
-                    itemp = ceil((maximum(inp.temps[.~isnan.(Delta0)]) + minimum(inp.temps[isnan.(Delta0)]))/2)
-                else
-                    itemp += maximum([2, round(itemp/10)])
-                end
-            end
-            
-        end
-
-    else
-        error("Unknown Tc search mode! Please change the TcSearchMode_flag to an valid value!")
     end
 
     printTextCentered("Stopping now!", console["partingLine"], file = log_file, bold = true)
@@ -546,31 +516,47 @@ end
 
 
 """
-    EliashbergSolver(arguments)
+    EliashbergSolver(inp)
 
 Main function. User has to pass the input arguments and it returns the Tc.
 """
-function EliashbergSolver(inp::arguments, testFlag=false)
+function EliashbergSolver(inp::arguments)
 
     dt = @elapsed begin
 
-        ### Create directory
-        inp, log_file = createDirectory(inp::arguments)
+        strIsoME = printIsoME()
 
+        ### Create directory
+        inp, log_file, errorLogger = createDirectory(inp, strIsoME)
+        
         ### Check input
         try
-            inp = checkInput(inp, log_file)
+            inp = checkInput(inp)
         catch ex
-            crashFile = open(inp.outdir * "CRASH", "a")
-            showerror(crashFile, ex)
-            print("\n\n")
-            close(crashFile)
+            # crash file
+            writeToCrashFile(inp)
 
+            # console / log file
+            printError("in input structure. Stopping now!", ex, log_file, errorLogger)
+ 
             rethrow(ex)
         end
 
         ### read inputs
-        inp, console, matval, ML_Tc = InputParser(inp, log_file)
+        matval = ()
+        ML_Tc = NaN
+        console = Dict()
+        try
+            inp, console, matval, ML_Tc = InputParser(inp, log_file)
+        catch ex
+            # crash file
+            writeToCrashFile(inp)
+
+            # console / log file
+            printError("while reading the inputs. Stopping now!", ex, log_file, errorLogger)
+ 
+            rethrow(ex)
+        end
 
         ### Print to console ###
         printFlagsAsText(inp, log_file)
@@ -585,123 +571,86 @@ function EliashbergSolver(inp::arguments, testFlag=false)
         try
             Tc, temps, Znorm0, Delta0, Shift0, EfMu = findTc(inp, console, matval, ML_Tc, log_file)
         catch ex
+            # crash file
+            writeToCrashFile(inp)
 
-            crashFile = open(inp.outdir * "CRASH", "a")
-            print(crashFile, current_exceptions())
-            print(crashFile, "\n\n")
-            close(crashFile)
-
-            print(log_file, "\nERROR: ")
-            showerror(log_file, ex)
-            print(log_file, "\n\nFor further information about the error please refer to the CRASH file\n")
-            close(log_file)
-
-            rethrow(ex)
+            # console / log file
+            printError("while solving the Eliashberg equations. Stopping now!", ex, log_file, errorLogger)
         end
-    
 
         ### write Tc to console
         try
             printSummary(inp, Tc, log_file)
         catch ex
-
             # crash file
-            crashFile = open(inp.outdir * "CRASH", "a")
-            print(crashFile, current_exceptions())
-            print(crashFile, "\n\n")
-            close(crashFile)
+            writeToCrashFile(inp)
 
-            # log file
-            print(log_file, "\nERROR while printing the summary:\n")
-            showerror(log_file, ex)
-            print(log_file, "\n\nFor further information please refer to the CRASH file\n")
-
-            # console
-            print(@red "\nERROR")
-            print(" while printing the summary:\n")
-            showerror(stdout, ex)
-            print("\nßnFor further information please refer to the CRASH file\n")
+            # console / log file
+            printWarning("Error while printing the summary.", log_file, ex=ex)
         end
 
-        ### write output-file
-        header = ["T / K", "Δ(0) / meV", "Z(0) / 1"]
-        out_vars = zeros(size(Delta0, 1), 3)
-        out_vars[:, 1] = temps
-        out_vars[:, 2] = Delta0
-        out_vars[:, 3] = Znorm0
-        if inp.cDOS_flag == 0
-            header = push!(header, "χ(0) / meV", "ϵ_F - μ / meV")
-            out_vars = hcat(out_vars, Shift0, EfMu)
-        end
-        try
-            writeToOutFile(Tc, inp, out_vars, header)
-        catch ex
-
-            # crash file
-            crashFile = open(inp.outdir * "CRASH", "a")
-            print(crashFile, current_exceptions())
-            print(crashFile, "\n\n")
-            close(crashFile)
-
-            # log file
-            print(log_file, "\nERROR while creating the summary file:\n")
-            showerror(log_file, ex)
-            print(log_file, "\n\nFor further information please refer to the CRASH file\n")
-
-            # console
-            print(@red "\nERROR")
-            print(" while creating the summary file:\n\n")
-            showerror(stdout, ex)
-            #println(current_exceptions())  
-            print("\n\nFor further information please refer to the CRASH file\n")
-
-            #
-
-        end
-
-        ### figures
-        if inp.flag_figure == 1
+        ### Outputs ###
+        if ~inp.testMode # no output in test mode
+            ### save inputs
             try
-                createFigures(inp, matval, Delta0, temps, log_file)
+                createInfoFile(inp)
             catch ex
-                
                 # crash file
-                crashFile = open(inp.outdir * "CRASH", "a")
-                print(crashFile, current_exceptions())
-                print(crashFile, "\n\n")
-                close(crashFile)
+                writeToCrashFile(inp)
 
-                # log file
-                print(log_file, "\nERROR while plotting: \n")
-                showerror(log_file, ex)
-                print(log_file, "\n\nFor further information please refer to the CRASH file\n")
+                # console / log file
+                printWarning("Error while creating the Info file.", log_file, ex=ex)
+            end
 
-                # console
-                print(@red "\nERROR")
-                print(" while plotting: ßn")
-                showerror(stdout, ex)
-                print("\n\nFor further information please refer to the CRASH file\n")
+
+            ### create Summary file
+            header = "# T/K  Δ(0)/meV  Z(0)/1"
+            out_vars = zeros(size(Delta0, 1), 3)
+            out_vars[:, 1] = temps
+            out_vars[:, 2] = Delta0
+            out_vars[:, 3] = Znorm0
+            if inp.cDOS_flag == 0
+                header = header * "  χ(0)/meV  ϵ_F-μ/meV"
+                out_vars = hcat(out_vars, Shift0, EfMu)
+            end
+            try
+                createSummaryFile(inp, Tc, out_vars, header)
+            catch ex
+                # crash file
+                writeToCrashFile(inp)
+
+                # console / log file
+                printWarning("Error while creating the Summary.dat file.", log_file, ex=ex)
+            end
+
+
+            ### figures
+            if inp.flag_figure == 1
+                try
+                    createFigures(inp, matval, Delta0, temps, Tc, log_file)
+                catch ex
+                    # crash file
+                    writeToCrashFile(inp)
+
+                    # console / log file
+                    printWarning("Error while plotting. Skipping plots.", log_file, ex=ex)
+                end
             end
         end
     end
 
 
     # print time elapsed
-    print("\nTotal Runtime: ", dt, " seconds\n")
+    print("\nTotal Runtime: ", round(dt, digits=2), " seconds\n")
     # log file
-    print(log_file, "\nTotal Runtime: ", dt, " seconds\n")
+    print(log_file, "\nTotal Runtime: ", round(dt, digits=2), " seconds\n")
 
     # close & save
-    close(log_file)
+    if ~inp.testMode
+        close(log_file)
+    end
 
-
-    ### !!! Better solution for runtest !!!
-    if testFlag
-        if all(isnan.(Delta0))
-            Tc = NaN
-        else
-            Tc = maximum(temps[.~isnan.(Delta0)])
-        end
+    if inp.returnTc
         return Tc
     end
 end

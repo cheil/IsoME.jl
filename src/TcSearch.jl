@@ -169,7 +169,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
                 end
 
                 new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb, fermi_level, idxShiftcut)
-                shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[4]
+                shifti = (1.0 - abs(broyden_beta)) .* shiftip .+ abs(broyden_beta) .* new_data[4]
 
                 ### Constant DoS ###
             elseif cDOS_flag == 1
@@ -177,9 +177,9 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             end
 
             # linear mixing
-            znormi = (1.0 - abs(broyden_beta)) .* znormi .+ abs(broyden_beta) .* new_data[1]
-            phiphi = (1.0 - abs(broyden_beta)) .* phiphi .+ abs(broyden_beta) .* new_data[2]
-            phici  = (1.0 - abs(broyden_beta)) .* phici  .+ abs(broyden_beta) .* new_data[3]
+            znormi = (1.0 - abs(broyden_beta)) .* znormip .+ abs(broyden_beta) .* new_data[1]
+            phiphi = (1.0 - abs(broyden_beta)) .* phiphip .+ abs(broyden_beta) .* new_data[2]
+            phici  = (1.0 - abs(broyden_beta)) .* phicip  .+ abs(broyden_beta) .* new_data[3]
             deltai = (phiphi' .+ phici) ./ znormi'
 
             rel_delta = sum(abs.(deltai[idx_ef, :] .- deltaip[idx_ef, :]))
@@ -215,14 +215,14 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
                 end
 
                 new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, fermi_level, wgCoulomb, idxShiftcut)
-                shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[3]
+                shifti = (1.0 - abs(broyden_beta)) .* shiftip .+ abs(broyden_beta) .* new_data[3]
 
             elseif cDOS_flag == 1
                 new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, deltaip, muc_ME, wgCoulomb)
             end
 
-            znormi = (1.0 - abs(broyden_beta)) .* znormi .+ abs(broyden_beta) .* new_data[1]
-            deltai = (1.0 - abs(broyden_beta)) .* deltai .+ abs(broyden_beta) .* new_data[2]
+            znormi = (1.0 - abs(broyden_beta)) .* znormip .+ abs(broyden_beta) .* new_data[1]
+            deltai = (1.0 - abs(broyden_beta)) .* deltaip .+ abs(broyden_beta) .* new_data[2]
 
             rel_delta = sum(abs.(deltai - deltaip))
             abs_delta = sum(abs.(deltai))

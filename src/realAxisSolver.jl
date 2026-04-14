@@ -356,8 +356,8 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
     # destruct inputs
     (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap) = matval
     (; cDOS_flag, include_Weep, numReal_c, reOmega_c, mixing_beta, nItFullCoul, 
-        muc_ME, mu_flag, N_it, conv_thr, flag_writeSelfEnergy, minGap) = inp
-    (Kp_func, Km_func, w_static, w_dynam) = realAxisParameter
+        muc_ME, mu_flag, N_it, conv_thr, flag_writeSelfEnergy, minGap, n_cheb) = inp
+    (Kp_func, Km_func, w_static, w_dynam, w_static_chi) = realAxisParameter
 
     printTextCentered("T = " * string(itemp) * " K ", console["partingLine"], file=log_file, bold=true)
     printTee(log_file, "\n")
@@ -376,7 +376,7 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
         ### Initialize
         deltai = ones(ComplexF64, ndos, numReal_c) .* BCS_gap
         znormi = ones(ComplexF64, numReal_c)
-        shifti = -zeros(ComplexF64, numReal_c)
+        shifti = -zeros(ComplexF64, length(w_static_chi))
         phici = -ones(ComplexF64, ndos) .* 0.1
         phiphi = ones(ComplexF64, numReal_c) .* maximum([BCS_gap, 2 * phici[1]])
         fermi_level = 0.0
@@ -393,8 +393,9 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
             ### Initialize 
             deltai = ones(numReal_c) .* 0.1 .+ im * 1e-4      #.* BCS_gap
             znormi = ones(numReal_c)    .+ im *1e-4
-            shifti = zeros(numReal_c)   .+ im *1e-4
+            shifti = zeros(length(w_static_chi))   .+ im *1e-4
             fermi_level = 0.0
+            FLIP = nothing
 
             ### Print to console & log file
             console["InitValues"] = [0 real(znormi[1]) imag(znormi[1]) real(shifti[1]) imag(shifti[1]) -fermi_level real(deltai[1]) imag(deltai[1]) nothing]
@@ -424,10 +425,10 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
         if include_Weep == 1
             if cDOS_flag == 0
                 deltaip = copy(deltai)
-                znormip = znormi
-                shiftip = shifti
-                phiphip = phiphi
-                phicip = phici
+                znormip = copy(znormi)
+                shiftip = copy(shifti)
+                phiphip = copy(phiphi)
+                phicip = copy(phici)
             end
         elseif include_Weep == 0
             if cDOS_flag == 0
@@ -481,13 +482,51 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
         elseif include_Weep == 0
 
             if cDOS_flag == 0
-                # !! NOT FINISHED !!
-                if mu_flag == 1 && i_it > 1
-                    #fermi_level = update_fermi_level_realAxis()
-                    fermi_level = 0.0
+                # restrict w' to grid
+                #w_prime = ifelse.((w_dynam .< reOmega_c) .& (w_dynam .> 0), w_dynam, 0.0)       # Better approach, could be done already when setting up grid, at least for vDOS
+                w_prime = w_dynam[(w_dynam .< reOmega_c) .& (w_dynam .> 0)]
+
+                # ω'-integration grid, similar to MIT
+                gap0 = real(deltai[1])
+                #gap0 = 5
+                num_wp1 = 500
+                num_wp2 = 1000
+                wp_inside = gap0 .* cos.((2 .* (0:num_wp1-1) .+ 1) ./ (2*num_wp1) .* π)
+                wp_half = 2 .+ 2 .* cos.((2 .* (floor(num_wp2/2):num_wp2-1) .+ 1) ./ (2*num_wp2) .* π)
+                wp_half = reverse(wp_half) .+ gap0
+                wp_rest = range(maximum(wp_half), reOmega_c, length=n_cheb)
+                wp = vcat(
+                    reverse(wp_inside),
+                    wp_half,
+                    collect(wp_rest)
+                )
+                w_prime = wp[wp .> 0]   # only include positive half
+
+                # println(reverse(wp_inside))
+                # println(wp_half)
+
+                # ---------- Plot ---------- #
+                if i_it < 6
+                    plot(w_static, real(znormi))
+                    savefig("testplot/znormip_real_$i_it")
+                    plot(w_static, imag(znormi))
+                    savefig("testplot/znormip_imag_$i_it")
+                    plot(w_static, real(deltaip))
+                    savefig("testplot/delta_real_$i_it")
+                    plot(w_static, imag(deltaip))
+                    savefig("testplot/delta_imag_$i_it")
+                    plot(w_static_chi, real(shiftip))
+                    savefig("testplot/chi_real_$i_it")
+                    plot(w_static_chi, imag(shiftip))
+                    savefig("testplot/chi_imag_$i_it")
                 end
 
-                znormi, deltai, shifti = realEliashbergEq(muc_ME, β, znormip, deltaip, shiftip, Kp_func, Km_func, w_dynam, w_static, reOmega_c, dosef, dos_en, dos, fermi_level)
+  
+                if mu_flag == 1 && i_it > 1
+                    fermi_level = mu_update_real_axis(itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, inp.outdir, FLIP, i_it)
+                end
+
+                znormi, deltai, shifti, FLIP = realEliashbergEq(muc_ME, β, znormip, deltaip, shiftip, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, fermi_level, i_it)
 
                 shifti = (1.0 - abs(broyden_beta)) .* shiftip .+ abs(broyden_beta) .* shifti
 
@@ -499,7 +538,7 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
 
             # mixing
             znormi = (1.0 - abs(broyden_beta)) .* znormip .+ abs(broyden_beta) .* znormi
-            deltai = (1.0 - abs(broyden_beta)) .* deltai .+ abs(broyden_beta) .* deltaip
+            deltai = (1.0 - abs(broyden_beta)) .* deltaip .+ abs(broyden_beta) .* deltai
 
             # convergence criterion
             convergence = sqrt(sum(abs2.(deltai .- deltaip))/length(deltai))
@@ -548,7 +587,7 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
 
         # convergence criterion
         minIt = 10
-        if convergence[end] / gap0 < conv_thr && i_it > maximum([minIt, nItFullCoul + 1])       
+        if abs(convergence[end] / gap0) < conv_thr && i_it > maximum([minIt, nItFullCoul + 1])       
             println(replace(console["Hline"], "." => " "))
             printstyled("\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 

@@ -46,7 +46,7 @@ const kb = 0.08617333262; # meV/K
     # Parameters
     temps::Vector{Number}   = [-1]        
     muc_AD::Float64         = -1
-    imOmega_c::Float64        = 7000.0
+    imOmega_c::Float64      = 7000.0
     muc_ME::Float64         = -1
     mu::Float64             = -1  
     ef::Float64             = -1
@@ -108,9 +108,9 @@ const kb = 0.08617333262; # meV/K
 
     # real axis inputs
     # separate input struct? 
-    reOmega_c::Float64     = 100 # real frequency cutoff
-    numReal_c::Int64    = 1000 # number of real frequency points
-    n_cheb::Int64       = 1000  # number of chebyshev points
+    reOmega_c::Float64     = 1000 # real frequency cutoff
+    numReal_c::Int64    = 2000 # number of real frequency points
+    n_cheb::Int64       = 2000  # number of chebyshev points
 end
 
 
@@ -125,7 +125,7 @@ include("WriteOutput.jl")
 include("EliashbergEq.jl")
 include("realAxisSolver.jl")
 include("realAxisEliashbergEq.jl")
-include("RealME.jl")
+include("Kernels.jl")
 include("Acon.jl")
 
 

@@ -46,101 +46,85 @@ end
 real axis Eliashberg equations in vDOS+μ approximation
 """
 function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{ComplexF64}, deltaip::Vector{ComplexF64}, shiftip::Vector{ComplexF64},
-                          Kp_func::AbstractInterpolation, Km_func::AbstractInterpolation, w_dynam::Vector{Float64}, w_static::StepRangeLen, 
-                          w_cut::Float64, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64}, fermi_level::Float64)
+                          Kp_func::AbstractInterpolation, Km_func::AbstractInterpolation, w_prime::Vector{Float64}, w_static::StepRangeLen, 
+                          w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64}, fermi_level::Float64, i_it)
 
     # delta/Z
-    phiphip = deltaip ./ znormip
+    phiphip = deltaip .* znormip
     
     # shift dos grid to fermi level
-    epsilon = epsilon .- fermi_level   
+    #epsilon = epsilon .- fermi_level 
 
-    # restrict w' to grid
-    w_prime = ifelse.((w_dynam .< w_cut) .& (w_dynam .> 0), w_dynam, 0.0)
-    
-    # ------------- ε-integration ------------- # 
-    # assuming a linear form of the dos
-    M1 = transpose((dos[2:end] .- dos[1:end-1])./(epsilon[2:end] .- epsilon[1:end-1]))
-    M0 = transpose(dos[1:end-1]) .- transpose(epsilon[1:end-1]) .* M1
-
-    # interpolate Z,χ,ϕ onto integration grid
+    # interpolate Z,χ,ϕ onto ω'-integration grid
     Z_itp = linear_interpolation(w_static, znormip, extrapolation_bc=Flat())
     phi_itp = linear_interpolation(w_static, phiphip, extrapolation_bc=Flat())
-    shift_itp = linear_interpolation(w_static, shiftip, extrapolation_bc=Flat())
+    shift_itp = linear_interpolation(w_static_chi, shiftip, extrapolation_bc=Flat())
 
-    z_ongrid = Z_itp.(w_prime)
-    phi_ongird = phi_itp.(w_prime)
-    shift_ongrid = shift_itp.(w_prime)
+    Z_ongrid = Z_itp.(w_prime)
+    phi_ongrid = phi_itp.(w_prime)
+    shift_ongrid = shift_itp.(w_prime) .- fermi_level
     
-    # Helper functions for the ε-integration
-    ε_p = sqrt.(w_prime.^2 .*z_ongrid.^2 .- phi_ongird.^2)       
-    Rplus = real.(shift_ongrid .+ ε_p)
-    Rminus = real.(shift_ongrid .- ε_p)
-    Iplus = imag.(shift_ongrid .+ ε_p)
-    Iminus = imag.(shift_ongrid .- ε_p)
-
-    # Lorentzian integrals
-    # pp --> ++ signature (Rplus, Iplus)
-    I0_pp, I1_pp, I2_pp = Lorentzians_integrals(epsilon, Rplus, Iplus)
-    I0_mm, I1_mm, I2_mm = Lorentzians_integrals(epsilon, Rminus, Iminus)
+    # ------------- ε-integration ------------- # 
+    M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I1_pp, I2_pp, I3_pp, I0_mm, I1_mm, I2_mm, I3_mm = epsilon_helpers(epsilon, dos, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
     
     # ω' integrands
     integrands = Vector{Vector{Float64}}(undef, 3)
     integrands = [zeros(size(w_prime)) for _ in 1:3]
 
-    for (idx, g) in enumerate((w_prime.*z_ongrid, phi_ongird, shift_ongrid))
-        Rg = real(g./ (2*ε_p))
-        Ig = imag(g./ (2*ε_p))
+    for (idx, g) in enumerate((w_prime.*Z_ongrid, phi_ongrid, shift_ongrid))
 
-        integrand_temp =  @. M0 * Ig *(I1_pp - I1_mm) + M1*Ig * (I2_pp -I2_mm)
-        integrand_temp += @. M0 *Ig *(Rplus*I0_pp - Rminus*I0_mm) + M1*Ig *(Rplus*I1_pp - Rminus*I1_mm)
-        integrand_temp += @. M0*Rg*(-Iplus*I0_pp +Iminus*I0_mm) + M1*Rg*(-Iplus*I1_pp + Iminus*I1_mm)
-
+        shift_int = false
         if idx == 3
-            # shift contains a ε-dependence in the numerator (Rg)
-            integrand_temp += @.  - M0 .*(Iplus.*I1_pp .- Iminus.*I1_mm) .- M1.*(Iplus.*I2_pp .- Iminus.*I2_mm)
+            shift_int = true    # extra terms in ε'-integration
         end
         
-        integrands[idx] = vec(sum(integrand_temp, dims=2))
-
+        integrands[idx] = eval_spectral_integrals(g, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, shift_int)
         #println(maximum(integrands[idx]))
     end
 
-    # enforce causality through sign flip
-
+    #println((integrands[1][1:5]))
  
     # ------------- Ω-integration ------------- #
     # evaluate K(ω,ω')
     # !!!!!!!!!!!!!!!!! Check if Km/Kp is correct in Z,chi, Delta !!!!!!!!!!!!!!!!!
     Kernel_minus = evaluate_Kernels(w_static, w_prime, Km_func)
     Kernel_plus = evaluate_Kernels(w_static, w_prime, Kp_func)
-    z_integrand = transpose(integrands[1]) .* Kernel_plus
-    phi_integrand = integrands[2] .* (transpose(Kernel_minus) .+ 1/2 *mu_star * tanh.(beta .* w_prime ./ 2))
-    shift_integrand = transpose(integrands[3]) .* Kernel_minus
+    Kernel_plus_chi = evaluate_Kernels(w_static_chi, w_prime, Kp_func)
 
-    # plot(w_prime, (real(z_integrand[1,:])), label="real")
-    # plot!(w_prime, (imag(z_integrand[1,:])), label="imag")
-    # savefig("Z_integrand_vdos.png")
+    z_integrand = abs.(transpose(integrands[1])) .* Kernel_minus    # Z-integrand must be positive (causality)
+    FLIP = ifelse.(-abs.(integrands[1]) .== integrands[1], 1, -1)    # enforce causality through sign flip
+    phi_integrand = -FLIP.*integrands[2] .* (transpose(Kernel_plus) .+ 1/2 *mu_star * tanh.(beta .* w_prime ./ 2))
+    shift_integrand = -transpose(FLIP.*integrands[3]) .* Kernel_plus_chi
 
-    # plot(w_prime, (real(phi_integrand[:,1])), label="real")
-    # plot!(w_prime, (imag(phi_integrand[:,1])), label="imag")
-    # savefig("phi_integrand_vdos.png")
+    if i_it <3
+        plot(w_prime, (real(z_integrand[1,:])), label="real")
+        plot!(w_prime, (imag(z_integrand[1,:])), label="imag")
+        savefig("Z_integrand_$i_it.png")
 
-    # plot(w_prime, (real(shift_integrand[1,:])), label="real")
-    # plot!(w_prime, (imag(shift_integrand[1,:])), label="imag")
-    # savefig("shift_integrand_vdos.png")
+        plot(w_prime, (real(phi_integrand[:,1])), label="real")
+        plot!(w_prime, (imag(phi_integrand[:,1])), label="imag")
+        savefig("phi_integrand_$i_it.png")
 
-    # error("hallo")
+        plot(w_prime, (real(shift_integrand[1,:])), label="real")
+        plot!(w_prime, (imag(shift_integrand[1,:])), label="imag")
+        savefig("shift_integrand_$i_it.png")
+
+        plot(w_static, real(trapz(w_prime, z_integrand)), label="real")
+        plot!(w_static, imag(trapz(w_prime, z_integrand)), label="imag")
+        savefig("Zintegrated_$i_it.png")
+    end
+
 
     # ------------- ω'-integration ------------- #
     # pole is automatically at 0 after ε-integration
-    Zval = 1 .+ 1/(w_static* π *dosef)*trapz(w_prime, z_integrand)
+    Zval = 1 .+ 1/(w_static* π *dosef)*trapz(w_prime, z_integrand)  
     phi_val = 1/(π *dosef)*trapz(w_prime, transpose(phi_integrand))
-    shift_val = 1/(π *dosef)*trapz(w_prime, shift_integrand)
+    shift_val = -1/(π *dosef)*trapz(w_prime, shift_integrand)
+    #shift_val .= 0
 
     delta_val = phi_val ./ Zval
 
-    return Zval, delta_val, shift_val
+    return Zval, delta_val, shift_val, FLIP
     
 end
 
@@ -166,7 +150,8 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, deltaip::Vector{Compl
 
     # update 
     w_prime = w_dynam .+ root    # shift chebyshev grid to pole of Θ(ω')
-    w_pm = ifelse.((w_prime .< w_cut) .& (w_prime .> 0), w_prime, 0.0)
+    # w_pm = ifelse.((w_prime .< w_cut) .& (w_prime .> 0), w_prime, 0.0)    # MIT version
+    w_pm = w_prime[(w_prime .< w_cut) .& (w_prime .> 0)]
 
     # delta on chebyshev grid
     Delta_func_eval = Delta_func.(w_pm)
@@ -177,7 +162,7 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, deltaip::Vector{Compl
     realPart = @. real(w_pm / sqrt_eval)
     integrand = @. realPart * evalKernel
 
-    Zval = 1 .- trapz(w_prime, transpose(integrand)) ./ w_static
+    Zval = 1 .- trapz(w_pm, transpose(integrand)) ./ w_static
 
     # Evaluate Delta
     eval_real = @. real(Delta_func_eval / sqrt_eval)
@@ -186,7 +171,7 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, deltaip::Vector{Compl
     int1 = @. eval_real * evalKernel
     int2 = @. mu_star *eval_real * tanh(beta * w_pm / 2)
 
-    Delta = (trapz(w_prime, transpose(int1)) .- trapz(w_prime, transpose(int2))) ./ Zval
+    Delta = (trapz(w_pm, transpose(int1)) .- trapz(w_pm, transpose(int2))) ./ Zval
 
     return Zval, Delta
 end
@@ -226,20 +211,72 @@ function Lorentzians_integrals(x::Vector{Float64}, A::Vector{Float64}, B::Vector
 
     x = transpose(x[:])
 
-    # I1: 1/((x+A)^2 + B^2)
+    # I0: 1/((x+A)^2 + B^2)
     I0 = @. atan((A+x)/B)/B
 
-    # I2: x/((x+A)^2 + B^2)
+    # I1: x/((x+A)^2 + B^2)
     I1h = @. log((A+x)^2 + B^2)
     I1 = @. 0.5*I1h - A*I0
 
-    # I3: x^2/((x+A)^2 + B^2)
+    # I2: x^2/((x+A)^2 + B^2)
     I2 = @. -A*I1h + (A^2-B^2)*I0 + x
+
+    # I3: x^3/((x+A)^2 + B^2)
+    I3 = @. I0*(3*A*B^2-A^3) + 0.5 *(3*A^2-B^2)*I1h + 0.5*x*(x-4*A)
 
     # Integration boundaries [ej, ej+1]
     Int0 = I0[:, 2:end] .- I0[:, 1:end-1]
     Int1 = I1[:, 2:end] .- I1[:, 1:end-1]
     Int2 = I2[:, 2:end] .- I2[:, 1:end-1]
+    Int3 = I3[:, 2:end] .- I3[:, 1:end-1]
 
-    return Int0, Int1, Int2
+    return Int0, Int1, Int2, Int3
+end
+
+
+function epsilon_helpers(epsilon, dos, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
+    # assuming a linear form of the dos
+    M1 = transpose((dos[2:end] .- dos[1:end-1])./(epsilon[2:end] .- epsilon[1:end-1]))
+    M0 = transpose(dos[1:end-1]) .- transpose(epsilon[1:end-1]) .* M1
+    
+    # Helper functions for the ε-integration
+    ε_p = sqrt.(w_prime.^2 .*Z_ongrid.^2 .- phi_ongrid.^2)       
+    Rplus = real.(shift_ongrid .+ ε_p)
+    Rminus = real.(shift_ongrid .- ε_p)
+    Iplus = imag.(shift_ongrid .+ ε_p)
+    Iminus = imag.(shift_ongrid .- ε_p)
+
+    # Lorentzian integrals
+    # pp --> ++ signature (Rplus, Iplus)
+    I0_pp, I1_pp, I2_pp, I3_pp = Lorentzians_integrals(epsilon, Rplus, Iplus)
+    I0_mm, I1_mm, I2_mm, I3_mm = Lorentzians_integrals(epsilon, Rminus, Iminus)
+
+    return M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I1_pp, I2_pp, I3_pp, I0_mm, I1_mm, I2_mm, I3_mm
+end
+
+
+"""
+    eval_speactral_integrals(g, I0_pp,  shift_int)
+"""
+function eval_spectral_integrals(g, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, shift_int::Bool=false)
+   
+    Rg = real(g./ (2*ε_p))
+    Ig = imag(g./ (2*ε_p))
+
+    integrand_temp =  @. M0 * Ig *(I1_pp - I1_mm) + M1*Ig * (I2_pp -I2_mm)
+    integrand_temp += @. M0 *Ig *(Rplus*I0_pp - Rminus*I0_mm) + M1*Ig *(Rplus*I1_pp - Rminus*I1_mm)
+    integrand_temp += @. M0*Rg*(-Iplus*I0_pp +Iminus*I0_mm) + M1*Rg*(-Iplus*I1_pp + Iminus*I1_mm)
+
+    if shift_int
+        # shift contains a ε-dependence in the numerator (Rg)
+        Rg = real(1 ./ (2*ε_p))
+        Ig = imag(1 ./ (2*ε_p))
+
+        integrand_temp +=  @. M0 * Ig *(I2_pp - I2_mm) + M1*Ig * (I3_pp -I3_mm)
+        integrand_temp += @. M0 *Ig *(Rplus*I1_pp - Rminus*I1_mm) + M1*Ig *(Rplus*I2_pp - Rminus*I2_mm)
+        integrand_temp += @.  - M0 .*Rg  .*(Iplus.*I1_pp .- Iminus.*I1_mm) .- M1 .*Rg .*(Iplus.*I2_pp .- Iminus.*I2_mm)
+    end
+
+    return vec(sum(integrand_temp, dims=2))
+
 end

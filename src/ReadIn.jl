@@ -77,7 +77,10 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
                 # interpolate 
                 dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut)
             else 
-                # no interpolation of dos
+                # cut off dos
+                idx_energies = (dos_en .> -inp.encut) .& (dos_en .< inp.encut)
+                dos_en = dos_en[idx_energies]
+                dos = dos[idx_energies]
                 Weep = nothing
             end
         end

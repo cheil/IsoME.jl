@@ -50,7 +50,7 @@ According to Lucrezi, Communication Physics, (2024) 7:33, eq. (16)
 or Lee, Computational Materials (2023) 9:156, eq. (32) 
 (See also Overleaf/Matsubara_sums)
 """
-function calc_Ne_Sc(mu, Ne_nsc, itemp, wsi, dos_en, dos, znormip, deltaip, shiftip)
+function diff_Ne(mu, Ne_nsc, itemp, wsi, dos_en, dos, znormip, deltaip, shiftip)
     # eq (9) & (11) overleaf
     diff = dos_en .- mu
     theta = (wsi' .* znormip') .^ 2 .+ (diff .+ shiftip') .^ 2 .+ (znormip' .* deltaip) .^ 2
@@ -70,27 +70,11 @@ end
 
 
 """
-    update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip)
+    root_finding(fmu)
 
-Routine to update chemical potential s.t. the number of electrons stays fixed
-
-The routine uses the bisection method to find a value for the chemical potential
-where the amount of electrons in the SC state is equal to the normal state
+Find the root of f(mu) = Ne_sc(mu) - Ne_nsc = 0.
 """
-function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, outdir)
-
-    # delta as row vector, needed if no weep
-    if size(deltaip, 2) == 1
-        deltaip = deltaip'
-    else
-        deltaip = deltaip[idxShiftcut[1]:idxShiftcut[2],:]
-    end
-
-    ### Calculate N_e in the non-SC state
-    Ne_nsc = trapz(dos_en[idxShiftcut[1]:idxShiftcut[2]], 2 .* fermiFcn(dos_en[idxShiftcut[1]:idxShiftcut[2]], 0.0, itemp) .* dos[idxShiftcut[1]:idxShiftcut[2]])   
-
-    # call calc_Ne_Sc with first argument unspecified
-    fmu(x) = calc_Ne_Sc(x, Ne_nsc, itemp, wsi, dos_en[idxShiftcut[1]:idxShiftcut[2]], dos[idxShiftcut[1]:idxShiftcut[2]], znormip, deltaip, shiftip)  
+function root_finding(fmu, outdir)
 
     ### starting values for mu
     mu0 = -100
@@ -111,7 +95,7 @@ function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxSh
         #vline(p, [mu0, mu1], label="mu")
         savefig(outdir*"muError.png")
 
-        error("The number of electrons decreases with increasing mu! Try a larger Matsubara cutoff imOmega_c")
+        error("The number of electrons decreases with increasing mu!")
     end
 
     ### find minimum interval around ef in which a sign change occurs
@@ -139,10 +123,117 @@ function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxSh
     ### calc new mu using the bisection method
     mu = bisection(fmu, mu0, mu1)
     #mu = find_zero(fmu, [mu0, mu1])
-    
 
     return mu
+end
 
+
+"""
+    update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip)
+
+Routine to update chemical potential s.t. the number of electrons stays fixed
+
+The routine uses the bisection method to find a value for the chemical potential
+where the amount of electrons in the SC state is equal to the normal state
+"""
+function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, outdir)
+
+    # delta as row vector, needed if no weep
+    if size(deltaip, 2) == 1
+        deltaip = deltaip'
+    else
+        deltaip = deltaip[idxShiftcut[1]:idxShiftcut[2],:]
+    end
+
+    ### Calculate N_e in the non-SC state
+    Ne_nsc = trapz(dos_en[idxShiftcut[1]:idxShiftcut[2]], 2 .* fermiFcn(dos_en[idxShiftcut[1]:idxShiftcut[2]], 0.0, itemp) .* dos[idxShiftcut[1]:idxShiftcut[2]])   
+
+    # call calc_Ne_Sc with first argument unspecified
+    fmu(x) = diff_Ne(x, Ne_nsc, itemp, wsi, dos_en[idxShiftcut[1]:idxShiftcut[2]], dos[idxShiftcut[1]:idxShiftcut[2]], znormip, deltaip, shiftip)  
+
+    mu = root_finding(fmu, outdir)
+    
+    return mu
 
 end
 
+
+
+#########################################################
+# --------------------- Real Axis --------------------- #
+#########################################################
+"""
+    mu_update_real_axis()
+
+Update the chemical potential to conserve charge neutrality - real axis implementation.
+"""
+function mu_update_real_axis(itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, outdir, FLIP, i_it)
+
+    # idx_shiftcut in dos ???
+
+    ### Calculate N_e in the non-SC state
+    Ne_nsc = trapz(dos_en, 2 .* fermiFcn(dos_en, 0.0, itemp) .* dos)   
+
+    # call calc_Ne_Sc with first argument unspecified
+    fmu(x) = diff_Ne_realAxis(x, Ne_nsc, itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, FLIP, outdir, i_it)
+
+
+    # ytest = Vector{Float64}()
+    # for xtest in range(-200, 0,200)
+    #     push!(ytest, fmu(xtest))
+    # end
+    # println(ytest)
+    # plot(range(-200, 0,200), ytest)
+    # savefig(outdir*"Hallo.png")
+
+    mu = root_finding(fmu, outdir)
+    
+    return mu
+end
+
+
+"""
+    diff_Ne_realAxis(mu, Ne_nsc, itemp, w_prime, dos_en, dos, znormip, deltaip, shiftip)
+
+Calculate the number of electrons in the sc state for a given chemical
+potential minus the number of electrons in the normal state
+"""
+function diff_Ne_realAxis(mu, Ne_nsc, itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, FLIP, outdir, i_it)
+
+    phiphip = deltaip.*znormip
+
+    # interpolate Z,χ,ϕ onto ω'-integration grid
+    Z_itp = linear_interpolation(w_static, znormip, extrapolation_bc=Flat())
+    phi_itp = linear_interpolation(w_static, phiphip, extrapolation_bc=Flat())
+    shift_itp = linear_interpolation(w_static_chi, shiftip, extrapolation_bc=Flat())
+
+    Z_ongrid = Z_itp.(w_prime)
+    phi_ongrid = phi_itp.(w_prime)
+    shift_ongrid = shift_itp.(w_prime)
+
+    # --------------- Causality --------------- #
+    M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I1_pp, I2_pp, I3_pp, I0_mm, I1_mm, I2_mm, I3_mm = epsilon_helpers(dos_en, dos, Z_ongrid, phi_ongrid, shift_ongrid .- mu, w_prime)
+
+    z_integrand = eval_spectral_integrals(w_prime.*Z_ongrid, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm)
+    FLIP = ifelse.(-abs.(z_integrand) .== z_integrand, 1, -1) 
+
+    # ------------- ε-integration ------------- #
+    omega_integrand = eval_spectral_integrals(shift_ongrid .- mu, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, true)     # ε + (χ(ω) - μ_F)
+           
+    
+    omega_integrand .*= FLIP
+    β = 1/(kb*itemp)
+    omega_integrand .*= tanh.(β*w_prime/2)
+
+    # plot(w_prime, omega_integrand)
+    # savefig(outdir*"integrand_"*string(i_it)*".png")
+
+    # ------------- ω-integration ------------- #
+    Ne_sc = trapz(dos_en, dos) + 2/π*trapz(w_prime, omega_integrand)
+
+    # diff between Ne in normal and sc state
+    root_eq =  Ne_nsc - Ne_sc
+
+
+    return root_eq
+end

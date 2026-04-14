@@ -20,12 +20,12 @@ An overview of the most relevant inputs is given below. Keep in mind that all `-
 | imOmega_c | Float64        | 7000 | Matsubara cutoff ``\omega_c`` in meV | |
 | encut  | Float64 |  5000  | Cutoff for integration | in meV |
 | shiftcut  | Float64 | 2000   | Cutoff for integration of shift. Always smaller than encut | in meV |
-| mixing_beta | Number     | Iteration ``\\`` dependent | Linear mixing factor | |
+| mixing_beta | Number     | Iteration ``\\`` dependent | (1-``\beta``)*old + ``\beta`` *new| |
 | cDOS_flag | Int64 |  1   | dos_file has to be specified | 0: variable dos ``\\`` 1: constant dos |
 | dos_file  |  String  |     ""    | Path to the dos-file | Required if cDOS_flag = 0 |
 | ef        | Float64  |     -1    | Fermi-energy DOS in meV | Is extracted from the header of the dos-file if not set |
 | mu_flag    | Int64 | 1   |  Update the chemical potential in vDOS calculations? | 0: no ``//`` 1: yes (recommended) |
-| nItFullCoul | Number     |  10    | Dampens Coulomb contribution unitl *nItFullCoul*th iteration | |
+| nItFullCoul | Number     |  10    | Dampens Coulomb contribution until *nItFullCoul*th iteration | |
 | include_Weep | Int64 | 0 | *Weep_file* and *Wen_file* have to be specified | 0: Morel-Anderson Pseudopotential ``\\`` 1: static Coulomb interaction ``W(\varepsilon,\varepsilon')`` |
 | Weep_file |  String  |     ""    | Path to W-file | Required if *include_Weep* = 1 |
 | Wen_file  |  String  |     ""    | Path to file containing the energy grid points of W | Only required if the energies are not contained in the *Weep_file*|

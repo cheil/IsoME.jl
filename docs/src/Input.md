@@ -36,7 +36,7 @@ An overview of the most relevant inputs is given below. Keep in mind that all `-
 | sparseSamplingTemp | Float64| 2 | maximum temperature for sparse sampling | - |
 | itpBounds | Vector{Float64} | [100,500] | interpolation intervals | - |
 | itpStepSize | Vector{Int64} | [1,5,50] | interpolation step size | - |
-| outdir | String |  pwd() | Path to the output directory | |
+| outdir | String |  pwd() | Path to the output directory | If the folder already exists "_1" will be added to the name |
 | flag_figure | Int64 |  1 | Should the gap and the ``\alpha^2F``-values be plotted? | 0: No ``\\`` 1: Yes |
 | flag_writeSelfEnergy | Int64 | 0  | Should the self-energy components be saved? | 0: No ``\\`` 1: Yes |
 | material | String | "Material" | Name of compound | Title used in plots, summary, ... |

@@ -58,17 +58,21 @@ function printStartMessage(console, log_file)
 
     strLine = "-"^(sum(console["width"])+length(console["width"])+1)
 
-    strAuthors = "  Authors: Christoph Heil, Eva Kogler, Dominik Spath\n\n"
+    strAuthors = "  Authors: Christoph Heil, Eva Kogler, Dominik Spath\n"
 
     strEliash = "Eliashberg Solver started"
 
     version = get_current_package_version("IsoME")
 
+    strVersion = "  Version: $version\n\n"
+
     
     print(strAuthors)
     print(log_file, strAuthors)
 
-    printTextCentered("Version $version", strLine, bold=false, file=log_file)
+
+    print(strVersion)
+    print(log_file, strVersion)
 
     print(strLine)
     # log file
@@ -296,6 +300,7 @@ function printTableHeader(console, log_file)
         if isnothing(initValues[i])
             print(log_file, strFormat[i])
         else
+
             Printf.format(log_file, Printf.Format(strFormat[i]), format[i, 1], " ", format[i, 2], format[i, 3], initValues[i], format[i, 4], " ")
         end
     end
@@ -381,7 +386,7 @@ function formatTableRow(vec, widthCol, prec=5, logConsole=true)
     end
 
     out = Array{String}(undef, length(vec))
-    format = zeros(length(vec), 4)
+    format = zeros(Int, length(vec), 4)
     for k in eachindex(vec)
         value = vec[k]
         width = widthCol[k]
@@ -404,15 +409,15 @@ function formatTableRow(vec, widthCol, prec=5, logConsole=true)
                 out[k] = "|%*s%*.*f%*s|"
                 if logConsole
                     spacing = (width - (numDig[1])) / 2
-                    format[k, :] = [floor(spacing), numDig[1], 0, ceil(spacing)]
+                    format[k, :] = [Int(floor(spacing)), Int(numDig[1]), Int(0), Int(ceil(spacing))]
                 else
                     spacing = (width - (sum(numDig) + 1)) / 2
-                    format[k, :] = [floor(spacing), numDig[1], numDig[2], ceil(spacing)]
+                    format[k, :] = [Int(floor(spacing)), Int(numDig[1]), Int(numDig[2]), Int(ceil(spacing))]
                 end
             else
                 out[k] = "%*s%*.*f%*s|"
                 spacing = (width - (sum(numDig) + 1)) / 2
-                format[k, :] = [floor(spacing), numDig[1], numDig[2], ceil(spacing)]
+                format[k, :] = [Int(floor(spacing)), Int(numDig[1]), Int(numDig[2]), Int(ceil(spacing))]
             end
         end
     end

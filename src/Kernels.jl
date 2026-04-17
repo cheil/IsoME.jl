@@ -42,13 +42,12 @@ function setUpAxis(inp, matval)
     W_left = a2f_omega[idx_left]
     W_right = a2f_omega[idx_right]
 
-    println("left:, ", W_left)
-
     # Parameters 
     W_cut = [W_left, W_right]
     
     # Frequency and integration grids
-    w_axis = range(0, stop=5000, length=2000) # ω linear grid to store K(ω,ω')      # numReal_c, reOmega_c
+    # w_axis must be same as w_static_chi
+    w_axis = range(0, stop=15000, length=8000) # ω linear grid to store K(ω,ω')      # numReal_c, reOmega_c
     int_axis = make_integration_axis(W_right-W_left, 500, 500, 5)      # Ω-integration axis
 
 
@@ -119,10 +118,10 @@ function compute_real_kernels(w_axis, num_w, w_max, W_left, W_cut, int_axis, f, 
     i2_grid = repeat(1:num_w, 1, num_w)
     integrals = precompute_integrals(num_w, w_max, W_left, W_cut, int_axis, G, n) #slow
 
-    idx_a = @. -i1_grid - i2_grid + 2*num_w+1
-    idx_b = @. i1_grid - i2_grid + num_w
-    idx_c = @. i2_grid - i1_grid + num_w
-    idx_d = @. i1_grid + i2_grid - 1
+    idx_a = @. -i1_grid - i2_grid + 2*num_w+1       #-w-w'
+    idx_b = @. i1_grid - i2_grid + num_w            #w-w'
+    idx_c = @. i2_grid - i1_grid + num_w            #w'-w
+    idx_d = @. i1_grid + i2_grid - 1                #w+w'
 
     Evalf_minus = f.(-w2_grid)
     Evalf_plus = f.(w2_grid)
@@ -167,10 +166,6 @@ function compute_imag_kernels(w_axis, f, n, G)
 
     Kp_imag = π .* (im_part2 .- im_part3 .- im_part4)
     Km_imag = π .* (-im_part2 .+ im_part3 .- im_part4)
-
-    plot(w_axis, Km_imag[:,1])
-    savefig("Km_imag.png")
-
 
     return Kp_imag, Km_imag
 end
@@ -321,24 +316,17 @@ function kernels(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left)
 
     # Compute real and imaginary parts of kernels
     Kp_imag, Km_imag = compute_imag_kernels(w_axis, f, n, a2F_itp)
-    Kp_real, Km_real = compute_real_kernels(w_axis, 2000, 5000, W_left, W_cut, int_axis, f, n, a2F_itp)     # reOmega_c, numReal_c
+    Kp_real, Km_real = compute_real_kernels(w_axis, length(w_axis), w_axis[end], W_left, W_cut, int_axis, f, n, a2F_itp)     # reOmega_c, numReal_c
 
     # Combine into complex kernels
     Kp = Kp_real .+ im .* (Kp_imag)
     Km = Km_real .+ im .* (Km_imag)
 
-    plot(w_axis, real(Km[1,:]), label="real")
-    plot!(w_axis, imag(Km[1,:]), label="imag")
-    savefig("Km.png")
-
-    #error("s")
-
-    # Kp_func = interpolate((w_axis, w_axis), Kp, Gridded(Linear()))
-    # Km_func = interpolate((w_axis, w_axis), Km, Gridded(Linear()))
-
     Kp_func = extrapolate(scale(interpolate(Kp, BSpline(Linear())), w_axis, w_axis), 0.0 + 0.0im)
     Km_func = extrapolate(scale(interpolate(Km, BSpline(Linear())), w_axis, w_axis), 0.0 + 0.0im)
 
+    # Kp = -K(w,w') + K(w,-w')
+    # Km = K(w,w') + K(w,-w')
 
     return Kp_func, Km_func
 end
@@ -348,70 +336,9 @@ function precompute(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left)
     Kp_func, Km_func = kernels(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left)
 
     # new cheb grid
-    w_static = range(1e-3, stop=inp.reOmega_c, length=inp.numReal_c)        # grid of Z(w), Delta(w)
-    w_static_chi = range(1e-3, stop=5000, length=2000)   # grid of χ(ω), 10*inp.reOmega_c
+    w_static = range(1e-3, stop=1000, length=5000)        # grid of Z(w), Delta(w)
+    w_static_chi = range(1e-3, stop=15000, length=8000)   # grid of χ(ω), 10*inp.reOmega_c
     w_dynam = reverse(inp.reOmega_c .+ inp.reOmega_c .* cos.((2 .* (0:inp.n_cheb-1) .+ 1) .* π ./ (2 * inp.n_cheb)))    # only positvie chebyshev nodes
-
-    # heatmap(w_axis, w_axis, real.(Kp_func.(w_axis, w_axis')), xlabel="ω'", ylabel="ω", title="Re Kp")
-    # savefig("Kp_real_heatmap.png")
-    # heatmap(w_axis, w_axis, imag.(Kp_func.(w_axis, w_axis')), xlabel="ω'", ylabel="ω", title="Im Kp")
-    # savefig("Kp_imag_heatmap.png")
-
-    # heatmap(w_axis, w_axis, real.(Km_func.(w_axis, w_axis')), xlabel="ω'", ylabel="ω", title="Re Km")
-    # savefig("Km_real_heatmap.png")
-    # heatmap(w_axis, w_axis, imag.(Km_func.(w_axis, w_axis')), xlabel="ω'", ylabel="ω", title="Im Km")
-    # savefig("Km_imag_heatmap.png")
-
-    # plot(w_axis, real.([Kp_func.(t,t) for t in w_axis]), label="Re Kp")
-    # plot!(w_axis, imag.([Kp_func.(t,t) for t in w_axis]), label="Im Kp")
-    # savefig("Kp.png")
-
-    # plot(w_axis, real.([Km_func.(t,t) for t in w_axis]), label="Re Km")
-    # plot!(w_axis, imag.([Km_func.(t,t) for t in w_axis]), label="Im Km")
-    # savefig("Km.png")
-
-    println(Km_func(99.0991, 2248.40167379855))
-
-    #error("Hallo")
-
-    w_prime = w_dynam
-    folder = inp.outdir * "Kernels/"
-    if ~isdir(folder)
-        mkpath(folder)
-    end
-
-    Kp_vals = evaluate_Kernels(w_static, w_prime, Kp_func)
-    Km_vals = evaluate_Kernels(w_static, w_prime, Km_func)
-
-    open(folder * "w_static.dat", "w") do io
-        write(io, "# w_static / meV\n")
-        writedlm(io, collect(w_static), '\t')
-    end
-
-    open(folder * "w_prime.dat", "w") do io
-        write(io, "# w_prime / meV\n")
-        writedlm(io, w_prime, '\t')
-    end
-
-    open(folder * "Kp_func_real.dat", "w") do io
-        write(io, "# rows: w_static, columns: w_prime\n")
-        writedlm(io, real.(Kp_vals), '\t')
-    end
-
-    open(folder * "Kp_func_imag.dat", "w") do io
-        write(io, "# rows: w_static, columns: w_prime\n")
-        writedlm(io, imag.(Kp_vals), '\t')
-    end
-
-    open(folder * "Km_func_real.dat", "w") do io
-        write(io, "# rows: w_static, columns: w_prime\n")
-        writedlm(io, real.(Km_vals), '\t')
-    end
-
-    open(folder * "Km_func_imag.dat", "w") do io
-        write(io, "# rows: w_static, columns: w_prime\n")
-        writedlm(io, imag.(Km_vals), '\t')
-    end
 
     return (Kp_func, Km_func, w_static, w_dynam, w_static_chi)
 

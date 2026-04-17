@@ -40,8 +40,7 @@ Start message - Eliashberg Solver
 """
 function printStartMessage(console::Dict, log_file; mode = 0)
 
-    strAuthors =  "  Authors: Christoph Heil, Dominik Spath, Eva Kogler\n"
-    strAuthors *= "           Alejandro Simon, \n\n"
+    strAuthors =  "  Authors: Christoph Heil, Dominik Spath, Eva Kogler\n\n"
 
     if mode == 0
         strLine = "-"^(sum(console["width"])+length(console["width"])+1)

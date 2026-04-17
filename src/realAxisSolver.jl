@@ -189,7 +189,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
 
             β = 1 / (kb * itemp)
 
-            realAxisParameter = precompute(β, inp, w_axis, W_cut, int_axis, a2F_it, W_left)
+            realAxisParameter = precompute(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left)
 
             # solve Eliashberg equations
             data = solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
@@ -489,10 +489,11 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
                 # ω'-integration grid, similar to MIT
                 gap0 = real(deltai[1])
                 #gap0 = 5
-                num_wp1 = 500
-                num_wp2 = 1000
+                num_wp1 = 1000
+                num_wp2 = 10000
+                wp_max = 2
                 wp_inside = gap0 .* cos.((2 .* (0:num_wp1-1) .+ 1) ./ (2*num_wp1) .* π)
-                wp_half = 2 .+ 2 .* cos.((2 .* (floor(num_wp2/2):num_wp2-1) .+ 1) ./ (2*num_wp2) .* π)
+                wp_half = wp_max .+ wp_max .* cos.((2 .* (floor(num_wp2/2):num_wp2-1) .+ 1) ./ (2*num_wp2) .* π)
                 wp_half = reverse(wp_half) .+ gap0
                 wp_rest = range(maximum(wp_half), 5000, length=num_wp2)
                 wp = vcat(
@@ -501,32 +502,12 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
                     collect(wp_rest)
                 )
                 w_prime = wp[wp .> 0]   # only include positive half
-
-                # println(reverse(wp_inside))
-                # println(wp_half)
-
-                # ---------- Plot ---------- #
-                if i_it < 6
-                    plot(w_static, real(znormi))
-                    savefig("testplot/znormip_real_$i_it")
-                    plot(w_static, imag(znormi))
-                    savefig("testplot/znormip_imag_$i_it")
-                    plot(w_static, real(deltaip))
-                    savefig("testplot/delta_real_$i_it")
-                    plot(w_static, imag(deltaip))
-                    savefig("testplot/delta_imag_$i_it")
-                    plot(w_static_chi, real(shiftip))
-                    savefig("testplot/chi_real_$i_it")
-                    plot(w_static_chi, imag(shiftip))
-                    savefig("testplot/chi_imag_$i_it")
-                end
-
   
                 if mu_flag == 1 ##&& i_it > 1
-                    fermi_level = mu_update_real_axis(itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, inp.outdir, FLIP, i_it)
+                    fermi_level = mu_update_real_axis(itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, inp.outdir, i_it)
                 end
 
-                znormi, deltai, shifti, FLIP = realEliashbergEq(muc_ME, β, znormip, deltaip, shiftip, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, fermi_level, i_it)
+                znormi, deltai, shifti = realEliashbergEq(muc_ME, β, znormip, deltaip, shiftip, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, fermi_level, i_it)
 
                 shifti = (1.0 - abs(broyden_beta)) .* shiftip .+ abs(broyden_beta) .* shifti
 

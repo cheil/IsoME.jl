@@ -11,28 +11,12 @@
 """
 
 
+"""
+    fermiFcn(epsilon, mu, T)
 
+Fermi-Dirac distribution n_F(epsilon-mu; T)
+"""
 function fermiFcn(epsilon, mu, T)
-    """
-    Fermi-Dirac distribution
-
-    --------------------------------------------------------------------
-    Input:
-        mu:         chemical potential/fermi energy
-        epsilon:    energies 
-        T:          Temperature
-
-    --------------------------------------------------------------------
-    Output:
-        nF:         Fermi-Dirac distribution
-
-    --------------------------------------------------------------------
-    Comments:
-        -
-        
-    -------------------------------------------------------------------- 
-    """
-
 
     nF = 1.0 ./(exp.((epsilon.-mu)/(kb*T)).+1)
 
@@ -72,7 +56,7 @@ end
 """
     root_finding(fmu)
 
-Find the root of f(mu) = Ne_sc(mu) - Ne_nsc = 0.
+Find the root of f(mu) = Ne_nsc(mu) - Ne_sc = 0.
 """
 function root_finding(fmu, outdir)
 
@@ -104,19 +88,19 @@ function root_finding(fmu, outdir)
     mu1error = mu1
     while fmu0 * fmu1 > 0
         if sign(fmu0) < 0
-            mu0error -= 100
-            mu0 -= 100
-            mu1 -= 100
+            mu0error -= 200
+            mu0 -= 200
+            mu1 -= 200
             fmu0 = fmu(mu0)
         else
-            mu0 += 100
-            mu1 += 100
-            mu1error += 100
+            mu0 += 200
+            mu1 += 200
+            mu1error += 200
             fmu1 = fmu(mu1)
         end
         iter += 1
-        if iter > 200
-            error("Error in mu update - Couldn't find a root. Please check your input files, in particular the dos-file.")
+        if iter > 50    # 10 eV
+            error("Error in mu update - Couldn't find a root in the interval [$mu0error,$mu1error]. Please check your input files, in particular the dos-file.")
         end
     end
 
@@ -131,10 +115,7 @@ end
 """
     update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip)
 
-Routine to update chemical potential s.t. the number of electrons stays fixed
-
-The routine uses the bisection method to find a value for the chemical potential
-where the amount of electrons in the SC state is equal to the normal state
+Routine to update chemical potential to fix the number of electrons
 """
 function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, outdir)
 
@@ -167,7 +148,7 @@ end
 
 Update the chemical potential to conserve charge neutrality - real axis implementation.
 """
-function mu_update_real_axis(itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, outdir, FLIP, i_it)
+function mu_update_real_axis(itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, outdir, i_it)
 
     # idx_shiftcut in dos ???
 
@@ -175,21 +156,21 @@ function mu_update_real_axis(itemp, w_static, w_static_chi, w_prime, dos_en, dos
     Ne_nsc = 2 .* trapz(dos_en, fermiFcn(dos_en, 0.0, itemp) .* dos)   
 
     # call calc_Ne_Sc with first argument unspecified
-    fmu(x) = diff_Ne_realAxis(x, Ne_nsc, itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, FLIP, outdir, i_it)
+    fmu(x) = diff_Ne_realAxis(x, Ne_nsc, itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, outdir, i_it)
 
-    fmu(-4000)
-
-    ytest = Vector{Float64}()
-    for xtest in range(-5000, 0,100)
-        push!(ytest, fmu(xtest))
+    if i_it == 1
+        ytest = Vector{Float64}()
+        for xtest in range(-2000,20)
+            push!(ytest, fmu(xtest))
+        end
+        #println(ytest)
+        plot(range(-2000, 0,20), ytest)
+        savefig("mutest.png")
     end
-    #println(ytest)
-    plot(range(-5000, 0,100), ytest)
-    savefig("mutest.png")
 
-    mu = find_zero(fmu, 0.0, Order1())
+    #mu = find_zero(fmu, 0.0, Order1())
 
-    #mu = root_finding(fmu, outdir)
+    mu = root_finding(fmu, outdir)
     
     return mu
 end
@@ -201,40 +182,27 @@ end
 Calculate the number of electrons in the sc state for a given chemical
 potential minus the number of electrons in the normal state
 """
-function diff_Ne_realAxis(mu, Ne_nsc, itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, FLIP, outdir, i_it)
+function diff_Ne_realAxis(mu, Ne_nsc, itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, outdir, i_it)
 
     phiphip = deltaip.*znormip
 
-    # interpolate Z,χ,ϕ onto ω'-integration grid
+    # interpolate Z,χ,ϕ 
     Z_itp = linear_interpolation(w_static, znormip, extrapolation_bc=Flat())
     phi_itp = linear_interpolation(w_static, phiphip, extrapolation_bc=Flat())
     shift_itp = linear_interpolation(w_static_chi, shiftip, extrapolation_bc=Flat())
 
     Z_ongrid = Z_itp.(w_prime)
     phi_ongrid = phi_itp.(w_prime)
-    shift_ongrid = shift_itp.(w_prime)
+    shift_ongrid = shift_itp.(w_prime) .- mu
 
     # --------------- Causality --------------- #
-    M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I1_pp, I2_pp, I3_pp, I0_mm, I1_mm, I2_mm, I3_mm = epsilon_helpers(dos_en, dos, Z_ongrid, phi_ongrid, shift_ongrid .- mu, w_prime)
+    M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I1_pp, I2_pp, I3_pp, I0_mm, I1_mm, I2_mm, I3_mm = epsilon_helpers(dos_en, dos, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
 
-
-    #println("I0_pp", I0_pp[1:10])
-
-    z_integrand = eval_spectral_integrals(w_prime.*Z_ongrid, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, false, python_style=true, epsilon=dos_en)     # ε + (χ(ω) - μ_F)
+    z_integrand = eval_spectral_integrals(w_prime.*Z_ongrid, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, false)     
     FLIP = ifelse.(-abs.(z_integrand) .== z_integrand, 1, -1) 
 
-    #print(z_integrand[1:10])
-
-    #error("s")
-
-
     # ------------- ε-integration ------------- #
-    omega_integrand = eval_spectral_integrals(shift_ongrid-mu, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, true)     # ε + (χ(ω) - μ_F)
-    
-    # plot(w_prime, omega_integrand)
-    # savefig("integrand_"*string(i_it)*".png")
-
-    # error("a")
+    omega_integrand = eval_spectral_integrals(shift_ongrid, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, true)     # ε + (χ(ω) - μ_F)
 
     omega_integrand .*= FLIP
     β = 1/(kb*itemp)

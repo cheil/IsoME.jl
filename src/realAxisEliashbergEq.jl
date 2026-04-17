@@ -78,7 +78,7 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
             shift_int = true    # extra terms in ε'-integration
         end
         
-        integrands[idx] = eval_spectral_integrals(g, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, shift_int)
+        integrands[idx] = eval_spectral_integrals(g, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, shift_int, python_style=true, epsilon=epsilon)
         #println(maximum(integrands[idx]))
     end
 
@@ -91,35 +91,51 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
     Kernel_plus = evaluate_Kernels(w_static, w_prime, Kp_func)
     Kernel_plus_chi = evaluate_Kernels(w_static_chi, w_prime, Kp_func)
 
-    z_integrand = abs.(transpose(integrands[1])) .* Kernel_minus    # Z-integrand must be positive (causality)
+
+    z_integrand = -abs.(transpose(integrands[1])) .* Kernel_minus    # Z-integrand must be positive (causality)
     FLIP = ifelse.(-abs.(integrands[1]) .== integrands[1], 1, -1)    # enforce causality through sign flip
-    phi_integrand = -FLIP.*integrands[2] .* (transpose(Kernel_plus) .+ 1/2 *mu_star * tanh.(beta .* w_prime ./ 2))
+    phi_integrand = -FLIP.*integrands[2] .* (transpose(Kernel_plus) .+ mu_star * tanh.(beta .* w_prime ./ 2))
     shift_integrand = -transpose(FLIP.*integrands[3]) .* Kernel_plus_chi
 
-    if i_it <3
-        plot(w_prime, (real(z_integrand[1,:])), label="real")
-        plot!(w_prime, (imag(z_integrand[1,:])), label="imag")
-        savefig("Z_integrand_$i_it.png")
+    # println("sum ", (sum(trapz(w_prime, Kernel_minus))))
 
-        plot(w_prime, (real(phi_integrand[:,1])), label="real")
-        plot!(w_prime, (imag(phi_integrand[:,1])), label="imag")
-        savefig("phi_integrand_$i_it.png")
+    # if i_it <3
+    #     plot(w_prime, (-abs.((integrands[1]))), label="real")
+    #     savefig("Z_integrand_$i_it.png")
 
-        plot(w_prime, (real(shift_integrand[1,:])), label="real")
-        plot!(w_prime, (imag(shift_integrand[1,:])), label="imag")
-        savefig("shift_integrand_$i_it.png")
+    #     plot(w_prime, real(Kernel_minus[11,:]), label="real")
+    #     plot!(w_prime, imag(Kernel_minus[11,:]), label="imag")
+    #     savefig("Kminus_$i_it.png")
 
-        plot(w_static, real(trapz(w_prime, z_integrand)), label="real")
-        plot!(w_static, imag(trapz(w_prime, z_integrand)), label="imag")
-        savefig("Zintegrated_$i_it.png")
-    end
+    #     plot(w_prime, real(Kernel_minus[320,:]), label="real")
+    #     plot!(w_prime, imag(Kernel_minus[320,:]), label="imag")
+    #     savefig("Kminus_320_$i_it.png")
+
+    #     plot(w_prime, ((real(z_integrand[1,:]))), label="real")
+    #     plot!(w_prime, ((imag(z_integrand[1,:]))), label="imag")
+    #     savefig("ZK_integrand_$i_it.png")
+
+    #     plot(w_prime, ((integrands[2])), label="real")
+    #     savefig("phi_integrand_$i_it.png")
+
+    #     plot(w_prime, ((integrands[3])), label="real")
+    #     savefig("shift_integrand_$i_it.png")
+
+    #     plot(w_static, real(trapz(w_prime, z_integrand)), label="real")
+    #     plot!(w_static, imag(trapz(w_prime, z_integrand)), label="imag")
+    #     savefig("Zintegrated_$i_it.png")
+
+    #     plot(w_static, real(1 ./(w_static* π *dosef).*trapz(w_prime, z_integrand)), label="real")
+    #     plot!(w_static, imag(1 ./(w_static* π *dosef) .*trapz(w_prime, z_integrand)), label="imag")
+    #     savefig("AllZintegrated_$i_it.png")
+    # end
 
 
     # ------------- ω'-integration ------------- #
     # pole is automatically at 0 after ε-integration
-    Zval = 1 .+ 1/(w_static* π *dosef)*trapz(w_prime, z_integrand)  
-    phi_val = 1/(π *dosef)*trapz(w_prime, transpose(phi_integrand))
-    shift_val = -1/(π *dosef)*trapz(w_prime, shift_integrand)
+    Zval = 1 .+ 1 ./(w_static* π *dosef) .*trapz(w_prime, z_integrand)  
+    phi_val = 1 ./(π *dosef) .*trapz(w_prime, transpose(phi_integrand))
+    shift_val = -1 ./(π *dosef) .*trapz(w_prime, shift_integrand)
     #shift_val .= 0
 
     delta_val = phi_val ./ Zval
@@ -258,24 +274,71 @@ end
 """
     eval_speactral_integrals(g, I0_pp,  shift_int)
 """
-function eval_spectral_integrals(g, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, shift_int::Bool=false)
+function eval_spectral_integrals(g, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, shift_int::Bool=false; python_style::Bool=false, epsilon=nothing)
    
     Rg = real(g./ (2*ε_p))
     Ig = imag(g./ (2*ε_p))
 
-    integrand_temp =  @. M0 * Ig *(I1_pp - I1_mm) + M1*Ig * (I2_pp -I2_mm)
-    integrand_temp += @. M0 *Ig *(Rplus*I0_pp - Rminus*I0_mm) + M1*Ig *(Rplus*I1_pp - Rminus*I1_mm)
-    integrand_temp += @. M0*Rg*(-Iplus*I0_pp +Iminus*I0_mm) + M1*Rg*(-Iplus*I1_pp + Iminus*I1_mm)
+    if python_style
+        isnothing(epsilon) && error("epsilon must be supplied when python_style=true")
 
-    if shift_int
-        # shift contains a ε-dependence in the numerator (Rg)
-        Rg = real(1 ./ (2*ε_p))
-        Ig = imag(1 ./ (2*ε_p))
+        E1 = transpose(epsilon[1:end-1])
+        E2 = transpose(epsilon[2:end])
 
-        integrand_temp +=  @. M0 * Ig *(I2_pp - I2_mm) + M1*Ig * (I3_pp -I3_mm)
-        integrand_temp += @. M0 *Ig *(Rplus*I1_pp - Rminus*I1_mm) + M1*Ig *(Rplus*I2_pp - Rminus*I2_mm)
-        integrand_temp += @.  - M0 .*Rg  .*(Iplus.*I1_pp .- Iminus.*I1_mm) .- M1 .*Rg .*(Iplus.*I2_pp .- Iminus.*I2_mm)
+        function dos_int_terms(R, I, Rg, Ig)
+            B = @. R*Ig - I*Rg
+            log_diff = @. log((E2 + R)^2 + I^2) - log((E1 + R)^2 + I^2)
+            atan_diff = @. atan((E2 + R)/I) - atan((E1 + R)/I)
+
+            C_log = @. 0.5*(M0*Ig + M1*B) - M1*Ig*R
+            C_atan = @. M0*B/I + M1*Ig*(R^2 - I^2)/I - R/I*(M0*Ig + M1*B)
+            C_x = @. M1*Ig
+
+            return @. C_log*log_diff + C_atan*atan_diff + C_x*(E2 - E1)
+        end
+
+        integrand_temp = dos_int_terms(Rplus, Iplus, Rg, Ig) .- dos_int_terms(Rminus, Iminus, Rg, Ig)
+
+        if shift_int
+            Rg_eps = real(1 ./ (2*ε_p))
+            Ig_eps = imag(1 ./ (2*ε_p))
+
+            function dos_int_eps_terms(R, I, Rg, Ig)
+                B = @. R*Ig - I*Rg
+                log_diff = @. log((E2 + R)^2 + I^2) - log((E1 + R)^2 + I^2)
+                atan_diff = @. atan((E2 + R)/I) - atan((E1 + R)/I)
+
+                C_log = @. -R*(M0*Ig + M1*B) + 0.5*M0*B + 0.5*M1*Ig*(3*R^2 - I^2)
+                C_atan = @. M1*Rg*(I^2 - R^2) + 2*M1*Ig*R*I + M0*(Rg*R - Ig*I)
+                C_x2 = @. 0.5*M1*Ig
+                C_x = @. M0*Ig + M1*B
+
+                return @. C_log*log_diff + C_atan*atan_diff + C_x2*(E2*(E2 - 4*R) - E1*(E1 - 4*R)) + C_x*(E2 - E1)
+            end
+
+            integrand_temp += dos_int_eps_terms(Rplus, Iplus, Rg_eps, Ig_eps) .- dos_int_eps_terms(Rminus, Iminus, Rg_eps, Ig_eps)
+        end
+
+    else
+
+        integrand_temp =  @. M0 * Ig *(I1_pp - I1_mm) + M1*Ig * (I2_pp -I2_mm)
+        integrand_temp += @. M0 *Ig *(Rplus*I0_pp - Rminus*I0_mm) + M1*Ig *(Rplus*I1_pp - Rminus*I1_mm)
+        integrand_temp += @. M0*Rg*(-Iplus*I0_pp +Iminus*I0_mm) + M1*Rg*(-Iplus*I1_pp + Iminus*I1_mm)
+
+        if shift_int
+            # shift contains a ε-dependence in the numerator (Rg)
+            Rg = real(1 ./ (2*ε_p))
+            Ig = imag(1 ./ (2*ε_p))
+
+            integrand_temp +=  @. M0 * Ig *(I2_pp - I2_mm) + M1*Ig * (I3_pp -I3_mm)
+            integrand_temp += @. M0 *Ig *(Rplus*I1_pp - Rminus*I1_mm) + M1*Ig *(Rplus*I2_pp - Rminus*I2_mm)
+            integrand_temp += @.  - M0 .*Rg  .*(Iplus.*I1_pp .- Iminus.*I1_mm) .- M1 .*Rg .*(Iplus.*I2_pp .- Iminus.*I2_mm)
+        end
+
+        
     end
+
+    #println("AD: ", integrand_temp[1:5,1:5])
 
     return vec(sum(integrand_temp, dims=2))
 

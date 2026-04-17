@@ -77,10 +77,9 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
                 # interpolate 
                 dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut)
             else 
-                # cut off dos
-                idx_energies = (dos_en .> -inp.encut) .& (dos_en .< inp.encut)
-                dos_en = dos_en[idx_energies]
-                dos = dos[idx_energies]
+                # interpolate dos similar as mit
+                dos_en = collect(range(-5,20, 876))*1000
+                dos = itpDos(dos_en)
                 Weep = nothing
             end
         end
@@ -435,8 +434,8 @@ function readIn_Dos(dos_file, ef=-1, spin=2, unit="", nheader=-1, nfooter=-1; ou
         energies = energies .* Ry2meV
         dos = dos ./ Ry2meV
     elseif "Ha" == unit     # Hartree
-        energies = Weep .* Ry2meV * 2
-        dos = Wen ./ Ry2meV * 2
+        energies = energies .* Ry2meV * 2
+        dos = dos ./ Ry2meV * 2
     else
         error("Invalid Unit! Either set the unit manually via dos_unit or check the header of the Dos-file and try again!")
     end

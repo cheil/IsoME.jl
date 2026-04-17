@@ -109,7 +109,7 @@ const kb = 0.08617333262; # meV/K
     # real axis inputs
     # separate input struct? 
     reOmega_c::Float64     = 1000 # real frequency cutoff
-    numReal_c::Int64    = 2000 # number of real frequency points
+    numReal_c::Int64    = 1000 # number of real frequency points
     n_cheb::Int64       = 2000  # number of chebyshev points
 end
 

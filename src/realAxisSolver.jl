@@ -172,7 +172,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
     Tc = [NaN, NaN]
 
     ### Set up axis and parameters ###
-    W_cut, w_axis, int_axis = setUpAxis(inp, matval)
+    W_cut, W_left, w_axis, int_axis = setUpAxis(inp, matval)
 
 
     if inp.temps == [-1]    # Tc search mode
@@ -189,7 +189,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
 
             β = 1 / (kb * itemp)
 
-            realAxisParameter = precompute(β, inp, w_axis, W_cut, int_axis, a2F_itp)
+            realAxisParameter = precompute(β, inp, w_axis, W_cut, int_axis, a2F_it, W_left)
 
             # solve Eliashberg equations
             data = solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
@@ -307,7 +307,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
 
             β = 1 / (kb * itemp)
 
-            realAxisParameter = precompute(β, inp, w_axis, W_cut, int_axis, a2F_itp)
+            realAxisParameter = precompute(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left)
 
 
             # solve Eliashberg equations
@@ -393,7 +393,7 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
             ### Initialize 
             deltai = ones(numReal_c) .* 0.1 .+ im * 1e-4      #.* BCS_gap
             znormi = ones(numReal_c)    .+ im *1e-4
-            shifti = zeros(length(w_static_chi))   .+ im *1e-4
+            shifti = -zeros(ComplexF64, length(w_static_chi))
             fermi_level = 0.0
             FLIP = nothing
 
@@ -494,7 +494,7 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
                 wp_inside = gap0 .* cos.((2 .* (0:num_wp1-1) .+ 1) ./ (2*num_wp1) .* π)
                 wp_half = 2 .+ 2 .* cos.((2 .* (floor(num_wp2/2):num_wp2-1) .+ 1) ./ (2*num_wp2) .* π)
                 wp_half = reverse(wp_half) .+ gap0
-                wp_rest = range(maximum(wp_half), reOmega_c, length=n_cheb)
+                wp_rest = range(maximum(wp_half), 5000, length=num_wp2)
                 wp = vcat(
                     reverse(wp_inside),
                     wp_half,
@@ -522,7 +522,7 @@ function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, lo
                 end
 
   
-                if mu_flag == 1 && i_it > 1
+                if mu_flag == 1 ##&& i_it > 1
                     fermi_level = mu_update_real_axis(itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, inp.outdir, FLIP, i_it)
                 end
 

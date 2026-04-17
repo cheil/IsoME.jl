@@ -172,21 +172,24 @@ function mu_update_real_axis(itemp, w_static, w_static_chi, w_prime, dos_en, dos
     # idx_shiftcut in dos ???
 
     ### Calculate N_e in the non-SC state
-    Ne_nsc = trapz(dos_en, 2 .* fermiFcn(dos_en, 0.0, itemp) .* dos)   
+    Ne_nsc = 2 .* trapz(dos_en, fermiFcn(dos_en, 0.0, itemp) .* dos)   
 
     # call calc_Ne_Sc with first argument unspecified
     fmu(x) = diff_Ne_realAxis(x, Ne_nsc, itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, FLIP, outdir, i_it)
 
+    fmu(-4000)
 
-    # ytest = Vector{Float64}()
-    # for xtest in range(-200, 0,200)
-    #     push!(ytest, fmu(xtest))
-    # end
-    # println(ytest)
-    # plot(range(-200, 0,200), ytest)
-    # savefig(outdir*"Hallo.png")
+    ytest = Vector{Float64}()
+    for xtest in range(-5000, 0,100)
+        push!(ytest, fmu(xtest))
+    end
+    #println(ytest)
+    plot(range(-5000, 0,100), ytest)
+    savefig("mutest.png")
 
-    mu = root_finding(fmu, outdir)
+    mu = find_zero(fmu, 0.0, Order1())
+
+    #mu = root_finding(fmu, outdir)
     
     return mu
 end
@@ -214,19 +217,28 @@ function diff_Ne_realAxis(mu, Ne_nsc, itemp, w_static, w_static_chi, w_prime, do
     # --------------- Causality --------------- #
     M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I1_pp, I2_pp, I3_pp, I0_mm, I1_mm, I2_mm, I3_mm = epsilon_helpers(dos_en, dos, Z_ongrid, phi_ongrid, shift_ongrid .- mu, w_prime)
 
-    z_integrand = eval_spectral_integrals(w_prime.*Z_ongrid, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm)
+
+    #println("I0_pp", I0_pp[1:10])
+
+    z_integrand = eval_spectral_integrals(w_prime.*Z_ongrid, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, false, python_style=true, epsilon=dos_en)     # ε + (χ(ω) - μ_F)
     FLIP = ifelse.(-abs.(z_integrand) .== z_integrand, 1, -1) 
 
+    #print(z_integrand[1:10])
+
+    #error("s")
+
+
     # ------------- ε-integration ------------- #
-    omega_integrand = eval_spectral_integrals(shift_ongrid .- mu, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, true)     # ε + (χ(ω) - μ_F)
-           
+    omega_integrand = eval_spectral_integrals(shift_ongrid-mu, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, true)     # ε + (χ(ω) - μ_F)
     
+    # plot(w_prime, omega_integrand)
+    # savefig("integrand_"*string(i_it)*".png")
+
+    # error("a")
+
     omega_integrand .*= FLIP
     β = 1/(kb*itemp)
     omega_integrand .*= tanh.(β*w_prime/2)
-
-    # plot(w_prime, omega_integrand)
-    # savefig(outdir*"integrand_"*string(i_it)*".png")
 
     # ------------- ω-integration ------------- #
     Ne_sc = trapz(dos_en, dos) + 2/π*trapz(w_prime, omega_integrand)

@@ -61,7 +61,8 @@ const kb = 0.08617333262; # meV/K
     shiftcut::Float64          = 2000      # cutoff shift & Ne
     sparseSamplingTemp::Float64 = 2
     typEl::Float64          = -1 
-    flag_acon::Bool         = false     
+    flag_acon::Bool         = false   
+    plot_flag::Bool         = false  
     
     # interpolation
     itpStepSize::Vector{Int64}  = [1, 5, 50]
@@ -109,13 +110,13 @@ const kb = 0.08617333262; # meV/K
 
     # ----------- real axis inputs ----------- #
     # ω-grid
-    reOmega_c::Float64          = 1000 # ω-grid cutoff
-    numReal_c::Int64            = 2000 # num of ω-points
+    reOmega_c::Float64          = 2000  # ω-grid cutoff
+    numReal_c::Int64            = 5000  # num of ω-points
     # χ ω-grid
-    reOmega_c_shift::Float64    = 25000 # ω-cutoff χ(ω)
-    numReal_c_shift::Int64      = 5000 # num of ω-points χ
+    reOmega_c_shift::Float64    = 15000 # ω-cutoff χ(ω)
+    numReal_c_shift::Int64      = 20000 # num of ω-points χ
     # Ω-chebyshev
-    n_cheb::Int64               = 2000  # number of chebyshev points in Ω-integration
+    n_cheb::Int64               = 5000  # number of chebyshev points in Ω-integration
     # ω'-grid
     num_wp1::Int64              = 1000  # inner chebyshev grid
     num_wp2::Int64              = 5000  # outer chebyshev grid

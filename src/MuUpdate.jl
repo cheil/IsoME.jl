@@ -169,15 +169,15 @@ function mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime
     # call calc_Ne_Sc with first argument unspecified
     fmu(x) = diff_Ne_realAxis(x, Ne_nsc, itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, outdir, i_it)
 
-    if i_it < 5
-        ytest = Vector{Float64}()
-        for xtest in range(-200, 200, 20)
-            push!(ytest, fmu(xtest))
-        end
-        #println(ytest)
-        plot(range(-200, 200, 20), ytest)
-        savefig("mutest_$i_it.png")
-    end
+    # if i_it < 5
+    #     ytest = Vector{Float64}()
+    #     for xtest in range(-200, 200, 20)
+    #         push!(ytest, fmu(xtest))
+    #     end
+    #     #println(ytest)
+    #     plot(range(-200, 200, 20), ytest)
+    #     savefig("mutest_$i_it.png")
+    # end
 
     #mu = find_zero(fmu, 0.0, Order1())
 

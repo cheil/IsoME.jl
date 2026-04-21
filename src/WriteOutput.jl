@@ -38,36 +38,44 @@ end
 
 Start message - Eliashberg Solver
 """
-function printStartMessage(console::Dict, log_file; mode = 0)
+function printStartMessage(console::Dict, inp, log_file; mode = 0)
 
     strAuthors =  "  Authors: Christoph Heil, Dominik Spath, Eva Kogler\n\n"
 
     if mode == 0
         strLine = "-"^(sum(console["width"])+length(console["width"])+1)
 
-        #strAuthors = "  Authors: Christoph Heil, Dominik Spath, Eva Kogler\n\n"
         strMode = "Eliashberg Solver started"
 
-        printTee(log_file, strAuthors)
     elseif mode == 1
+        width = console["cDOS"]["width"]
+        strLine_cDOS = "-"^(sum(width)+length(width)+1)
+        console["cDOS"]["partingLine"] = strLine_cDOS
+
         width = console["vDOS"]["width"]
-        strLine = "-"^(sum(width)+length(width)+1)
+        strLine_vDOS = "-"^(sum(width)+length(width)+1)
+        console["vDOS"]["partingLine"] = strLine_vDOS
+
 
         strMode = "Real Axis Solver started"
 
-        printTee(log_file, strAuthors)
-    
+        # save parting lines
+        console["cDOS"]["partingLine"] = strLine_cDOS
+        console["vDOS"]["partingLine"] = strLine_vDOS
+
+        if inp.cDOS_flag == 1
+            strLine = strLine_cDOS
+        else
+            strLine = strLine_vDOS
+        end
     end
+    printTee(log_file, strAuthors)
     printTee(log_file, strLine)
 
     printTextCentered(strMode, strLine, file = log_file, bold = true)
     printTee(log_file, strLine*"\n\n\n")
     
     console["partingLine"] = strLine
-    if mode == 1
-        console["cDOS"]["partingLine"] = strLine
-        console["vDOS"]["partingLine"] = strLine
-    end
     
     return console
                                     
@@ -858,7 +866,7 @@ end
 
 plot self energy component vs omega on real axis at given temperature
 """
-function plotSelfEnergyAtT(inp, itemp, selfEnergy)
+function plotSelfEnergyAtT(inp, itemp, selfEnergy, w_real = nothing)
 
     folder = inp.outdir*"Plots/"
 
@@ -866,8 +874,11 @@ function plotSelfEnergyAtT(inp, itemp, selfEnergy)
         mkdir(folder)
     end
 
+    if isnothing(w_real)
+        w_real = range(0, inp.reOmega_c, inp.numReal_c)
+    end
 
-    w_real = range(0, inp.reOmega_c, inp.numReal_c)
+
     names = ["Gap", "Z", "Shift"]
     labels = ["Δ(ω) / meV", "Z(ω) / 1", "χ(ω) / meV"]
 

@@ -27,7 +27,7 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
 
     console = formatTableHeader(console)
 
-    console = printStartMessage(console, log_file, mode=mode)
+    console = printStartMessage(console, inp, log_file, mode=mode)
 
 
     ########## READ-IN ##########

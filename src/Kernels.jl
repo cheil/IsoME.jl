@@ -22,7 +22,6 @@ function make_integration_axis(W_cut, pts_cheb, pts_lin, epsilon)
 end
 
 
-
 """
     setUpAxis(inp, mataval)
 
@@ -43,37 +42,62 @@ function setUpAxis(inp, matval)
     
     # Frequency and integration grids
     # w_axis must be same as w_static_chi
-    w_axis = range(0, stop=max(inp.reOmega_c, inp.reOmega_c_shift), length=max(inp.numReal_c, inp.numReal_c_shift)) # ω linear grid to store K(ω,ω'), has to be dimensions max(reOmega_c, reOmega_c_shift) + same for num
+    if inp.cDOS_flag == 1
+        w_axis = range(0, stop=inp.reOmega_c, length=inp.numReal_c)
+    else
+         # ω linear grid to store K(ω,ω'), has to be dimensions max(reOmega_c, reOmega_c_shift) + same for num
+        w_axis = range(0, stop=max(inp.reOmega_c, inp.reOmega_c_shift), length=max(inp.numReal_c_shift,inp.numReal_c))
+    end
     int_axis = make_integration_axis(W_right-W_left, 300, 300, 3)      # Ω-integration axis
 
 
     return W_cut, W_left, w_axis, int_axis
 end
 
-function kernel_integral_helper(s_rel::StepRangeLen{Float64}, int_axis::Vector{Float64}, W_cut::Float64, W_left::Float64, G::AbstractInterpolation, n)
+function kernel_integral_helper(
+    s_rel::StepRangeLen{Float64},
+    int_axis::Vector{Float64},
+    W_cut::Float64,
+    W_left::Float64,
+    G::AbstractInterpolation,
+    n,
+    log_file=nothing;
+    progress_counter=nothing,
+    progress_interval=nothing,
+    progress_state=nothing,
+)
 
     N = length(s_rel)
     M = length(int_axis)
     integrand_1 = zeros(N, M)
     integrand_2 = zeros(N, M)
-    @inbounds for i in 1:N, j in 1:M
-        s = s_rel[i]
-        wz = int_axis[j]
+    @inbounds for i in 1:N
+        for j in 1:M
+            s = s_rel[i]
+            wz = int_axis[j]
 
-        included = s > 0 && s < W_cut
-        if included
-            G1 = G(wz + s + W_left)
-            if G1 > 0
-                integrand_1[i, j] = G1 / wz
+            included = s > 0 && s < W_cut
+            if included
+                G1 = G(wz + s + W_left)
+                if G1 > 0
+                    integrand_1[i, j] = G1 / wz
 
-                integrand_2[i, j] = integrand_1[i, j] * n(wz + s + W_left)
+                    integrand_2[i, j] = integrand_1[i, j] * n(wz + s + W_left)
+                end
+            else
+                G2 = G(wz + W_left)
+                if G2 > 0
+                    integrand_1[i, j] = G2 / (wz - s)
+
+                    integrand_2[i, j] = integrand_1[i, j] * n(wz + W_left)
+                end
             end
-        else
-            G2 = G(wz + W_left)
-            if G2 > 0 
-                integrand_1[i, j] = G2 / (wz - s)
- 
-                integrand_2[i, j] = integrand_1[i, j] * n(wz + W_left)
+        end
+
+        if !isnothing(progress_counter) && !isnothing(progress_interval)
+            progress_counter[] += 1
+            if mod(progress_counter[], progress_interval) == 0
+                print_kernel_progress(log_file, progress_state)
             end
         end
     end
@@ -88,31 +112,75 @@ function kernel_integral_helper(s_rel::StepRangeLen{Float64}, int_axis::Vector{F
 end
 
 
-function precompute_integrals(num_w, w_max, W_left, W_cut, int_axis, G, n)
+function precompute_integrals(num_w, w_max, W_left, W_cut, int_axis, G, n, log_file=nothing; progress_state=nothing)
     W_cut = W_cut[2]-W_cut[1]
     dw = w_max / (num_w - 1)
+    progress_counter = isnothing(log_file) || isnothing(progress_state) ? nothing : Ref(0)
+    progress_interval = isnothing(progress_counter) ? nothing : kernel_progress_interval(3 * (2 * num_w - 1), progress_state)
 
     s1_idx = 0:2*(num_w-1)
     s1_rel = (s1_idx .- 2*(num_w-1)) .* dw .- W_left
-    I1_1, I1_2 = kernel_integral_helper(s1_rel, int_axis, W_cut, W_left, G, n)
+    I1_1, I1_2 = kernel_integral_helper(
+        s1_rel,
+        int_axis,
+        W_cut,
+        W_left,
+        G,
+        n,
+        log_file;
+        progress_counter=progress_counter,
+        progress_interval=progress_interval,
+        progress_state=progress_state,
+    )
 
     s2_idx = 0:2*(num_w-1)
     s2_rel = (s2_idx .- (num_w-1)) .* dw .- W_left
-    I2_1, I2_2 = kernel_integral_helper(s2_rel, int_axis, W_cut, W_left, G, n)
+    I2_1, I2_2 = kernel_integral_helper(
+        s2_rel,
+        int_axis,
+        W_cut,
+        W_left,
+        G,
+        n,
+        log_file;
+        progress_counter=progress_counter,
+        progress_interval=progress_interval,
+        progress_state=progress_state,
+    )
 
     s4_idx = 0:2*(num_w-1)
     s4_rel = s4_idx .* dw .- W_left
-    I4_1, I4_2 = kernel_integral_helper(s4_rel, int_axis, W_cut, W_left, G, n)
+    I4_1, I4_2 = kernel_integral_helper(
+        s4_rel,
+        int_axis,
+        W_cut,
+        W_left,
+        G,
+        n,
+        log_file;
+        progress_counter=progress_counter,
+        progress_interval=progress_interval,
+        progress_state=progress_state,
+    )
 
     return [[I1_1, I1_2] [I2_1, I2_2] [I2_1, I2_2] [I4_1, I4_2]]
 end
 
-function compute_real_kernels(w_axis, num_w, w_max, W_left, W_cut, int_axis, f, n, G)
+function compute_real_kernels(w_axis, num_w, w_max, W_left, W_cut, int_axis, f, n, G, log_file=nothing, line_width=80)
+
+    progress_state = nothing
+    if !isnothing(log_file)
+        progress_state = start_kernel_progress("real", log_file, line_width)
+    end
 
     w2_grid = repeat(w_axis, 1, length(w_axis))
     i1_grid = repeat(transpose((1:num_w)), num_w)
     i2_grid = repeat(1:num_w, 1, num_w)
-    integrals = precompute_integrals(num_w, w_max, W_left, W_cut, int_axis, G, n) #slow
+    integrals = precompute_integrals(num_w, w_max, W_left, W_cut, int_axis, G, n, log_file; progress_state=progress_state) #slow
+
+    if !isnothing(log_file)
+        finish_kernel_progress(log_file, progress_state)
+    end
 
     idx_a = @. -i1_grid - i2_grid + 2*num_w+1       #-w-w'
     idx_b = @. i1_grid - i2_grid + num_w            #w-w'
@@ -132,9 +200,15 @@ function compute_real_kernels(w_axis, num_w, w_max, W_left, W_cut, int_axis, f, 
     return Kp_real, Km_real
 end
 
-function compute_imag_kernels(w_axis, f, n, a2F_itp)
+function compute_imag_kernels(w_axis, f, n, a2F_itp, log_file=nothing, line_width=80)
 
     N = length(w_axis)
+
+    progress_state = nothing
+    if !isnothing(log_file)
+        progress_state = start_kernel_progress("imag", log_file, line_width)
+    end
+    progress_interval = isnothing(log_file) ? nothing : kernel_progress_interval(N, progress_state)
 
     # im_part1 = always 0
     im_part2 = zeros(N, N)
@@ -158,11 +232,18 @@ function compute_imag_kernels(w_axis, f, n, a2F_itp)
         end
  
         im_part4[i, j] = a2F_itp(pw) * (f_w2 + n(pw))
+
+        if !isnothing(log_file) && mod(i, progress_interval) == 0 && j == N
+            print_kernel_progress(log_file, progress_state)
+        end
     end
 
     Kp_imag = π .* (im_part2 .- im_part3 .- im_part4)
     Km_imag = π .* (-im_part2 .+ im_part3 .- im_part4)
 
+    if !isnothing(log_file)
+        finish_kernel_progress(log_file, progress_state)
+    end
 
     return Kp_imag, Km_imag
 end
@@ -274,15 +355,15 @@ Compute the kernels at a given temperature
 Kp(ω,ω') = -K(ω,ω') + K(ω,-ω')
 Km(ω,ω') = K(ω,ω') + K(ω,-ω')
 """
-function kernels(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left)
+function kernels(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left, log_file=nothing, line_width=80)
 
     # Fermi-Dirac and Bose-Einstein distributions
     f = x -> 1 / (exp(β * x) + 1)
     n = x -> x == 0 ? 0.0 : abs(1 / (exp(β * x) - 1))
 
     # Compute real and imaginary parts of kernels
-    Kp_imag, Km_imag = compute_imag_kernels(w_axis, f, n, a2F_itp)
-    Kp_real, Km_real = compute_real_kernels(w_axis, length(w_axis), w_axis[end], W_left, W_cut, int_axis, f, n, a2F_itp)     # reOmega_c, numReal_c
+    Kp_imag, Km_imag = compute_imag_kernels(w_axis, f, n, a2F_itp, log_file, line_width)
+    Kp_real, Km_real = compute_real_kernels(w_axis, length(w_axis), w_axis[end], W_left, W_cut, int_axis, f, n, a2F_itp, log_file, line_width)     # reOmega_c, numReal_c
 
     # Combine into complex kernels
     Kp = Kp_real .+ im .* (Kp_imag)
@@ -294,20 +375,73 @@ function kernels(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left)
     return Kp_func, Km_func
 end
 
-function precompute(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left)
+function precompute(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left, console, log_file)
 
-    println("precomputing Kernels...")
+    printTextCentered("Precomputing Kernels", console["cDOS"]["partingLine"], file=log_file, bold=true)
+    print_kernel_log(log_file, "\n")
 
-    Kp_func, Km_func = kernels(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left)
+    Kp_func, Km_func = kernels(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left, log_file, length(console["cDOS"]["partingLine"]))
 
     # new cheb grid
     w_static = range(1e-3, stop=inp.reOmega_c, length=inp.numReal_c)        # grid of Z(w), Delta(w)
     w_static_chi = range(1e-3, stop=inp.reOmega_c_shift, length=inp.numReal_c_shift)   # grid of χ(ω), 10*inp.reOmega_c
     w_dynam = reverse(inp.reOmega_c .+ inp.reOmega_c .* cos.((2 .* (0:inp.n_cheb-1) .+ 1) .* π ./ (2 * inp.n_cheb)))    # only positvie chebyshev nodes
 
-    println("Done!")
-
     return (Kp_func, Km_func, w_static, w_dynam, w_static_chi)
 
+end
+
+
+###########################################
+# --------------- Helpers --------------- #
+###########################################
+function print_kernel_log(log_file, text)
+    if isnothing(log_file)
+        print(text)
+    else
+        printTee(log_file, text)
+    end
+end
+
+function start_kernel_progress(label, log_file, line_width)
+    prefix = label * " Kernel: "
+    progress_state = (
+        printed=Ref(0),
+        target=max(1, line_width - length(prefix) - 3),
+        spinner=Ref(0),
+        prefix=prefix,
+        log_file=log_file,
+    )
+    redraw_kernel_progress(progress_state)
+    return progress_state
+end
+
+function kernel_progress_interval(total_steps, progress_state)
+    return max(1, cld(total_steps, progress_state.target))
+end
+
+function redraw_kernel_progress(progress_state)
+    spinner = raw"-\|/"[mod(progress_state.spinner[], 4) + 1]
+    progress_state.spinner[] += 1
+    done = progress_state.printed[]
+    remaining = progress_state.target - done
+    print("\r" * progress_state.prefix * string(spinner) * "" *  "="^done * " "^remaining * "|")
+end
+
+function print_kernel_progress(log_file, progress_state)
+    if progress_state.printed[] < progress_state.target
+        progress_state.printed[] += 1
+        redraw_kernel_progress(progress_state)
+    end
+end
+
+function finish_kernel_progress(log_file, progress_state)
+    progress_state.printed[] = progress_state.target
+    progress_state.spinner[] = 2
+    redraw_kernel_progress(progress_state)
+    print("\n")
+    if !isnothing(log_file)
+        print(log_file, progress_state.prefix * "|" *  "="^progress_state.target * "|\n")
+    end
 end
 

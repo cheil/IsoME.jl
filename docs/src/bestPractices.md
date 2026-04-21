@@ -76,15 +76,14 @@ Accurate results can only be achieved through carefully conducted convergence te
 Considerable effort has been invested in selecting default parameters that, in most cases, ensure both computational efficiency and robust convergence.
 Nevertheless, convergence should always be checked.
 Convergence parameter include the Matsubara cutoff *omega_c* and the energy cutoff *encut*.
-In both cases, the ideal cutoff is bounded from above as the adaption formula of *muc_ME* breaks down for very large *omega_c* and arbitrary high *encut*'s are against the spirit of the isotropic approximation.
+In both cases, the ideal cutoff is bounded from above as the adaption formula of *muc_ME* breaks down for very large *omega_c* and arbitrary high *encut*'s are incompatible with the isotropic approximation.
 
 Furthermore, the energy gird around the Fermi surface must be sufficiently dense. The steps and interpolation boundaries can be adapted through *itpStepSize* and *itpBounds*.
 
 
 ## Ab-initio calculations with ``\mu^*``
-The choice of μ significantly influences the results. Traditionally, ``\mu^*`` is treated as an adjustable parameter and typically chosen within the range of 0.1 to 0.16 to fit experimental
-values.  
-For fully ab-initio calculations, ``\mu`` must be computed via
+The choice of μ significantly influences the results. Traditionally, ``\mu^*`` is treated as an adjustable parameter and typically chosen within the range of 0.1 to 0.16 to fit experimental values.  
+For fully ab-initio calculations, ``\mu`` must be computed from
 ```math
 \mu = N(\varepsilon_F)W(\varepsilon_F,\varepsilon_F)~,
 ```

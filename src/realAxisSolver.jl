@@ -198,7 +198,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
 
             β = 1 / (kb * itemp)
 
-            realAxisParameter = precompute(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left)
+            realAxisParameter = precompute(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left, console, log_file)
 
             if inp.cDOS_flag == 0 && isnothing(realAxisState)
                 # initial values vDOS
@@ -325,7 +325,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
 
             β = 1 / (kb * itemp)
 
-            realAxisParameter = precompute(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left)
+            realAxisParameter = precompute(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left, console, log_file)
 
 
             # initial values vDOS
@@ -386,6 +386,9 @@ function solve_realAxis_cDOS(itemp, inp, console, realAxisParameter, log_file; v
     (; reOmega_c, muc_ME, N_it, conv_thr, minGap, nItFullCoul, min_it) = inp
     (Kp_func, Km_func, w_static, w_dynam, _) = realAxisParameter
 
+    # smaller threshold for initial guess calculation
+    conv_thr = vDOS_initial_guess ? 1e-3 : conv_thr
+
     title = vDOS_initial_guess ? "Initial guess: cDOS at T = " * string(itemp) * " K" : "T = " * string(itemp) * " K "
     printTextCentered(title, console["partingLine"], file=log_file, bold=true)
     printTee(log_file, "\n")
@@ -430,12 +433,26 @@ function solve_realAxis_cDOS(itemp, inp, console, realAxisParameter, log_file; v
         if real(data[2]) < minGap && i_it > maximum([min_it, nItFullCoul + 1])
             print_real_axis_gap_too_small(itemp, minGap, console, log_file)
             data[2] = NaN
+
+            # initial guess vDOS
+            if  vDOS_initial_guess
+                state.Z = Z_new
+                state.delta = delta_new
+            end
+
             return data, state
         end
 
         if i_it == N_it
             print_real_axis_not_converged(inp, console, log_file)
             data[2] = NaN
+
+            # initial guess vDOS
+            if  vDOS_initial_guess
+                state.Z = Z_new
+                state.delta = delta_new
+            end
+
             return data, state
         end
     end
@@ -453,7 +470,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
 
     # destruct inputs
     (_, _, dos_en, dos, _, dosef, _, _, _) = matval
-    (; muc_ME, mu_flag, N_it, conv_thr, minGap, nItFullCoul, min_it) = inp
+    (; muc_ME, mu_flag, N_it, conv_thr, minGap, nItFullCoul, min_it, plot_flag) = inp
     (Kp_func, Km_func, w_static, _, w_static_chi) = realAxisParameter
 
 
@@ -503,6 +520,14 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         if abs(convergence / gap0) < conv_thr && i_it > maximum([min_it, nItFullCoul + 1])
             print_real_axis_converged(itemp, console, log_file)
 
+            if plot_flag
+                chi_itp = linear_interpolation(w_static_chi, shiftip, extrapolation_bc=Flat())
+                chi_plot = chi_itp(w_static)
+                selfEnergy = (delta_new, Z_new, chi_plot)
+                plotSelfEnergyAtT(inp, itemp, selfEnergy, w_static)
+            end
+
+            # next guess
             state.Z = Z_new
             state.chi = chi_new
             state.delta = delta_new
@@ -560,12 +585,12 @@ end
 ω'-integration grid for vDOS
 """
 function make_vDOS_wprime_grid(gap0, inp)
-    (; num_wp1, num_wp2, wp_max, reOmega_c_shift) = inp
+    (; num_wp1, num_wp2, wp_max, reOmega_c_shift,numReal_c_shift) = inp
 
     wp_inside = gap0 .* cos.((2 .* (0:num_wp1-1) .+ 1) ./ (2*num_wp1) .* π)
     wp_half = wp_max .+ wp_max .* cos.((2 .* (floor(num_wp2/2):num_wp2-1) .+ 1) ./ (2*num_wp2) .* π)
     wp_half = reverse(wp_half) .+ gap0
-    wp_rest = range(maximum(wp_half), reOmega_c_shift, length=num_wp2)
+    wp_rest = range(maximum(wp_half), reOmega_c_shift, length=numReal_c_shift)
 
     wp = vcat(
         reverse(wp_inside[wp_inside .> 0]),
@@ -610,8 +635,6 @@ function save_real_axis_cDOS_outputs(itemp, inp, state, log_file)
 end
 
 
-
-
 """
     initialize_real_axis_vDOS(itemp, inp, console, realAxisParameter, log_file)
 
@@ -621,6 +644,7 @@ function initialize_real_axis_vDOS(itemp, inp, console, realAxisParameter, log_f
     _, state = solve_realAxis_cDOS(itemp, inp, console, realAxisParameter, log_file; vDOS_initial_guess=true)
     return state
 end
+
 
 
 

@@ -35,10 +35,6 @@ function setUpAxis(inp, matval)
     idx_left = findfirst(a2f .> 1e-6) -1   
     idx_right = findlast(a2f .> 1e-6) +1
 
-    # debugging
-    idx_left = 21
-    idx_right=351
-
     W_left = a2f_omega[idx_left]
     W_right = a2f_omega[idx_right]
 
@@ -47,8 +43,8 @@ function setUpAxis(inp, matval)
     
     # Frequency and integration grids
     # w_axis must be same as w_static_chi
-    w_axis = range(0, stop=15000, length=8000) # ω linear grid to store K(ω,ω')      # numReal_c, reOmega_c
-    int_axis = make_integration_axis(W_right-W_left, 500, 500, 5)      # Ω-integration axis
+    w_axis = range(0, stop=max(inp.reOmega_c, inp.reOmega_c_shift), length=max(inp.numReal_c, inp.numReal_c_shift)) # ω linear grid to store K(ω,ω'), has to be dimensions max(reOmega_c, reOmega_c_shift) + same for num
+    int_axis = make_integration_axis(W_right-W_left, 300, 300, 3)      # Ω-integration axis
 
 
     return W_cut, W_left, w_axis, int_axis
@@ -136,7 +132,7 @@ function compute_real_kernels(w_axis, num_w, w_max, W_left, W_cut, int_axis, f, 
     return Kp_real, Km_real
 end
 
-function compute_imag_kernels(w_axis, f, n, G)
+function compute_imag_kernels(w_axis, f, n, a2F_itp)
 
     N = length(w_axis)
 
@@ -154,18 +150,19 @@ function compute_imag_kernels(w_axis, f, n, G)
         f_w2 = f(w2)
 
         if dw > 0
-            im_part2[i, j] = G(dw) * (f(-w2) + n(dw))
+            im_part2[i, j] = a2F_itp(dw) * (f(-w2) + n(dw))
         end
 
-        if -dw > 0  
-            im_part3[i, j] = G(-dw) * (f_w2 + n(-dw))
+        if dw < 0  
+            im_part3[i, j] = -a2F_itp(-dw) * (f_w2 + n(-dw))
         end
  
-        im_part4[i, j] = G(pw) * (f_w2 + n(pw))
+        im_part4[i, j] = a2F_itp(pw) * (f_w2 + n(pw))
     end
 
     Kp_imag = π .* (im_part2 .- im_part3 .- im_part4)
     Km_imag = π .* (-im_part2 .+ im_part3 .- im_part4)
+
 
     return Kp_imag, Km_imag
 end
@@ -268,45 +265,14 @@ end
 #     return Kp_real, Km_real
 # end
 
-# function compute_imag_kernels(w_axis, f, n, a2F_itp)
 
-#     N = length(w_axis)
-
-#     # im_part1 = always 0
-#     im_part2 = zeros(N, N)
-#     im_part3 = zeros(N, N)
-#     im_part4 = zeros(N, N)
-
-#     @inbounds for i in 1:N, j in 1:N
-#         w1 = w_axis[i]  
-#         w2 = w_axis[j]          
-
-#         dw = w1 - w2
-#         pw = w1 + w2
-#         f_w2 = f(w2)
-
-#         if dw > 0
-#             im_part2[i, j] = a2F_itp(dw) * (f(-w2) + n(dw))
-#         end
-
-#         if dw < 0  
-#             im_part3[i, j] = -a2F_itp(-dw) * (f_w2 + n(-dw))
-#         end
- 
-#         im_part4[i, j] = a2F_itp(pw) * (f_w2 + n(pw))
-#     end
-
-#     Kp_imag = π .* (im_part2 .- im_part3 .- im_part4)
-#     Km_imag = π .* (-im_part2 .+ im_part3 .- im_part4)
-
-
-#     return Kp_imag, Km_imag
-# end
 
 """
     kernels(β, inp, w_axis, W_cut, int_axis, a2F_itp)
 
-Compute the Ω kernels at a given temperature
+Compute the kernels at a given temperature
+Kp(ω,ω') = -K(ω,ω') + K(ω,-ω')
+Km(ω,ω') = K(ω,ω') + K(ω,-ω')
 """
 function kernels(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left)
 
@@ -325,23 +291,23 @@ function kernels(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left)
     Kp_func = extrapolate(scale(interpolate(Kp, BSpline(Linear())), w_axis, w_axis), 0.0 + 0.0im)
     Km_func = extrapolate(scale(interpolate(Km, BSpline(Linear())), w_axis, w_axis), 0.0 + 0.0im)
 
-    # Kp = -K(w,w') + K(w,-w')
-    # Km = K(w,w') + K(w,-w')
-
     return Kp_func, Km_func
 end
 
 function precompute(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left)
 
+    println("precomputing Kernels...")
+
     Kp_func, Km_func = kernels(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left)
 
     # new cheb grid
-    w_static = range(1e-3, stop=1000, length=5000)        # grid of Z(w), Delta(w)
-    w_static_chi = range(1e-3, stop=15000, length=8000)   # grid of χ(ω), 10*inp.reOmega_c
+    w_static = range(1e-3, stop=inp.reOmega_c, length=inp.numReal_c)        # grid of Z(w), Delta(w)
+    w_static_chi = range(1e-3, stop=inp.reOmega_c_shift, length=inp.numReal_c_shift)   # grid of χ(ω), 10*inp.reOmega_c
     w_dynam = reverse(inp.reOmega_c .+ inp.reOmega_c .* cos.((2 .* (0:inp.n_cheb-1) .+ 1) .* π ./ (2 * inp.n_cheb)))    # only positvie chebyshev nodes
+
+    println("Done!")
 
     return (Kp_func, Km_func, w_static, w_dynam, w_static_chi)
 
 end
-
 

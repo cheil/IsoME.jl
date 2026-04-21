@@ -50,7 +50,8 @@ function printStartMessage(console::Dict, log_file; mode = 0)
 
         printTee(log_file, strAuthors)
     elseif mode == 1
-        strLine = "-"^(sum(console["width"])+length(console["width"])+1)
+        width = console["vDOS"]["width"]
+        strLine = "-"^(sum(width)+length(width)+1)
 
         strMode = "Real Axis Solver started"
 
@@ -63,6 +64,10 @@ function printStartMessage(console::Dict, log_file; mode = 0)
     printTee(log_file, strLine*"\n\n\n")
     
     console["partingLine"] = strLine
+    if mode == 1
+        console["cDOS"]["partingLine"] = strLine
+        console["vDOS"]["partingLine"] = strLine
+    end
     
     return console
                                     
@@ -297,6 +302,12 @@ Format the header of the console output s.t. each column has the
 specified length
 """
 function formatTableHeader(console::Dict)
+    if haskey(console, "cDOS") && haskey(console, "vDOS")
+        console["cDOS"] = formatTableHeader(console["cDOS"])
+        console["vDOS"] = formatTableHeader(console["vDOS"])
+        return console
+    end
+
     header = console["header"]
     width = console["width"]
 
@@ -895,4 +906,3 @@ function Base.getproperty(a::arguments, v::Symbol)
         return getfield(a, v)
     end
 end
-

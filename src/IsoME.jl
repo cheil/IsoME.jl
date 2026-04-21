@@ -55,7 +55,8 @@ const kb = 0.08617333262; # meV/K
     nItFullCoul::Number     = 10
     conv_thr::Float64       = 1e-4
     minGap::Float64         = 0.1
-    N_it::Int64             = 5000   
+    N_it::Int64             = 5000
+    min_it::Int64           = 10            # min iterations in eliashberg solver   
     encut::Float64           = 5000        # outer cutoff energies
     shiftcut::Float64          = 2000      # cutoff shift & Ne
     sparseSamplingTemp::Float64 = 2
@@ -106,11 +107,21 @@ const kb = 0.08617333262; # meV/K
     returnTc::Bool      = false
     testMode::Bool      = false
 
-    # real axis inputs
-    # separate input struct? 
-    reOmega_c::Float64     = 1000 # real frequency cutoff
-    numReal_c::Int64    = 1000 # number of real frequency points
-    n_cheb::Int64       = 2000  # number of chebyshev points
+    # ----------- real axis inputs ----------- #
+    # ω-grid
+    reOmega_c::Float64          = 1000 # ω-grid cutoff
+    numReal_c::Int64            = 2000 # num of ω-points
+    # χ ω-grid
+    reOmega_c_shift::Float64    = 25000 # ω-cutoff χ(ω)
+    numReal_c_shift::Int64      = 5000 # num of ω-points χ
+    # Ω-chebyshev
+    n_cheb::Int64               = 2000  # number of chebyshev points in Ω-integration
+    # ω'-grid
+    num_wp1::Int64              = 1000  # inner chebyshev grid
+    num_wp2::Int64              = 5000  # outer chebyshev grid
+    wp_max::Float64             = 2     # Location outer chebyshev grid
+
+
 end
 
 

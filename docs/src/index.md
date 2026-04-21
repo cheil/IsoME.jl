@@ -23,6 +23,8 @@ A variant of the Pade-approximation is implemented to enable an analytic continu
 
 The `RealAxisSovler()` is based on the [Holcomb](https://doi.org/10.1103/PhysRevB.54.6648) method and currently only supports cDOS``+\mu`` calculations.
 
+MORE ABOUT REAL AXIS
+
 ## Installation
 In order to run the code you need to [install](https://julialang.org/downloads/) julia 1.10 or higher.
 IsoME.jl is a registered package and it can be installed using the Julia package manager.

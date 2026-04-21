@@ -223,27 +223,18 @@ function initOutputTable(inp::arguments; mode::Int64=0)#
 
     elseif mode == 1
 
-        if inp.include_Weep == 0 && inp.cDOS_flag == 1
-            # header table
-            console["header"] = ["it", "Re(Z)", "Im(Z)", "Re(Δ)", "Im(Δ)", "Error Δ"]
-            #width table
-            console["width"] = [8, 10, 10, 10, 10, 11]
-            # precision data
-            console["precision"] = [0, 4, 4, 4, 4, 5]
-            # initial values
-            #console["Δ"] = ones(inp.numReal_c) .* 0.1 .+ im*1e-4  
-            #console["Z"] = ones(ComplexF64, inp.numReal_c) 
+        if inp.include_Weep == 0
+            console["cDOS"] = Dict{String,Any}(
+                "header" => ["it", "Re(Z)", "Im(Z)", "Re(Δ)", "Im(Δ)", "Error Δ"],
+                "width" => [8, 10, 10, 10, 10, 11],
+                "precision" => [0, 4, 4, 4, 4, 5],
+            )
 
-        elseif inp.include_Weep == 0 && inp.cDOS_flag == 0
-                        # header table
-            console["header"] = ["it", "Re(Z)", "Im(Z)", "Re(χ)", "Im(χ)", "ef-mu", "Re(Δ)", "Im(Δ)", "Error Δ"]
-            #width table
-            console["width"] = [8, 10, 10, 10, 10, 10, 10, 10, 11]
-            # precision data
-            console["precision"] = [0, 4, 4, 4, 4, 2, 4, 4, 5]
-            # initial values
-            #console["Δ"] = ones(inp.numReal_c) .* 0.1 .+ im*1e-4  
-            #console["Z"] = ones(ComplexF64, inp.numReal_c) 
+            console["vDOS"] = Dict{String,Any}(
+                "header" => ["it", "Re(Z)", "Im(Z)", "Re(χ)", "Im(χ)", "ef-mu", "Re(Δ)", "Im(Δ)", "Error Δ"],
+                "width" => [8, 10, 10, 10, 10, 10, 10, 10, 11],
+                "precision" => [0, 4, 4, 4, 4, 2, 4, 4, 5],
+            )
 
         else
             error("Invalid Mode! Currently, only the μ approximation is available on the real axis!")
@@ -321,6 +312,14 @@ function checkInput(inp::arguments; realSolver::Bool=false)
         text = "Invalid path to Weep or Wen-file!\n\n"
         error(text)
 
+    end
+
+    if inp.cDOS_flag ∉ (0,1)
+        error("Invalid cDOS_flag value. Use 0 for a variable density of states (vDOS) or 1 for a constant density of states (cDOS).")
+    end
+
+    if inp.include_Weep ∉ (0, 1) 
+        error("Invalid include_Weep value. Use 0 for the μ approximation or 1 for the W(ε, ε′) interaction.")
     end
 
     if realSolver

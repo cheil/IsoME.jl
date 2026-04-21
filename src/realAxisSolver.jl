@@ -4,6 +4,14 @@
 """
 
 
+mutable struct RealAxisState
+    Z::Vector{ComplexF64}
+    delta::Vector{ComplexF64}
+    chi::Vector{ComplexF64}
+    fermi_level::Float64
+end
+
+
 """ 
 
 Real axis eliashberg solver.
@@ -161,7 +169,7 @@ end
 """
     findTc(inp, console, matval, ML_Tc, log_file)
 
-Solve the real axis eliashberg equation at the specified temperatures or with the Tc search mode
+Solve the real axis eliashberg equations
 """
 function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
     inp.temps = sort(inp.temps)
@@ -174,6 +182,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
     ### Set up axis and parameters ###
     W_cut, W_left, w_axis, int_axis = setUpAxis(inp, matval)
 
+    realAxisState = nothing
 
     if inp.temps == [-1]    # Tc search mode
         # initial guess, Machine learning Tc           
@@ -191,8 +200,17 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
 
             realAxisParameter = precompute(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left)
 
+            if inp.cDOS_flag == 0 && isnothing(realAxisState)
+                # initial values vDOS
+                realAxisState = initialize_real_axis_vDOS(itemp, inp, console["cDOS"], realAxisParameter, log_file)
+            end
+
             # solve Eliashberg equations
-            data = solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
+            if inp.cDOS_flag == 0
+                data, realAxisState = solve_realAxis_vDOS(itemp, inp, console["vDOS"], matval, realAxisParameter, realAxisState, log_file)
+            elseif inp.cDOS_flag == 1
+                data, realAxisState = solve_realAxis_cDOS(itemp, inp, console["cDOS"], realAxisParameter, log_file)
+            end
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
@@ -310,8 +328,17 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
             realAxisParameter = precompute(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left)
 
 
+            # initial values vDOS
+            if inp.cDOS_flag == 0 && iT == 1
+                realAxisState = initialize_real_axis_vDOS(itemp, inp, console["cDOS"], realAxisParameter, log_file)
+            end
+
             # solve Eliashberg equations
-            data = solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
+            if inp.cDOS_flag == 0
+                data, realAxisState = solve_realAxis_vDOS(itemp, inp, console["vDOS"], matval, realAxisParameter, realAxisState, log_file)
+            elseif inp.cDOS_flag == 1
+                data, realAxisState = solve_realAxis_cDOS(itemp, inp, console["cDOS"], realAxisParameter, log_file)
+            end
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
@@ -347,293 +374,338 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
 end
 
 
-"""
-    solve_eliashberg(itemp, inp, console, matval, log_file)
 
-Solve the eliashberg eq. self-consistently for a fixed temperature
 """
-function solve_realEliashberg(itemp, inp, console, matval, realAxisParameter, log_file)
+    solve_realAxis_cDOS(itemp, inp, console, realAxisParameter, log_file; vDOS_initial_guess=false)
+
+Solve the real-axis Eliashberg equations in the cDOS+μ approximation.
+When `vDOS_initial_guess=true`, the cDOS solution is returned in a `RealAxisState`
+with zero χ so it can seed the vDOS solver.
+"""
+function solve_realAxis_cDOS(itemp, inp, console, realAxisParameter, log_file; vDOS_initial_guess::Bool=false)
+    (; reOmega_c, muc_ME, N_it, conv_thr, minGap, nItFullCoul, min_it) = inp
+    (Kp_func, Km_func, w_static, w_dynam, _) = realAxisParameter
+
+    title = vDOS_initial_guess ? "Initial guess: cDOS at T = " * string(itemp) * " K" : "T = " * string(itemp) * " K "
+    printTextCentered(title, console["partingLine"], file=log_file, bold=true)
+    printTee(log_file, "\n")
+
+    state = initial_real_axis_state(inp, realAxisParameter)
+    console["InitValues"] = [0 real(state.Z[1]) imag(state.Z[1]) real(state.delta[1]) imag(state.delta[1]) nothing]
+    console = printTableHeader(console, log_file)
+
+    β = 1 / (kb * itemp)
+    Z_new = state.Z
+    delta_new = state.delta
+    data = [Z_new[1], delta_new[1]]
+
+    # Iterate
+    for i_it in 1:N_it
+        delta_prev = copy(delta_new)
+        Z_prev = copy(Z_new)
+        broyden_beta = mixing_parameter(inp, i_it)
+        gap0 = real(delta_prev[1])
+
+        Z_new, delta_new = realEliashbergEq(muc_ME, β, delta_prev, Kp_func, Km_func, w_dynam, w_static, reOmega_c)
+
+        Z_new = (1.0 - abs(broyden_beta)) .* Z_prev .+ abs(broyden_beta) .* Z_new
+        delta_new = (1.0 - abs(broyden_beta)) .* delta_prev .+ abs(broyden_beta) .* delta_new
+
+        convergence = sqrt(sum(abs2.(delta_new .- delta_prev))/length(delta_new))
+        data = [Z_new[1], delta_new[1]]
+        outputVec = real_axis_cdOS_output(i_it, Z_new, delta_new, convergence, gap0)
+        print_real_axis_iteration(outputVec, console, log_file)
+
+        if abs(convergence / gap0) < conv_thr && i_it > maximum([min_it, nItFullCoul + 1])
+            print_real_axis_converged(itemp, console, log_file)
+
+            state.Z = Z_new
+            state.delta = delta_new
+            if !vDOS_initial_guess
+                save_real_axis_cDOS_outputs(itemp, inp, state, log_file)
+            end
+            return data, state
+        end
+
+        if real(data[2]) < minGap && i_it > maximum([min_it, nItFullCoul + 1])
+            print_real_axis_gap_too_small(itemp, minGap, console, log_file)
+            data[2] = NaN
+            return data, state
+        end
+
+        if i_it == N_it
+            print_real_axis_not_converged(inp, console, log_file)
+            data[2] = NaN
+            return data, state
+        end
+    end
+end
+
+"""
+    solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, state, log_file)
+
+Solve the real-axis Eliashberg equations in the vDOS+μ approximation.
+"""
+function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, state::RealAxisState, log_file)
+    if inp.include_Weep == 1
+        error("Currently, only the μ approximation is available on the real axis!")
+    end
+
     # destruct inputs
-    (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap) = matval
-    (; cDOS_flag, include_Weep, numReal_c, reOmega_c, mixing_beta, nItFullCoul, 
-        muc_ME, mu_flag, N_it, conv_thr, flag_writeSelfEnergy, minGap, n_cheb) = inp
-    (Kp_func, Km_func, w_static, w_dynam, w_static_chi) = realAxisParameter
+    (_, _, dos_en, dos, _, dosef, _, _, _) = matval
+    (; muc_ME, mu_flag, N_it, conv_thr, minGap, nItFullCoul, min_it) = inp
+    (Kp_func, Km_func, w_static, _, w_static_chi) = realAxisParameter
+
 
     printTextCentered("T = " * string(itemp) * " K ", console["partingLine"], file=log_file, bold=true)
     printTee(log_file, "\n")
+
+    # ----- initial guesses -----#
+    Z_new = state.Z
+    delta_new = state.delta
+    chi_new = state.chi
+    fermi_level = state.fermi_level
+
+    # print console table
+    console["InitValues"] = [0 real(state.Z[1]) imag(state.Z[1]) real(state.chi[1]) imag(state.chi[1]) state.fermi_level real(state.delta[1]) imag(state.delta[1]) nothing]
+    console = printTableHeader(console, log_file)
+
     β = 1 / (kb * itemp)
+    data = [state.Z[1], state.delta[1], state.chi[1]]
 
-
-    ######################################################
-    # -------------- Initialize variables -------------- #
-    ######################################################
-    if include_Weep == 1
-        if cDOS_flag == 1
-            printWarning("cDos+W is not supported for the real axis solver. Using vDos+W instead!", log_file, ex=ex)
-            cDOS_flag = 0
-        end
-
-        ### Initialize
-        deltai = ones(ComplexF64, ndos, numReal_c) .* BCS_gap
-        znormi = ones(ComplexF64, numReal_c)
-        shifti = -zeros(ComplexF64, length(w_static_chi))
-        phici = -ones(ComplexF64, ndos) .* 0.1
-        phiphi = ones(ComplexF64, numReal_c) .* maximum([BCS_gap, 2 * phici[1]])
-        fermi_level = 0.0
-
-        ### Print to console & log file
-        console["InitValues"] = [0 phici[idx_ef] phiphi[1] znormi[1] shifti[1] -fermi_level deltai[idx_ef, 1] nothing]
-        console = printTableHeader(console, log_file)
-
-        error("Currently not supported")
-
-    elseif include_Weep == 0
-
-        if cDOS_flag == 0
-            ### Initialize 
-            deltai = ones(numReal_c) .* 0.1 .+ im * 1e-4      #.* BCS_gap
-            znormi = ones(numReal_c)    .+ im *1e-4
-            shifti = -zeros(ComplexF64, length(w_static_chi))
-            fermi_level = 0.0
-            FLIP = nothing
-
-            ### Print to console & log file
-            console["InitValues"] = [0 real(znormi[1]) imag(znormi[1]) real(shifti[1]) imag(shifti[1]) -fermi_level real(deltai[1]) imag(deltai[1]) nothing]
-            console = printTableHeader(console, log_file)
-
-        elseif cDOS_flag == 1
-            ### Initialize 
-            deltai = ones(numReal_c) .* 0.1 .+ im * 1e-4      #.* BCS_gap
-            znormi = ones(ComplexF64, numReal_c)
-
-            ### Print to console & log file
-            console["InitValues"] = [0 real(znormi[1]) imag(znormi[1]) real(deltai[1]) imag(deltai[1]) nothing]
-            console = printTableHeader(console, log_file)
-
-        end
-
-    else
-        @error "Unkwon mode! Check if the cDOS_flag and include_Weep flag are set correctly!"
-    end
-
-
-
-
-    ##### Start iterations #####
-    err_delta = 0
     for i_it in 1:N_it
-        if include_Weep == 1
-            if cDOS_flag == 0
-                deltaip = copy(deltai)
-                znormip = copy(znormi)
-                shiftip = copy(shifti)
-                phiphip = copy(phiphi)
-                phicip = copy(phici)
-            end
-        elseif include_Weep == 0
-            if cDOS_flag == 0
-                deltaip = copy(deltai)
-                znormip = copy(znormi)
-                shiftip = copy(shifti)
-            elseif cDOS_flag == 1
-                deltaip = copy(deltai)
-                znormip = copy(znormi)
-            end
+        delta_prev = copy(delta_new)
+        Z_prev = copy(Z_new)
+        chi_prev = copy(chi_new)
+        broyden_beta = mixing_parameter(inp, i_it)
+        gap0 = real(delta_prev[1])
+        w_prime = make_vDOS_wprime_grid(gap0, inp)
+
+        # if i_it == 1
+        #     plot_wprime_density(w_prime, itemp, inp, log_file)
+        # end
+
+        if mu_flag == 1
+            fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, Z_prev, delta_prev, chi_prev, inp.outdir, i_it)
         end
 
+        Z_new, delta_new, chi_new = realEliashbergEq(muc_ME, β, Z_prev, delta_prev, chi_prev, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, fermi_level, i_it, gap0)
 
-        # mixing beta
-        if mixing_beta == -1
-            broyden_beta = maximum([0.5, 1.0 - 0.05 * (i_it - 1)])
-        else
-            broyden_beta = mixing_beta
+        chi_new = (1.0 - abs(broyden_beta)) .* chi_prev .+ abs(broyden_beta) .* chi_new
+        Z_new = (1.0 - abs(broyden_beta)) .* Z_prev .+ abs(broyden_beta) .* Z_new
+        delta_new = (1.0 - abs(broyden_beta)) .* delta_prev .+ abs(broyden_beta) .* delta_new
+
+        convergence = sqrt(sum(abs2.(delta_new .- delta_prev))/length(delta_new))
+        data = [Z_new[1], delta_new[1], chi_new[1]]
+        outputVec = real_axis_vDOS_output(i_it, Z_new, delta_new, chi_new, fermi_level, convergence, gap0)
+        print_real_axis_iteration(outputVec, console, log_file)
+
+        if abs(convergence / gap0) < conv_thr && i_it > maximum([min_it, nItFullCoul + 1])
+            print_real_axis_converged(itemp, console, log_file)
+
+            state.Z = Z_new
+            state.chi = chi_new
+            state.delta = delta_new
+            state.fermi_level = fermi_level
+            return data, state
         end
 
-        # weight coulomb interaction (for damping)
-        wgCoulomb = minimum([1, i_it / nItFullCoul])
-        gap0 = real(deltai[1])
-
-        if include_Weep == 1
-            # vDOS + W
-            #new_data = realEliashbergEq(itemp, a2f_omega, a2f, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb)
-
-            # mixing
-            #znormi = (1.0 - abs(broyden_beta)) .* znormi .+ abs(broyden_beta) .* new_data[1]
-            #phiphi = (1.0 - abs(broyden_beta)) .* phiphi .+ abs(broyden_beta) .* new_data[2]
-            #phici  = (1.0 - abs(broyden_beta)) .* phici  .+ abs(broyden_beta) .* new_data[3]
-            #shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[4]
-            #deltai = (phiphi' .+ phici) ./ znormi'
-
-            #rel_delta = sum(abs.(deltai[idx_ef, :] .- deltaip[idx_ef, :]))
-            #abs_delta = sum(abs.(deltai[idx_ef, :]))
-            #err_delta = rel_delta / abs_delta
-
-            # Console output
-            #outputVec = [i_it, phici[idx_ef], phiphi[1], znormi[1], shifti[1], deltai[idx_ef, 1], err_delta]
-
-            # data for return
-            #data = [znormi[1], deltai[idx_ef, 1], shifti[1]]
-
-
-
-        #####################################################
-        # -------------------- No Weep -------------------- #
-        #####################################################
-        elseif include_Weep == 0
-
-            if cDOS_flag == 0
-                # restrict w' to grid
-                #w_prime = ifelse.((w_dynam .< reOmega_c) .& (w_dynam .> 0), w_dynam, 0.0)       # Better approach, could be done already when setting up grid, at least for vDOS
-                w_prime = w_dynam[(w_dynam .< reOmega_c) .& (w_dynam .> 0)]
-
-                # ω'-integration grid, similar to MIT
-                gap0 = real(deltai[1])
-                #gap0 = 5
-                num_wp1 = 1000
-                num_wp2 = 10000
-                wp_max = 2
-                wp_inside = gap0 .* cos.((2 .* (0:num_wp1-1) .+ 1) ./ (2*num_wp1) .* π)
-                wp_half = wp_max .+ wp_max .* cos.((2 .* (floor(num_wp2/2):num_wp2-1) .+ 1) ./ (2*num_wp2) .* π)
-                wp_half = reverse(wp_half) .+ gap0
-                wp_rest = range(maximum(wp_half), 5000, length=num_wp2)
-                wp = vcat(
-                    reverse(wp_inside),
-                    wp_half,
-                    collect(wp_rest)
-                )
-                w_prime = wp[wp .> 0]   # only include positive half
-  
-                if mu_flag == 1 ##&& i_it > 1
-                    fermi_level = mu_update_real_axis(itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, inp.outdir, i_it)
-                end
-
-                znormi, deltai, shifti = realEliashbergEq(muc_ME, β, znormip, deltaip, shiftip, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, fermi_level, i_it)
-
-                shifti = (1.0 - abs(broyden_beta)) .* shiftip .+ abs(broyden_beta) .* shifti
-
-            elseif cDOS_flag == 1
-                
-                znormi, deltai = realEliashbergEq(muc_ME, β, deltaip, Kp_func, Km_func, w_dynam, w_static, reOmega_c)
-
-            end
-
-            # mixing
-            znormi = (1.0 - abs(broyden_beta)) .* znormip .+ abs(broyden_beta) .* znormi
-            deltai = (1.0 - abs(broyden_beta)) .* deltaip .+ abs(broyden_beta) .* deltai
-
-            # convergence criterion
-            convergence = sqrt(sum(abs2.(deltai .- deltaip))/length(deltai))
-
-
-            ### Console Output ###
-            if cDOS_flag == 0
-                # Console output
-                outputVec = [i_it, real(znormi[1]), imag(znormi[1]), real(shifti[1]), imag(shifti[1]), fermi_level, real(deltai[1]), imag(deltai[1]), abs(convergence / gap0)]
-
-                # data for return
-                data = [znormi[1], deltai[1], shifti[1]]
-
-                # self energy 
-                selfEnergy = (deltai, znormi, shifti)
-
-            elseif cDOS_flag == 1
-                # Console output
-                outputVec = [i_it, real(znormi[1]), imag(znormi[1]), real(deltai[1]), imag(deltai[1]), abs(convergence / gap0)]
-
-                # data for return
-                data = [znormi[1], deltai[1]]
-
-                # self energy 
-                selfEnergy = (deltai, znormi)
-
-
-            end # cDOS_flag
-
-
-        end # include_Weep
-
-
-
-        ##### Print to console #####
-        outputVec, strConsole, format = formatTableRow(outputVec, console["width"], console["precision"])
-        for i in axes(strConsole, 1)
-            Printf.format(stdout, Printf.Format(strConsole[i]), format[i, 1], " ", format[i, 2], format[i, 3], outputVec[i], format[i, 4], " ")
-        end
-
-        ### print to log file ###
-        for i in axes(strConsole, 1)
-            Printf.format(log_file, Printf.Format(strConsole[i]), format[i, 1], " ", format[i, 2], format[i, 3], outputVec[i], format[i, 4], " ")
-        end
-
-
-        # convergence criterion
-        minIt = 10
-        if abs(convergence[end] / gap0) < conv_thr && i_it > maximum([minIt, nItFullCoul + 1])       
-            println(replace(console["Hline"], "." => " "))
-            printstyled("\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
-
-            println(log_file, replace(console["Hline"], "." => " "))
-            printstyled(log_file, "\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
-
-            if cDOS_flag == 1
-                plotSelfEnergyAtT(inp, itemp, selfEnergy)
-            end
-            # elseif when new modes included
-
-            # save self energy
-            if flag_writeSelfEnergy == 1
-                try
-                    if cDOS_flag == 1
-                        w_real = range(0, reOmega_c, numReal_c)
-                        saveSelfEnergyComponents(itemp, inp, w_real, deltai, znormi)
-                    end
-                catch ex
-                    # crash file
-                    writeToCrashFile(inp)
-
-                    # console / log file
-                    printWarning("Error while saving self energy components.", log_file, ex=ex)
-                end
-            end
-
-
-            return data
-            break
-        end
-
-        # Gap too small
-        if real(data[2]) < minGap && i_it > maximum([minIt, nItFullCoul + 1])   
-            println(replace(console["Hline"], "." => " "))
-            printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than " * string(round(minGap, digits=2)) * " meV!\n\n"; bold=false)
-
-            println(log_file, replace(console["Hline"], "." => " "))
-            printstyled(log_file, "\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than " * string(round(minGap, digits=2)) * " meV!\n\n"; bold=false)
-
+        if real(data[2]) < minGap && i_it > maximum([min_it, nItFullCoul + 1])
+            print_real_axis_gap_too_small(itemp, minGap, console, log_file)
             data[2] = NaN
-            return data
-            break
+            return data, state
         end
 
-        # max number iterations reached
         if i_it == N_it
-            println(replace(console["Hline"], "." => " "))
-            printstyled("\nConvergence not achieved within " * string(N_it) * " iterations\n"; bold=true)
-            println("\n")
-
-            # log file
-            println(log_file, replace(console["Hline"], "." => " "))
-            printstyled(log_file, "\nConvergence not achieved within " * string(N_it) * " iterations\n"; bold=true)
-            println(log_file, "\n")
-
-
+            print_real_axis_not_converged(inp, console, log_file)
             data[2] = NaN
-            return data
-            break
+            return data, state
         end
-
-
     end
 end
+
+
+##############################################################
+# -------------------- Helper functions -------------------- #
+##############################################################
+function initial_real_axis_state(inp, realAxisParameter)
+    (; numReal_c) = inp
+    (_, _, _, _, w_static_chi) = realAxisParameter
+
+    return RealAxisState(
+        ones(ComplexF64, numReal_c),
+        ones(ComplexF64, numReal_c) .* (0.1 + im * 1e-4),
+        -zeros(ComplexF64, length(w_static_chi)),
+        0.0,
+    )
+end
+
+"""
+    mixing_parameter(inp, i_it)
+
+linear mixing factor of eliashberg solutions
+"""
+function mixing_parameter(inp, i_it)
+    if inp.mixing_beta == -1
+        return maximum([0.5, 1.0 - 0.05 * (i_it - 1)])
+    end
+
+    return inp.mixing_beta
+end
+
+
+"""
+    make_vDOS_wprime_grid(gap0, inp)
+
+ω'-integration grid for vDOS
+"""
+function make_vDOS_wprime_grid(gap0, inp)
+    (; num_wp1, num_wp2, wp_max, reOmega_c_shift) = inp
+
+    wp_inside = gap0 .* cos.((2 .* (0:num_wp1-1) .+ 1) ./ (2*num_wp1) .* π)
+    wp_half = wp_max .+ wp_max .* cos.((2 .* (floor(num_wp2/2):num_wp2-1) .+ 1) ./ (2*num_wp2) .* π)
+    wp_half = reverse(wp_half) .+ gap0
+    wp_rest = range(maximum(wp_half), reOmega_c_shift, length=num_wp2)
+
+    wp = vcat(
+        reverse(wp_inside[wp_inside .> 0]),
+        wp_half,
+        collect(wp_rest),
+    )
+
+    return wp[wp .> 0]
+end
+
+function plot_wprime_density(w_prime, itemp, inp, log_file)
+    if inp.testMode
+        return
+    end
+
+    try
+        histogram(w_prime[w_prime .< 1],
+            bins=100,
+            label="",
+            xlabel="ω' / meV",
+            ylabel="Point count",
+            title="Point density of ω' grid",
+        )
+        savefig("w_prime_density_T"*string(itemp)*"K.png")
+    catch ex
+        printWarning("Error while plotting the w_prime point density.", log_file, ex=ex)
+    end
+end
+
+function save_real_axis_cDOS_outputs(itemp, inp, state, log_file)
+    plotSelfEnergyAtT(inp, itemp, (state.delta, state.Z))
+
+    if inp.flag_writeSelfEnergy == 1
+        try
+            w_real = range(0, inp.reOmega_c, inp.numReal_c)
+            saveSelfEnergyComponents(itemp, inp, w_real, state.delta, state.Z, mode="realAxis")
+        catch ex
+            writeToCrashFile(inp)
+            printWarning("Error while saving self energy components.", log_file, ex=ex)
+        end
+    end
+end
+
+
+
+
+"""
+    initialize_real_axis_vDOS(itemp, inp, console, realAxisParameter, log_file)
+
+Perform a cDOS calculation as initial guess for vDOS.
+"""
+function initialize_real_axis_vDOS(itemp, inp, console, realAxisParameter, log_file)
+    _, state = solve_realAxis_cDOS(itemp, inp, console, realAxisParameter, log_file; vDOS_initial_guess=true)
+    return state
+end
+
+
+
+#################################################################
+# ----------------------- print Helpers ----------------------- #
+#################################################################
+"""
+    print_real_axis_iteration(outputVec, console, log_file)
+
+print state of current iteration
+"""
+function print_real_axis_iteration(outputVec, console, log_file)
+    outputVec, strConsole, format = formatTableRow(outputVec, console["width"], console["precision"])
+    for i in axes(strConsole, 1)
+        Printf.format(stdout, Printf.Format(strConsole[i]), format[i, 1], " ", format[i, 2], format[i, 3], outputVec[i], format[i, 4], " ")
+    end
+
+    for i in axes(strConsole, 1)
+        Printf.format(log_file, Printf.Format(strConsole[i]), format[i, 1], " ", format[i, 2], format[i, 3], outputVec[i], format[i, 4], " ")
+    end
+end
+
+
+"""
+    print_real_axis_converged(itemp, console, log_file)
+
+Print temperature converged
+"""
+function print_real_axis_converged(itemp, console, log_file)
+    println(replace(console["Hline"], "." => " "))
+    printstyled("\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
+
+    println(log_file, replace(console["Hline"], "." => " "))
+    printstyled(log_file, "\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
+end
+
+
+"""
+    print_real_axis_gap_too_small(itemp, minGap, console, log_file)
+
+gap at temperature too small
+"""
+function print_real_axis_gap_too_small(itemp, minGap, console, log_file)
+    println(replace(console["Hline"], "." => " "))
+    printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than " * string(round(minGap, digits=2)) * " meV!\n\n"; bold=false)
+
+    println(log_file, replace(console["Hline"], "." => " "))
+    printstyled(log_file, "\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than " * string(round(minGap, digits=2)) * " meV!\n\n"; bold=false)
+end
+
+
+"""
+     print_real_axis_not_converged(inp, console, log_file)
+
+print max iterations exceeded
+"""
+function print_real_axis_not_converged(inp, console, log_file)
+    println(replace(console["Hline"], "." => " "))
+    printstyled("\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"; bold=true)
+    println("\n")
+
+    println(log_file, replace(console["Hline"], "." => " "))
+    printstyled(log_file, "\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"; bold=true)
+    println(log_file, "\n")
+end
+
+"""
+    real_axis_cdOS_output(i_it, Z_new, delta_new, convergence, gap0)
+
+cDOS console output
+"""
+function real_axis_cdOS_output(i_it, Z_new, delta_new, convergence, gap0)
+    return [i_it, real(Z_new[1]), imag(Z_new[1]), real(delta_new[1]), imag(delta_new[1]), abs(convergence / gap0)]
+end
+
+"""
+    real_axis_vDOS_output(i_it, Z_new, delta_new, chi_new, fermi_level, convergence, gap0)
+
+vDOS console output
+"""
+function real_axis_vDOS_output(i_it, Z_new, delta_new, chi_new, fermi_level, convergence, gap0)
+    return [i_it, real(Z_new[1]), imag(Z_new[1]), real(chi_new[1]), imag(chi_new[1]), fermi_level, real(delta_new[1]), imag(delta_new[1]), abs(convergence / gap0)]
+end
+
+
 
 
 
@@ -661,5 +733,3 @@ function numbersFromString(str::String)
 
     return Float64.(nums)
 end
-
-

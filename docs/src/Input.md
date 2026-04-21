@@ -6,6 +6,7 @@ All energies internally are assumed to be in meV. If the input files differ from
 A comprehensive description of all the input parameters can be found below.
 
 ## General
+ToDO: SOme sorting of inputs to make navigation for user easier
 An overview of the most relevant inputs is given below. Keep in mind that all `-1`'s or `""`'s of required variables will be overwritten during the execution.  For more details please refer to the dedicated sections below.
 
  Name    |      Type      |   Default   | Description | Comment  |

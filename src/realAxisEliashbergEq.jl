@@ -47,7 +47,7 @@ real axis Eliashberg equations in vDOS+μ approximation
 """
 function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{ComplexF64}, deltaip::Vector{ComplexF64}, shiftip::Vector{ComplexF64},
                           Kp_func::AbstractInterpolation, Km_func::AbstractInterpolation, w_prime::Vector{Float64}, w_static::StepRangeLen, 
-                          w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64}, fermi_level::Float64, i_it)
+                          w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64}, fermi_level::Float64, i_it, gap0)
 
     # delta/Z
     phiphip = deltaip .* znormip
@@ -60,6 +60,15 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
     Z_ongrid = Z_itp.(w_prime)
     phi_ongrid = phi_itp.(w_prime)
     shift_ongrid = shift_itp.(w_prime) .- fermi_level
+
+    ###
+    # idx_1 = w_prime .< 5
+    # plot(w_prime[idx_1], 1 ./imag(shift_ongrid[idx_1].^2-(w_prime[idx_1].^2 .*Z_ongrid[idx_1].^2 .-phi_ongrid[idx_1].^2)))
+    # vline!([gap0, 2+gap0], linestyle=:dash, color="orange", linewidth = 1)
+    # savefig("minus$i_it.png")
+    # plot(w_prime[idx_1], 1 ./imag(shift_ongrid[idx_1].^2+(w_prime[idx_1].^2 .*Z_ongrid[idx_1].^2 .-phi_ongrid[idx_1].^2)))
+    # vline!([gap0, 2+gap0], linestyle=:dash, color="orange", linewidth = 1)
+    # savefig("plus$i_it.png")
     
     # ------------- ε-integration ------------- # 
     M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I1_pp, I2_pp, I3_pp, I0_mm, I1_mm, I2_mm, I3_mm = epsilon_helpers(epsilon, dos, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
@@ -90,11 +99,28 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
     shift_integrand = -transpose(FLIP.*integrands[3]) .* Kernel_plus_chi
 
     # ------------- ω'-integration ------------- #
-    # pole is automatically at 0 after ε-integration
+    # pole is at 0 after ε-integration
     Zval = 1 .+ 1 ./(w_static* π *dosef) .*trapz(w_prime, z_integrand)  
     phi_val = 1 ./(π *dosef) .*trapz(w_prime, transpose(phi_integrand))
     shift_val = -1 ./(π *dosef) .*trapz(w_prime, shift_integrand)
-    #shift_val .= 0
+
+    # if i_it < 5
+    #     idx_show = w_prime .< 50
+    #     plot(w_prime[idx_show], real(shift_integrand[1, idx_show]), color="blue")
+    #     plot!(w_prime[idx_show], imag(shift_integrand[1, idx_show]), color="red")
+    #     vline!([gap0, 2+gap0], linestyle=:dash, color="orange", linewidth = 1)
+    #     savefig("shift_integrand_$i_it.png")
+
+    #     plot(w_prime[idx_show], real(phi_integrand[idx_show, 1]), color="blue")
+    #     plot!(w_prime[idx_show], imag(phi_integrand[idx_show, 1]), color="red")
+    #     vline!([gap0, 2+gap0], linestyle=:dash,color="orange", linewidth = 1)
+    #     savefig("phi_integrand_$i_it.png")
+
+    #     plot(w_prime[idx_show], real(z_integrand[1, idx_show]), color="blue")
+    #     plot!(w_prime[idx_show], imag(z_integrand[1, idx_show]), color="red")
+    #     vline!([gap0, 2+gap0], linestyle=:dash,color="orange", linewidth = 1)
+    #     savefig("Z_integrand_$i_it.png")
+    # end
 
     delta_val = phi_val ./ Zval
 

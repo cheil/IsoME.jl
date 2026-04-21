@@ -26,6 +26,78 @@ end
 
 
 """
+    root_finding(fmu)
+
+Find the root of f(mu) = Ne_nsc(mu) - Ne_sc = 0.
+"""
+function root_finding(fmu, outdir, fermi_level)
+
+    ### starting values for mu
+    mu0 = fermi_level-100
+    mu1 = fermi_level+100
+    fmu0 = fmu(mu0)
+    fmu1 = fmu(mu1)
+
+    ### wrong slope 
+    if fmu1 > fmu0
+        # plot electron number vs mu
+        mu_error = range(mu0 - 100, mu1 + 100, 50)
+        Ne_error = zeros(size(mu_error))
+        for k in eachindex(mu_error)
+            Ne_error[k] = fmu(mu_error[k])
+        end
+
+        p = plot(mu_error, Ne_error, label="Ne_nsc - Ne_sc", title="Ne in normal state minus sc state")
+        #vline(p, [mu0, mu1], label="mu")
+        savefig(outdir*"muError.png")
+
+        error("The number of electrons decreases with increasing mu!")
+    end
+
+    ### find minimum interval around ef in which a sign change occurs
+    iter = 0
+    mu_error = [mu0, mu1]
+    fmu_error = [fmu0, fmu1]
+    while fmu0 * fmu1 > 0
+        if sign(fmu0) < 0
+            mu0 -= 200
+            mu1 -= 200
+            fmu1 = fmu0
+            fmu0 = fmu(mu0)
+            pushfirst!(mu_error, mu0)
+            pushfirst!(fmu_error, fmu0)
+        else
+            mu0 += 200
+            mu1 += 200
+            fmu0 = fmu1
+            fmu1 = fmu(mu1)
+            push!(mu_error, mu1)
+            push!(fmu_error, fmu1)
+        end
+        iter += 1
+        if iter > 50    # 10 eV
+            plot(mu_error, fmu_error, label="Ne_nsc - Ne_sc", title="Ne in normal state minus sc state")
+            savefig(outdir*"muError.png")
+
+            mu0error = mu_error[1]
+            mu1error = mu_error[end]
+            error("Error in mu update - Couldn't find a root in the interval [$mu0error,$mu1error]. Please check your input files, in particular the dos-file.")
+        end
+    end
+
+    ### calc new mu using the bisection method
+    mu = bisection(fmu, mu0, mu1)
+    #mu = find_zero(fmu, [mu0, mu1])
+
+    return mu
+end
+
+
+
+############################################################
+# -------------------- Matsubara axis -------------------- #
+############################################################
+"""
     calc_Ne_Sc(mu, Ne_nsc, itemp, wsi, dos_en, dos, znormip, deltaip, shiftip)
 
 Calculate the number of electrons in the sc state for a given chemical
@@ -54,65 +126,6 @@ end
 
 
 """
-    root_finding(fmu)
-
-Find the root of f(mu) = Ne_nsc(mu) - Ne_sc = 0.
-"""
-function root_finding(fmu, outdir)
-
-    ### starting values for mu
-    mu0 = -100
-    mu1 = +100
-    fmu0 = fmu(mu0)
-    fmu1 = fmu(mu1)
-
-    ### wrong slope 
-    if fmu1 > fmu0
-        # plot electron number vs mu
-        mu_error = range(mu0 - 100, mu1 + 100, 200)
-        Ne_error = zeros(size(mu_error))
-        for k in eachindex(mu_error)
-            Ne_error[k] = fmu(mu_error[k])
-        end
-
-        p = plot(mu_error, Ne_error, label="Ne_nsc - Ne_sc", title="Ne in normal state minus sc state")
-        #vline(p, [mu0, mu1], label="mu")
-        savefig(outdir*"muError.png")
-
-        error("The number of electrons decreases with increasing mu!")
-    end
-
-    ### find minimum interval around ef in which a sign change occurs
-    iter = 0
-    mu0error = mu0
-    mu1error = mu1
-    while fmu0 * fmu1 > 0
-        if sign(fmu0) < 0
-            mu0error -= 200
-            mu0 -= 200
-            mu1 -= 200
-            fmu0 = fmu(mu0)
-        else
-            mu0 += 200
-            mu1 += 200
-            mu1error += 200
-            fmu1 = fmu(mu1)
-        end
-        iter += 1
-        if iter > 50    # 10 eV
-            error("Error in mu update - Couldn't find a root in the interval [$mu0error,$mu1error]. Please check your input files, in particular the dos-file.")
-        end
-    end
-
-    ### calc new mu using the bisection method
-    mu = bisection(fmu, mu0, mu1)
-    #mu = find_zero(fmu, [mu0, mu1])
-
-    return mu
-end
-
-
-"""
     update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip)
 
 Routine to update chemical potential to fix the number of electrons
@@ -132,7 +145,7 @@ function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxSh
     # call calc_Ne_Sc with first argument unspecified
     fmu(x) = diff_Ne(x, Ne_nsc, itemp, wsi, dos_en[idxShiftcut[1]:idxShiftcut[2]], dos[idxShiftcut[1]:idxShiftcut[2]], znormip, deltaip, shiftip)  
 
-    mu = root_finding(fmu, outdir)
+    mu = root_finding(fmu, outdir, 0)
     
     return mu
 
@@ -140,17 +153,15 @@ end
 
 
 
-#########################################################
-# --------------------- Real Axis --------------------- #
-#########################################################
+############################################################
+# ---------------------- Real Axis ----------------------- #
+############################################################
 """
     mu_update_real_axis()
 
 Update the chemical potential to conserve charge neutrality - real axis implementation.
 """
-function mu_update_real_axis(itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, outdir, i_it)
-
-    # idx_shiftcut in dos ???
+function mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, outdir, i_it)
 
     ### Calculate N_e in the non-SC state
     Ne_nsc = 2 .* trapz(dos_en, fermiFcn(dos_en, 0.0, itemp) .* dos)   
@@ -158,19 +169,19 @@ function mu_update_real_axis(itemp, w_static, w_static_chi, w_prime, dos_en, dos
     # call calc_Ne_Sc with first argument unspecified
     fmu(x) = diff_Ne_realAxis(x, Ne_nsc, itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, outdir, i_it)
 
-    if i_it == 1
+    if i_it < 5
         ytest = Vector{Float64}()
-        for xtest in range(-2000,20)
+        for xtest in range(-200, 200, 20)
             push!(ytest, fmu(xtest))
         end
         #println(ytest)
-        plot(range(-2000, 0,20), ytest)
-        savefig("mutest.png")
+        plot(range(-200, 200, 20), ytest)
+        savefig("mutest_$i_it.png")
     end
 
     #mu = find_zero(fmu, 0.0, Order1())
 
-    mu = root_finding(fmu, outdir)
+    mu = root_finding(fmu, outdir, fermi_level)
     
     return mu
 end

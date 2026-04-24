@@ -47,7 +47,7 @@ real axis Eliashberg equations in vDOS+μ approximation
 """
 function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{ComplexF64}, deltaip::Vector{ComplexF64}, shiftip::Vector{ComplexF64},
                           Kp_func::AbstractInterpolation, Km_func::AbstractInterpolation, w_prime::Vector{Float64}, w_static::StepRangeLen, 
-                          w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64}, fermi_level::Float64, i_it, gap0)
+                          w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64}, fermi_level::Float64, i_it, gap0, s_flag, outdir)
 
     # delta/Z
     phiphip = deltaip .* znormip
@@ -104,27 +104,29 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
     phi_val = 1 ./(π *dosef) .*trapz(w_prime, transpose(phi_integrand))
     shift_val = -1 ./(π *dosef) .*trapz(w_prime, shift_integrand)
 
-    # if i_it < 5
-    #     idx_show = w_prime .< 50
-    #     plot(w_prime[idx_show], real(shift_integrand[1, idx_show]), color="blue")
-    #     plot!(w_prime[idx_show], imag(shift_integrand[1, idx_show]), color="red")
-    #     vline!([gap0, 2+gap0], linestyle=:dash, color="orange", linewidth = 1)
-    #     savefig("shift_integrand_$i_it.png")
+    if i_it == 1 && s_flag
+        idx_show = 1:length(w_prime)
+        plot(w_prime[idx_show], real(integrands[3][idx_show]), color="blue")
+        plot!(w_prime[idx_show], imag(integrands[3][idx_show]), color="red")
+        vline!([gap0, 2+gap0], linestyle=:dash, color="orange", linewidth = 1)
+        savefig(outdir*"Istar_chi_$i_it.png")
 
-    #     plot(w_prime[idx_show], real(phi_integrand[idx_show, 1]), color="blue")
-    #     plot!(w_prime[idx_show], imag(phi_integrand[idx_show, 1]), color="red")
-    #     vline!([gap0, 2+gap0], linestyle=:dash,color="orange", linewidth = 1)
-    #     savefig("phi_integrand_$i_it.png")
+        plot(w_prime[idx_show], real(integrands[2][idx_show]), color="blue")
+        plot!(w_prime[idx_show], imag(integrands[2][idx_show]), color="red")
+        vline!([gap0, 2+gap0], linestyle=:dash,color="orange", linewidth = 1)
+        savefig(outdir*"Istar_phi_$i_it.png")
 
-    #     plot(w_prime[idx_show], real(z_integrand[1, idx_show]), color="blue")
-    #     plot!(w_prime[idx_show], imag(z_integrand[1, idx_show]), color="red")
-    #     vline!([gap0, 2+gap0], linestyle=:dash,color="orange", linewidth = 1)
-    #     savefig("Z_integrand_$i_it.png")
-    # end
+        plot(w_prime[idx_show], real(integrands[1][idx_show]), color="blue")
+        plot!(w_prime[idx_show], imag(integrands[1][idx_show]), color="red")
+        vline!([gap0, 2+gap0], linestyle=:dash,color="orange", linewidth = 1)
+        savefig(outdir*"Istar_Z_$i_it.png")
+
+        s_flag = false
+    end
 
     delta_val = phi_val ./ Zval
 
-    return Zval, delta_val, shift_val
+    return Zval, delta_val, shift_val, s_flag
     
 end
 
@@ -136,7 +138,7 @@ end
 Real axis Eliashberg equations in cDOS+μ approximation
 """
 function realEliashbergEq(mu_star::Float64, beta::Float64, deltaip::Vector{ComplexF64}, Kp_func::AbstractInterpolation, 
-                          Km_func::AbstractInterpolation, w_dynam::Vector{Float64}, w_static::StepRangeLen, w_cut::Float64) 
+                          Km_func::AbstractInterpolation, w_dynam::Vector{Float64}, w_static::StepRangeLen, w_cut::Float64, i_it) 
 
     # w_static: grid of the static part of the kernels, on which Z and Δ are evaluated
     # w_dynam:  chebyshev grid shifted to the pole of Θ(ω') to capture the singularity,

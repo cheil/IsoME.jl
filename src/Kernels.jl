@@ -2,9 +2,7 @@
     File containing the functions for the real axis solver
 """
 
-function make_integration_axis(W_cut, pts_cheb, pts_lin, epsilon)
-
-    W_width = W_cut
+function make_integration_axis(W_width, pts_cheb, pts_lin, epsilon)
 
     # Chebyshev grid inside [-epsilon, epsilon] to handle 1/Omega singularities.
     cheb_idx = div(pts_cheb, 2):(pts_cheb - 1)
@@ -43,10 +41,13 @@ function setUpAxis(inp, matval)
     # Frequency and integration grids
     # w_axis must be same as w_static_chi
     if inp.cDOS_flag == 1
-        w_axis = range(0, stop=inp.reOmega_c, length=inp.numReal_c)
+        w_axis = range(0, stop=inp.reOmega_c, length=5000)
     else
          # ω linear grid to store K(ω,ω'), has to be dimensions max(reOmega_c, reOmega_c_shift) + same for num
         w_axis = range(0, stop=max(inp.reOmega_c, inp.reOmega_c_shift), length=max(inp.numReal_c_shift,inp.numReal_c))
+
+        # TEST
+        #w_axis = range(0, stop=inp.reOmega_c, length=5000)
     end
     int_axis = make_integration_axis(W_right-W_left, 300, 300, 3)      # Ω-integration axis
 
@@ -167,6 +168,9 @@ function precompute_integrals(num_w, w_max, W_left, W_cut, int_axis, G, n, log_f
 end
 
 function compute_real_kernels(w_axis, num_w, w_max, W_left, W_cut, int_axis, f, n, G, log_file=nothing, line_width=80)
+
+    println("num_w: ",num_w)
+    println("w_max: ", w_max)
 
     progress_state = nothing
     if !isnothing(log_file)
@@ -369,23 +373,32 @@ function kernels(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left, log_file=not
     Kp = Kp_real .+ im .* (Kp_imag)
     Km = Km_real .+ im .* (Km_imag)
 
-    Kp_func = extrapolate(scale(interpolate(Kp, BSpline(Linear())), w_axis, w_axis), 0.0 + 0.0im)
-    Km_func = extrapolate(scale(interpolate(Km, BSpline(Linear())), w_axis, w_axis), 0.0 + 0.0im)
+    # Kp_func = extrapolate(scale(interpolate(Kp, BSpline(Linear())), w_axis, w_axis), Flat())
+    # Km_func = extrapolate(scale(interpolate(Km, BSpline(Linear())), w_axis, w_axis), Flat())
+
+    Kp_func = interpolate((w_axis, w_axis), Kp, Gridded(Linear()))
+    Km_func = interpolate((w_axis, w_axis), Km, Gridded(Linear()))
 
     return Kp_func, Km_func
 end
 
-function precompute(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left, console, log_file)
+function precompute(β, inp, matval, a2F_itp, console, log_file)
 
     printTextCentered("Precomputing Kernels", console["cDOS"]["partingLine"], file=log_file, bold=true)
     print_kernel_log(log_file, "\n")
 
+    ### Set up axis and parameters ###
+    W_cut, W_left, w_axis, int_axis = setUpAxis(inp, matval)
+
     Kp_func, Km_func = kernels(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left, log_file, length(console["cDOS"]["partingLine"]))
 
-    # new cheb grid
-    w_static = range(1e-3, stop=inp.reOmega_c, length=inp.numReal_c)        # grid of Z(w), Delta(w)
-    w_static_chi = range(1e-3, stop=inp.reOmega_c_shift, length=inp.numReal_c_shift)   # grid of χ(ω), 10*inp.reOmega_c
-    w_dynam = reverse(inp.reOmega_c .+ inp.reOmega_c .* cos.((2 .* (0:inp.n_cheb-1) .+ 1) .* π ./ (2 * inp.n_cheb)))    # only positvie chebyshev nodes
+    w_static = range(1e-1, stop=inp.reOmega_c, length=inp.numReal_c)        # grid of Z(w), Delta(w), sensitive to start value, do not chose < 1e-1
+    w_static_chi = range(1e-1, stop=inp.reOmega_c_shift, length=inp.numReal_c_shift)   # grid of χ(ω), 10*inp.reOmega_c
+    w_dynam = reverse(inp.reOmega_c .+ inp.reOmega_c .* cos.((2 .* (inp.n_cheb/2:inp.n_cheb-1) .+ 1) .* π ./ (2 * inp.n_cheb)))    # only positvie chebyshev nodes
+
+    # if inp.plot_flag
+    #     plot_kernel_diagonal(β, inp, Kp_func, Km_func, w_static_chi, log_file)
+    # end
 
     return (Kp_func, Km_func, w_static, w_dynam, w_static_chi)
 
@@ -445,3 +458,29 @@ function finish_kernel_progress(log_file, progress_state)
     end
 end
 
+function plot_kernel_diagonal(β, inp, Kp_func, Km_func, w_static_chi, log_file)
+    try
+        w_diag = collect(w_static_chi)
+        Kp_diag = [Kp_func(w, w) for w in w_diag]
+        Km_diag = [Km_func(w, w) for w in w_diag]
+
+        itemp = round(1 / (kb * β), digits=4)
+        temp_label = replace(string(itemp), "." => "p")
+
+        plot(
+            w_diag,
+            real.(Kp_diag),
+            label="Re K+",
+            xlabel="ω / meV",
+            ylabel="K(ω,ω)",
+            linewidth=2,
+        )
+        plot!(w_diag, imag.(Kp_diag), label="Im K+", linewidth=2)
+        plot!(w_diag, real.(Km_diag), label="Re K-", linewidth=2)
+        plot!(w_diag, imag.(Km_diag), label="Im K-", linewidth=2)
+
+        savefig("kernel_diagonal_T$(temp_label)K.png")
+    catch ex
+        printWarning("Error while plotting real-axis kernel diagonal.", log_file, ex=ex)
+    end
+end

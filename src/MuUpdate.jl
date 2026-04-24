@@ -30,7 +30,7 @@ end
 
 Find the root of f(mu) = Ne_nsc(mu) - Ne_sc = 0.
 """
-function root_finding(fmu, outdir, fermi_level)
+function root_finding(fmu, outdir, fermi_level, i_it=0)
 
     ### starting values for mu
     mu0 = fermi_level-100
@@ -86,7 +86,7 @@ function root_finding(fmu, outdir, fermi_level)
     end
 
     ### calc new mu using the bisection method
-    mu = bisection(fmu, mu0, mu1)
+    mu = bisection(fmu, mu0, mu1, outdir=outdir, i_it=i_it)
     #mu = find_zero(fmu, [mu0, mu1])
 
     return mu
@@ -165,24 +165,24 @@ function mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime
 
     ### Calculate N_e in the non-SC state
     Ne_nsc = 2 .* trapz(dos_en, fermiFcn(dos_en, 0.0, itemp) .* dos)   
-
+    
     # call calc_Ne_Sc with first argument unspecified
-    fmu(x) = diff_Ne_realAxis(x, Ne_nsc, itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, outdir, i_it)
+    fmu(x) = diff_Ne_realAxis(x, Ne_nsc, itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip)
 
     # if i_it < 5
     #     ytest = Vector{Float64}()
-    #     for xtest in range(-200, 200, 20)
+    #     for xtest in range(-200, 200, 10)
     #         push!(ytest, fmu(xtest))
     #     end
     #     #println(ytest)
-    #     plot(range(-200, 200, 20), ytest)
+    #     plot(range(-200, 200, 10), ytest)
     #     savefig("mutest_$i_it.png")
     # end
 
     #mu = find_zero(fmu, 0.0, Order1())
 
-    mu = root_finding(fmu, outdir, fermi_level)
-    
+    mu = root_finding(fmu, outdir, fermi_level, i_it)
+   
     return mu
 end
 
@@ -193,7 +193,7 @@ end
 Calculate the number of electrons in the sc state for a given chemical
 potential minus the number of electrons in the normal state
 """
-function diff_Ne_realAxis(mu, Ne_nsc, itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip, outdir, i_it)
+function diff_Ne_realAxis(mu, Ne_nsc, itemp, w_static, w_static_chi, w_prime, dos_en, dos, znormip, deltaip, shiftip)
 
     phiphip = deltaip.*znormip
 

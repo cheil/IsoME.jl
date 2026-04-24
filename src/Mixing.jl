@@ -25,7 +25,7 @@
 The bisection method is a simple root-finding method
 Two function values with opposite sign need to be known
 """
-function bisection(f::Function, a::Number, b::Number, tol::AbstractFloat=1e-6, ftol::AbstractFloat=1e-10, maxiter::Integer=1000)
+function bisection(f::Function, a::Number, b::Number, tol::AbstractFloat=1e-6, ftol::AbstractFloat=1e-10, maxiter::Integer=1000; outdir = "", i_it = 1)
 
 
     # intitial function evaluation

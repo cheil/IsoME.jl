@@ -866,7 +866,7 @@ end
 
 plot self energy component vs omega on real axis at given temperature
 """
-function plotSelfEnergyAtT(inp, itemp, selfEnergy, w_real = nothing)
+function plotSelfEnergyAtT(inp, itemp, selfEnergy, w_real = nothing; names = ["Gap", "Z", "Shift"], labels = ["Δ(ω) / meV", "Z(ω) / 1", "χ(ω) / meV"])
 
     folder = inp.outdir*"Plots/"
 
@@ -878,9 +878,6 @@ function plotSelfEnergyAtT(inp, itemp, selfEnergy, w_real = nothing)
         w_real = range(0, inp.reOmega_c, inp.numReal_c)
     end
 
-
-    names = ["Gap", "Z", "Shift"]
-    labels = ["Δ(ω) / meV", "Z(ω) / 1", "χ(ω) / meV"]
 
     for (component, name, label) in zip(selfEnergy, names, labels)
         plot(w_real, real(component), col="blue", label="Real", linewidth=2, ylabel=label, xlabel = "ω / meV")

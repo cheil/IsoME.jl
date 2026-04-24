@@ -5,7 +5,7 @@
 
 
 mutable struct RealAxisState
-    Z::Vector{ComplexF64}
+    Z::Vector{ComplexF64} 
     delta::Vector{ComplexF64}
     chi::Vector{ComplexF64}
     fermi_level::Float64
@@ -179,8 +179,6 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
     Znorm0 = Vector{ComplexF64}()
     Tc = [NaN, NaN]
 
-    ### Set up axis and parameters ###
-    W_cut, W_left, w_axis, int_axis = setUpAxis(inp, matval)
 
     realAxisState = nothing
 
@@ -198,7 +196,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
 
             β = 1 / (kb * itemp)
 
-            realAxisParameter = precompute(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left, console, log_file)
+            realAxisParameter = precompute(β, inp, matval, a2F_itp, console, log_file)
 
             if inp.cDOS_flag == 0 && isnothing(realAxisState)
                 # initial values vDOS
@@ -325,7 +323,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
 
             β = 1 / (kb * itemp)
 
-            realAxisParameter = precompute(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left, console, log_file)
+            realAxisParameter = precompute(β, inp, matval, a2F_itp, console, log_file)
 
 
             # initial values vDOS
@@ -387,7 +385,7 @@ function solve_realAxis_cDOS(itemp, inp, console, realAxisParameter, log_file; v
     (Kp_func, Km_func, w_static, w_dynam, _) = realAxisParameter
 
     # smaller threshold for initial guess calculation
-    conv_thr = vDOS_initial_guess ? 1e-3 : conv_thr
+    conv_thr = vDOS_initial_guess ? max(1e-3, conv_thr) : conv_thr
 
     title = vDOS_initial_guess ? "Initial guess: cDOS at T = " * string(itemp) * " K" : "T = " * string(itemp) * " K "
     printTextCentered(title, console["partingLine"], file=log_file, bold=true)
@@ -409,7 +407,7 @@ function solve_realAxis_cDOS(itemp, inp, console, realAxisParameter, log_file; v
         broyden_beta = mixing_parameter(inp, i_it)
         gap0 = real(delta_prev[1])
 
-        Z_new, delta_new = realEliashbergEq(muc_ME, β, delta_prev, Kp_func, Km_func, w_dynam, w_static, reOmega_c)
+        Z_new, delta_new = realEliashbergEq(muc_ME, β, delta_prev, Kp_func, Km_func, w_dynam, w_static, reOmega_c, i_it)
 
         Z_new = (1.0 - abs(broyden_beta)) .* Z_prev .+ abs(broyden_beta) .* Z_new
         delta_new = (1.0 - abs(broyden_beta)) .* delta_prev .+ abs(broyden_beta) .* delta_new
@@ -490,6 +488,8 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
     β = 1 / (kb * itemp)
     data = [state.Z[1], state.delta[1], state.chi[1]]
 
+    s_flag = true
+
     for i_it in 1:N_it
         delta_prev = copy(delta_new)
         Z_prev = copy(Z_new)
@@ -502,15 +502,30 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         #     plot_wprime_density(w_prime, itemp, inp, log_file)
         # end
 
-        if mu_flag == 1
+        if mu_flag == 1 #&& i_it > 1
             fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, Z_prev, delta_prev, chi_prev, inp.outdir, i_it)
         end
 
-        Z_new, delta_new, chi_new = realEliashbergEq(muc_ME, β, Z_prev, delta_prev, chi_prev, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, fermi_level, i_it, gap0)
+        Z_new, delta_new, chi_new, s_flag = realEliashbergEq(muc_ME, β, Z_prev, delta_prev, chi_prev, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, fermi_level, i_it, gap0, s_flag, inp.outdir)
 
         chi_new = (1.0 - abs(broyden_beta)) .* chi_prev .+ abs(broyden_beta) .* chi_new
         Z_new = (1.0 - abs(broyden_beta)) .* Z_prev .+ abs(broyden_beta) .* Z_new
         delta_new = (1.0 - abs(broyden_beta)) .* delta_prev .+ abs(broyden_beta) .* delta_new
+
+        # if i_it <5
+        #     plot(w_static, real(Z_new), c=:blue)
+        #     plot!(w_static, imag(Z_new), c=:red)
+        #     savefig("Z_$i_it.png")
+
+        #     plot(w_static, real(delta_new), c=:blue)
+        #     plot!(w_static, imag(delta_new), c=:red)
+        #     savefig("delta_$i_it.png")
+
+        #     plot(w_static_chi, real(chi_new), c=:blue)
+        #     plot!(w_static_chi, imag(chi_new), c=:red)
+        #     savefig("chi_$i_it.png")
+        # end
+
 
         convergence = sqrt(sum(abs2.(delta_new .- delta_prev))/length(delta_new))
         data = [Z_new[1], delta_new[1], chi_new[1]]
@@ -521,10 +536,9 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
             print_real_axis_converged(itemp, console, log_file)
 
             if plot_flag
-                chi_itp = linear_interpolation(w_static_chi, shiftip, extrapolation_bc=Flat())
-                chi_plot = chi_itp(w_static)
-                selfEnergy = (delta_new, Z_new, chi_plot)
+                selfEnergy = (delta_new, Z_new)
                 plotSelfEnergyAtT(inp, itemp, selfEnergy, w_static)
+                plotSelfEnergyAtT(inp, itemp, (chi_new,), w_static_chi, names=["chi"], labels=["χ(ω) / meV"])
             end
 
             # next guess

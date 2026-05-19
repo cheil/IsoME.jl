@@ -1,1 +1,5 @@
-Docs of real axis solver
+# Real Axis Solver
+
+```@docs
+RealAxisSolver
+```

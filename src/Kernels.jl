@@ -169,12 +169,9 @@ end
 
 function compute_real_kernels(w_axis, num_w, w_max, W_left, W_cut, int_axis, f, n, G, log_file=nothing, line_width=80)
 
-    println("num_w: ",num_w)
-    println("w_max: ", w_max)
-
     progress_state = nothing
     if !isnothing(log_file)
-        progress_state = start_kernel_progress("real", log_file, line_width)
+        progress_state = start_kernel_progress(" Re", log_file, line_width)
     end
 
     w2_grid = repeat(w_axis, 1, length(w_axis))
@@ -210,7 +207,7 @@ function compute_imag_kernels(w_axis, f, n, a2F_itp, log_file=nothing, line_widt
 
     progress_state = nothing
     if !isnothing(log_file)
-        progress_state = start_kernel_progress("imag", log_file, line_width)
+        progress_state = start_kernel_progress(" Im", log_file, line_width)
     end
     progress_interval = isnothing(log_file) ? nothing : kernel_progress_interval(N, progress_state)
 
@@ -373,11 +370,14 @@ function kernels(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left, log_file=not
     Kp = Kp_real .+ im .* (Kp_imag)
     Km = Km_real .+ im .* (Km_imag)
 
-    # Kp_func = extrapolate(scale(interpolate(Kp, BSpline(Linear())), w_axis, w_axis), Flat())
-    # Km_func = extrapolate(scale(interpolate(Km, BSpline(Linear())), w_axis, w_axis), Flat())
+    # more accurate but slower
+    # Kp_func = interpolate((w_axis, w_axis), Kp, Gridded(Linear()))
+    # Km_func = interpolate((w_axis, w_axis), Km, Gridded(Linear()))
 
-    Kp_func = interpolate((w_axis, w_axis), Kp, Gridded(Linear()))
-    Km_func = interpolate((w_axis, w_axis), Km, Gridded(Linear()))
+    # faster
+    Kp_func = scale(interpolate(Kp, BSpline(Linear())), w_axis, w_axis)
+    Km_func = scale(interpolate(Km, BSpline(Linear())), w_axis, w_axis)
+
 
     return Kp_func, Km_func
 end
@@ -396,9 +396,9 @@ function precompute(β, inp, matval, a2F_itp, console, log_file)
     w_static_chi = range(1e-1, stop=inp.reOmega_c_shift, length=inp.numReal_c_shift)   # grid of χ(ω), 10*inp.reOmega_c
     w_dynam = reverse(inp.reOmega_c .+ inp.reOmega_c .* cos.((2 .* (inp.n_cheb/2:inp.n_cheb-1) .+ 1) .* π ./ (2 * inp.n_cheb)))    # only positvie chebyshev nodes
 
-    # if inp.plot_flag
-    #     plot_kernel_diagonal(β, inp, Kp_func, Km_func, w_static_chi, log_file)
-    # end
+    # assert grid sizes
+    @assert first(w_axis) <= first(w_static) && last(w_static) <= last(w_axis)
+    @assert first(w_axis) <= first(w_static_chi) && last(w_static_chi) <= last(w_axis)
 
     return (Kp_func, Km_func, w_static, w_dynam, w_static_chi)
 
@@ -417,7 +417,7 @@ function print_kernel_log(log_file, text)
 end
 
 function start_kernel_progress(label, log_file, line_width)
-    prefix = label * " Kernel: "
+    prefix = label * " K(w,w'): "
     progress_state = (
         printed=Ref(0),
         target=max(1, line_width - length(prefix) - 3),

@@ -64,9 +64,15 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
             epsilonItp = range(Wen[1], Wen[end], length(Wen))
             itpWeep = scale(interpolate(Weep, BSpline(Constant())), (epsilonItp, epsilonItp))
 
-            if mode == 0
+            if mode == 0 
                 # interpolate 
                 dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut, itpWeep=itpWeep, Wen=Wen)
+            else
+                # interpolate dos similar as mit
+                dos_en = collect(range(-5,20, 876))*1000
+                dos = itpDos(dos_en)
+                Weep = itpWeep(dos_en, dos_en)
+
             end
 
             # mu, idxWef = idx_ef
@@ -78,8 +84,8 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
                 dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut)
             else 
                 # interpolate dos similar as mit
-                dos_en = collect(range(-5,20, 876))*1000
-                dos = itpDos(dos_en)
+                #dos_en = collect(range(-5,20, 876))*1000
+                #dos = itpDos(dos_en)
                 Weep = nothing
             end
         end
@@ -223,7 +229,7 @@ function initOutputTable(inp::arguments; mode::Int64=0)#
 
     elseif mode == 1
 
-        if inp.include_Weep == 0
+        if inp.include_Weep in (0, 1)
             console["cDOS"] = Dict{String,Any}(
                 "header" => ["it", "Re(Z)", "Im(Z)", "Re(Δ)", "Im(Δ)", "Error Δ"],
                 "width" => [8, 10, 10, 10, 10, 11],
@@ -235,9 +241,6 @@ function initOutputTable(inp::arguments; mode::Int64=0)#
                 "width" => [8, 10, 10, 10, 10, 10, 10, 10, 11],
                 "precision" => [0, 4, 4, 4, 4, 2, 4, 4, 5],
             )
-
-        else
-            error("Invalid Mode! Currently, only the μ approximation is available on the real axis!")
         end
 
     end
@@ -323,8 +326,8 @@ function checkInput(inp::arguments; realSolver::Bool=false)
     end
 
     if realSolver
-        if inp.include_Weep == 1
-            error("Currently, only the μ approximation is available on the real axis!\n Check if the cDOS_flag and include_Weep flag are set correctly!\n\n")
+        if inp.include_Weep == 1 && inp.cDOS_flag == 1
+            error("Real-axis W calculations require cDOS_flag = 0 for the vDOS+W approximation.\n Check if the cDOS_flag and include_Weep flag are set correctly!\n\n")
         end
     end
 

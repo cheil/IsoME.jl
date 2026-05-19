@@ -9,7 +9,10 @@ mutable struct RealAxisState
     delta::Vector{ComplexF64}
     chi::Vector{ComplexF64}
     fermi_level::Float64
+    phi::Union{Nothing, Matrix{ComplexF64}}
 end
+
+RealAxisState(Z, delta, chi, fermi_level) = RealAxisState(Z, delta, chi, fermi_level, nothing)
 
 
 """ 
@@ -462,12 +465,8 @@ end
 Solve the real-axis Eliashberg equations in the vDOS+μ approximation.
 """
 function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, state::RealAxisState, log_file)
-    if inp.include_Weep == 1
-        error("Currently, only the μ approximation is available on the real axis!")
-    end
-
     # destruct inputs
-    (_, _, dos_en, dos, _, dosef, _, _, _) = matval
+    (_, _, dos_en, dos, Weep, dosef, idx_ef, _, _, _) = matval
     (; muc_ME, mu_flag, N_it, conv_thr, minGap, nItFullCoul, min_it, plot_flag) = inp
     (Kp_func, Km_func, w_static, _, w_static_chi) = realAxisParameter
 
@@ -475,10 +474,22 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
     printTextCentered("T = " * string(itemp) * " K ", console["partingLine"], file=log_file, bold=true)
     printTee(log_file, "\n")
 
+    # ----- electronic spectral information ----- #
+    eps_1, eps_2 = transpose(dos_en[1:end-1]), transpose(dos_en[2:end])
+    dos_1, dos_2 = transpose(dos[1:end-1]), transpose(dos[2:end])
+    dε = eps_2 .- eps_1
+    ddos = dos_2 .- dos_1
+    electronic_spec = (eps_1, eps_2, dos_1, dos_2, dε, ddos)
+
     # ----- initial guesses -----#
     Z_new = state.Z
     delta_new = state.delta
     chi_new = state.chi
+    phi_new = if inp.include_Weep == 1
+            isnothing(state.phi) ? repeat(delta_new .* Z_new, 1, length(dos_en)) : state.phi
+    else
+        nothing
+    end
     fermi_level = state.fermi_level
 
     # print console table
@@ -490,42 +501,40 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
 
     s_flag = true
 
+    # ------ integration grid and kernels ----- #
+    # w_prime = make_vDOS_wprime_grid(max(0.1, real(state.delta[1])), inp)
+    # Kernel_minus, Kernel_plus = evaluate_Kernels(w_static, w_prime, Km_func, Kp_func)
+    # Kernel_plus_chi = evaluate_Kernels(w_static_chi, w_prime, Kp_func)
+    # Kernels = (Kernel_minus, Kernel_plus, Kernel_plus_chi)
+
     for i_it in 1:N_it
         delta_prev = copy(delta_new)
         Z_prev = copy(Z_new)
         chi_prev = copy(chi_new)
+        phi_prev = isnothing(phi_new) ? nothing : copy(phi_new)
         broyden_beta = mixing_parameter(inp, i_it)
         gap0 = real(delta_prev[1])
         w_prime = make_vDOS_wprime_grid(gap0, inp)
+        wgCoulomb = minimum([1, i_it / nItFullCoul])
 
-        # if i_it == 1
-        #     plot_wprime_density(w_prime, itemp, inp, log_file)
-        # end
 
-        if mu_flag == 1 #&& i_it > 1
-            fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, Z_prev, delta_prev, chi_prev, inp.outdir, i_it)
+        if mu_flag == 1 
+            @time fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, Z_prev, delta_prev, chi_prev, inp.outdir, i_it)
         end
 
-        Z_new, delta_new, chi_new, s_flag = realEliashbergEq(muc_ME, β, Z_prev, delta_prev, chi_prev, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, fermi_level, i_it, gap0, s_flag, inp.outdir)
+        if inp.include_Weep == 1
+            @time Z_new, delta_new, chi_new, phi_new, s_flag = realEliashbergEq(β, Z_prev, phi_prev, chi_prev, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec, i_it, gap0, s_flag, inp.outdir)
+        else
+            Z_new, delta_new, chi_new, s_flag = realEliashbergEq(muc_ME, β, Z_prev, delta_prev, chi_prev, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, fermi_level, i_it, gap0, s_flag, inp.outdir)
+        end
 
         chi_new = (1.0 - abs(broyden_beta)) .* chi_prev .+ abs(broyden_beta) .* chi_new
         Z_new = (1.0 - abs(broyden_beta)) .* Z_prev .+ abs(broyden_beta) .* Z_new
         delta_new = (1.0 - abs(broyden_beta)) .* delta_prev .+ abs(broyden_beta) .* delta_new
-
-        # if i_it <5
-        #     plot(w_static, real(Z_new), c=:blue)
-        #     plot!(w_static, imag(Z_new), c=:red)
-        #     savefig("Z_$i_it.png")
-
-        #     plot(w_static, real(delta_new), c=:blue)
-        #     plot!(w_static, imag(delta_new), c=:red)
-        #     savefig("delta_$i_it.png")
-
-        #     plot(w_static_chi, real(chi_new), c=:blue)
-        #     plot!(w_static_chi, imag(chi_new), c=:red)
-        #     savefig("chi_$i_it.png")
-        # end
-
+        if inp.include_Weep == 1
+            phi_new = (1.0 - abs(broyden_beta)) .* phi_prev .+ abs(broyden_beta) .* phi_new
+            delta_new = phi_new[:, idx_ef] ./ Z_new
+        end
 
         convergence = sqrt(sum(abs2.(delta_new .- delta_prev))/length(delta_new))
         data = [Z_new[1], delta_new[1], chi_new[1]]
@@ -545,6 +554,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
             state.Z = Z_new
             state.chi = chi_new
             state.delta = delta_new
+            state.phi = phi_new
             state.fermi_level = fermi_level
             return data, state
         end
@@ -604,7 +614,7 @@ function make_vDOS_wprime_grid(gap0, inp)
     wp_inside = gap0 .* cos.((2 .* (0:num_wp1-1) .+ 1) ./ (2*num_wp1) .* π)
     wp_half = wp_max .+ wp_max .* cos.((2 .* (floor(num_wp2/2):num_wp2-1) .+ 1) ./ (2*num_wp2) .* π)
     wp_half = reverse(wp_half) .+ gap0
-    wp_rest = range(maximum(wp_half), reOmega_c_shift, length=numReal_c_shift)
+    wp_rest = range(maximum(wp_half), reOmega_c_shift, length=numReal_c_shift) 
 
     wp = vcat(
         reverse(wp_inside[wp_inside .> 0]),
@@ -615,24 +625,6 @@ function make_vDOS_wprime_grid(gap0, inp)
     return wp[wp .> 0]
 end
 
-function plot_wprime_density(w_prime, itemp, inp, log_file)
-    if inp.testMode
-        return
-    end
-
-    try
-        histogram(w_prime[w_prime .< 1],
-            bins=100,
-            label="",
-            xlabel="ω' / meV",
-            ylabel="Point count",
-            title="Point density of ω' grid",
-        )
-        savefig("w_prime_density_T"*string(itemp)*"K.png")
-    catch ex
-        printWarning("Error while plotting the w_prime point density.", log_file, ex=ex)
-    end
-end
 
 function save_real_axis_cDOS_outputs(itemp, inp, state, log_file)
     plotSelfEnergyAtT(inp, itemp, (state.delta, state.Z))

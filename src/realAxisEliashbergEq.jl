@@ -10,7 +10,7 @@ real axis Eliashberg equations in the vDOS+W approximation
 function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phiphip::Matrix{ComplexF64}, shiftip::Vector{ComplexF64},
                           Kp_func::AbstractInterpolation, Km_func::AbstractInterpolation, w_prime::Vector{Float64}, w_static::StepRangeLen,
                           w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64}, Weep::Matrix{Float64},
-                          idx_ef::Int64, fermi_level::Float64, wgCoulomb::Number, electronic_spec::Tuple, i_it, gap0, s_flag, outdir)
+                          idx_ef::Int64, fermi_level::Float64, wgCoulomb::Number, electronic_spec::Tuple)
 
     if size(Weep, 1) != length(epsilon) || size(Weep, 2) != length(epsilon)
         error("The W(ε,ε′) matrix must be defined on the same energy grid as the DOS for real-axis vDOS+W calculations.")
@@ -25,12 +25,9 @@ function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phiphip::M
     phi_ongrid = interpolate_phi_matrix(w_static, phiphip, w_prime)
 
     # ------------- ε-integration ------------- #
-    println("ε...")
-    @time integrands, coulomb_spectral = eval_spectral_and_coulomb_vDOS_W(electronic_spec, epsilon, dos, Weep, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
+    integrands, coulomb_spectral = eval_spectral_and_coulomb_vDOS_W(electronic_spec, epsilon, dos, Weep, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
 
     # ------------- Ω-integration ------------- #
-    println("Ω...")
-    @time begin
     Kernel_minus, Kernel_plus = evaluate_Kernels(w_static, w_prime, Km_func, Kp_func)
     Kernel_plus_chi = evaluate_Kernels(w_static_chi, w_prime, Kp_func)
     z_integrand = -abs.(transpose(integrands[1])) .* Kernel_minus
@@ -42,7 +39,6 @@ function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phiphip::M
     # spectral quadrature, rather than multiplying by an interval-averaged W.
     coulomb_spectral = coulomb_spectral .* transpose(FLIP)
     coulomb_integrand = wgCoulomb .* dosef .* coulomb_spectral .* transpose(tanh.(beta .* w_prime ./ 2))
-    end
 
     # ------------- ω'-integration ------------- #
     Zval = 1 .+ 1 ./(w_static * π * dosef) .* trapz(w_prime, z_integrand)
@@ -54,7 +50,7 @@ function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phiphip::M
     delta_val = phi_val[:, idx_ef] ./ Zval
 
 
-    return Zval, delta_val, shift_val, phi_val, s_flag
+    return Zval, delta_val, shift_val, phi_val
 end
 
 
@@ -65,7 +61,7 @@ real axis Eliashberg equations in vDOS+μ approximation
 """
 function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{ComplexF64}, deltaip::Vector{ComplexF64}, shiftip::Vector{ComplexF64},
                           Kp_func::AbstractInterpolation, Km_func::AbstractInterpolation, w_prime::Vector{Float64}, w_static::StepRangeLen, 
-                          w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64}, fermi_level::Float64, i_it, gap0, s_flag, outdir)
+                          w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64}, fermi_level::Float64)
 
     # delta/Z
     phiphip = deltaip .* znormip
@@ -114,29 +110,9 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
     phi_val = 1 ./(π *dosef) .*trapz(w_prime, transpose(phi_integrand))
     shift_val = -1 ./(π *dosef) .*trapz(w_prime, shift_integrand)
 
-    if i_it == 1 && s_flag
-        idx_show = 1:length(w_prime)
-        plot(w_prime[idx_show], real(integrands[3][idx_show]), color="blue")
-        plot!(w_prime[idx_show], imag(integrands[3][idx_show]), color="red")
-        vline!([gap0, 2+gap0], linestyle=:dash, color="orange", linewidth = 1)
-        savefig(outdir*"Istar_chi_$i_it.png")
-
-        plot(w_prime[idx_show], real(integrands[2][idx_show]), color="blue")
-        plot!(w_prime[idx_show], imag(integrands[2][idx_show]), color="red")
-        vline!([gap0, 2+gap0], linestyle=:dash,color="orange", linewidth = 1)
-        savefig(outdir*"Istar_phi_$i_it.png")
-
-        plot(w_prime[idx_show], real(integrands[1][idx_show]), color="blue")
-        plot!(w_prime[idx_show], imag(integrands[1][idx_show]), color="red")
-        vline!([gap0, 2+gap0], linestyle=:dash,color="orange", linewidth = 1)
-        savefig(outdir*"Istar_Z_$i_it.png")
-
-        s_flag = false
-    end
-
     delta_val = phi_val ./ Zval
 
-    return Zval, delta_val, shift_val, s_flag
+    return Zval, delta_val, shift_val
     
 end
 
@@ -158,7 +134,13 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, deltaip::Vector{Compl
     gap0 = real(deltaip[1])
 
     root_eq = x -> x - real(Delta_func(x))
-    root = find_zero(root_eq, gap0)
+
+    root = gap0
+    try
+        root = find_zero(root_eq, gap0)
+    catch
+        root = find_zero(root_eq, 20)
+    end
 
     # update 
     w_prime = w_dynam .+ root    # shift chebyshev grid to pole of Θ(ω')
@@ -178,7 +160,7 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, deltaip::Vector{Compl
     # Evaluate Delta
     eval_real = @. real(Delta_func_eval / sqrt_eval)
 
-    evalKernel = transpose(evaluate_Kernels( w_static, w_pm, Kp_func))
+    evalKernel = transpose(evaluate_Kernels(w_static, w_pm, Kp_func))
     int1 = @. eval_real * evalKernel
     int2 = @. mu_star *eval_real * tanh(beta * w_pm / 2)
 
@@ -303,7 +285,7 @@ function Lorentzians_integrals_interval_grid(x0, x1, A, B)
     Int2 = Matrix{Float64}(undef, size(A))
     Int3 = Matrix{Float64}(undef, size(A))
 
-    @time @inbounds for jε in axes(A, 2)
+    @inbounds for jε in axes(A, 2)
         xl = x0[jε]
         xr = x1[jε]
 
@@ -421,18 +403,18 @@ function eval_spectral_and_coulomb_vDOS_W(electronic_spec, epsilon, dos, Weep, Z
     wZ = reshape(w_prime .* Z_ongrid, :, 1)
     shift = reshape(shift_ongrid, :, 1)
 
-    @time M0, M1, P, _, Φ0, Φ1, scale, Rplus, Rminus, Iplus, Iminus,
+    M0, M1, P, _, Φ0, Φ1, scale, Rplus, Rminus, Iplus, Iminus,
     I0_pp, I1_pp, I2_pp, I3_pp, I0_mm, I1_mm, I2_mm, I3_mm =
         epsilon_helpers_vDOSW(electronic_spec, epsilon, dos, wZ, phi_ongrid, shift, w_prime)
 
     inv_scale = 1 ./ scale
-
-    @time z_integrand = eval_spectral_integrals(wZ .* inv_scale, M0, M1, P, Rplus, Rminus, Iplus, Iminus,
+    
+    z_integrand = eval_spectral_integrals(wZ .* inv_scale, M0, M1, P, Rplus, Rminus, Iplus, Iminus,
                                           I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm)
-    @time phi_integrand = eval_spectral_integrals(Φ0 .* inv_scale, M0, M1, P, Rplus, Rminus, Iplus, Iminus,
+    phi_integrand = eval_spectral_integrals(Φ0 .* inv_scale, M0, M1, P, Rplus, Rminus, Iplus, Iminus,
                                             I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, true;
                                             g_slope=Φ1 .* inv_scale)
-    @time chi_integrand = eval_spectral_integrals(shift .* inv_scale, M0, M1, P, Rplus, Rminus, Iplus, Iminus,
+    chi_integrand = eval_spectral_integrals(shift .* inv_scale, M0, M1, P, Rplus, Rminus, Iplus, Iminus,
                                             I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, true;
                                             g_slope=inv_scale)
 
@@ -441,7 +423,7 @@ function eval_spectral_and_coulomb_vDOS_W(electronic_spec, epsilon, dos, Weep, Z
     M1W = (NW1 .- NW0) ./ dε
     M0W = NW0 .- eps_1 .* M1W
 
-    @time C0, C1 = eval_spectral_integral_coefficients(Φ0 .* inv_scale, P, Rplus, Rminus, Iplus, Iminus,
+    C0, C1 = eval_spectral_integral_coefficients(Φ0 .* inv_scale, P, Rplus, Rminus, Iplus, Iminus,
                                                  I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm;
                                                  g_slope=Φ1 .* inv_scale)
     
@@ -463,8 +445,7 @@ function eval_spectral_integrals(g, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, 
     else
         g_slope
     end
-    println("spectral coefficients...")
-    @time C0, C1 = eval_spectral_integral_coefficients(g, ε_p, Rplus, Rminus, Iplus, Iminus,
+    C0, C1 = eval_spectral_integral_coefficients(g, ε_p, Rplus, Rminus, Iplus, Iminus,
                                                  I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm;
                                                  g_slope=slope)
     

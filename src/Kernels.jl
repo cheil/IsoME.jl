@@ -29,8 +29,8 @@ function setUpAxis(inp, matval)
     (a2f_omega, a2f) = matval
 
     # nonzero values of a2F, ensure endpoints are zero
-    idx_left = findfirst(a2f .> 1e-6) -1   
-    idx_right = findlast(a2f .> 1e-6) +1
+    idx_left = findfirst(a2f .> 1e-6)   
+    idx_right = findlast(a2f .> 1e-6)
 
     W_left = a2f_omega[idx_left]
     W_right = a2f_omega[idx_right]
@@ -41,7 +41,7 @@ function setUpAxis(inp, matval)
     # Frequency and integration grids
     # w_axis must be same as w_static_chi
     if inp.cDOS_flag == 1
-        w_axis = range(0, stop=inp.reOmega_c, length=5000)
+        w_axis = range(0, stop=inp.reOmega_c, length=5000)  # w-axis at which K(ω,ω') is calculated
     else
          # ω linear grid to store K(ω,ω'), has to be dimensions max(reOmega_c, reOmega_c_shift) + same for num
         w_axis = range(0, stop=max(inp.reOmega_c, inp.reOmega_c_shift), length=max(inp.numReal_c_shift,inp.numReal_c))
@@ -398,7 +398,9 @@ function precompute(β, inp, matval, a2F_itp, console, log_file)
 
     # assert grid sizes
     @assert first(w_axis) <= first(w_static) && last(w_static) <= last(w_axis)
-    @assert first(w_axis) <= first(w_static_chi) && last(w_static_chi) <= last(w_axis)
+    if inp.include_Weep == 1
+        @assert first(w_axis) <= first(w_static_chi) && last(w_static_chi) <= last(w_axis)
+    end
 
     return (Kp_func, Km_func, w_static, w_dynam, w_static_chi)
 
@@ -458,29 +460,3 @@ function finish_kernel_progress(log_file, progress_state)
     end
 end
 
-function plot_kernel_diagonal(β, inp, Kp_func, Km_func, w_static_chi, log_file)
-    try
-        w_diag = collect(w_static_chi)
-        Kp_diag = [Kp_func(w, w) for w in w_diag]
-        Km_diag = [Km_func(w, w) for w in w_diag]
-
-        itemp = round(1 / (kb * β), digits=4)
-        temp_label = replace(string(itemp), "." => "p")
-
-        plot(
-            w_diag,
-            real.(Kp_diag),
-            label="Re K+",
-            xlabel="ω / meV",
-            ylabel="K(ω,ω)",
-            linewidth=2,
-        )
-        plot!(w_diag, imag.(Kp_diag), label="Im K+", linewidth=2)
-        plot!(w_diag, real.(Km_diag), label="Re K-", linewidth=2)
-        plot!(w_diag, imag.(Km_diag), label="Im K-", linewidth=2)
-
-        savefig("kernel_diagonal_T$(temp_label)K.png")
-    catch ex
-        printWarning("Error while plotting real-axis kernel diagonal.", log_file, ex=ex)
-    end
-end

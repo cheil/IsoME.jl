@@ -157,7 +157,7 @@ function Pade(wsi, nsiw, real_c, g11i, gauxi)
     """
 
     # pade coeff
-    # Pade collapses with to many matsubara points:
+    # Pade collapses with too many matsubara points:
     N = minimum([100, nsiw])
 
     f11i = Array{Complex}(undef, N, N)
@@ -270,7 +270,7 @@ function Pade_separate(wsi, nsiw, real_c, gi)
     --------------------------------------------------------------------
     """
     # pade coeff
-    # Pade collapses with to many matsubara points:
+    # Pade collapses with too many matsubara points:
     #println("Start Pade_seperate")
     if nsiw > 200
         N=200
@@ -433,7 +433,7 @@ end
 
 Calculate quasiparticle density of states
 """
-function qdos(ws, delta)
+function qdos(ws, delta, eta=0.001)
     """
     --------------------------------------------------------------------
     Input:
@@ -446,7 +446,6 @@ function qdos(ws, delta)
 
     """
 
-    eta = 0.0005
     omega = ws .+ im * eta
 
     dos_qp = real.(omega ./ sqrt.(omega.^2 .- delta.^2))
@@ -489,8 +488,13 @@ function plotSpectralFunction(itemp, ws, A11, A12, folder, material, mode="neva"
     end
     xlabel!(L"\omega ~ \mathrm{(meV)}")
     ylabel!(L"\mathrm{A}^{\textrm{an}}(\omega) \;\;\; [\mathrm{eV^{-1}}]")
-    savefig(folder * "/A12_"*mode*"_T" * string(itemp) * ".pdf") 
+    savefig(folder * "/A12_"*mode*"_T" * string(itemp) * ".pdf")
 
+    savePlotData(
+        folder * "/spectral_" * mode * "_T" * string(itemp) * "K.dat",
+        "#  ω / meV       A11(ω) / 1       A12(ω) / 1",
+        ws, A11, A12
+    )
 end
 
 """
@@ -512,6 +516,12 @@ function plotQDOS(itemp, ws, dos_qp, folder, material, mode="neva")
     xlabel!(L"\omega ~ \mathrm{(meV)}")
     ylabel!(L"\mathrm{N}_{\mathrm{S}}(\omega)/\mathrm{N}_{\mathrm{F}}")
     savefig(folder* "/qdos_"*mode*"_T" * string(itemp) * ".pdf")
+
+    savePlotData(
+        folder * "/qdos_" * mode * "_T" * string(itemp) * "K.dat",
+        "#  ω / meV       N_S(ω)/N_F",
+        ws, dos_qp
+    )
 end
 
 
@@ -536,6 +546,11 @@ function plotGap(itemp, ws, delta, folder, material, mode= "neva")
     ylabel!(L"\Delta(\omega) ~ \mathrm{(meV)}")
     savefig(folder* "/gap_"*mode*"_T" * string(itemp) * ".png")
 
+    savePlotData(
+        folder * "/gap_" * mode * "_T" * string(itemp) * ".dat",
+        "#  ω / meV       Re(Δ(ω)) / meV       Im(Δ(ω)) / meV",
+        ws, real(delta), imag(delta)
+    )
 end
 
 """
@@ -558,6 +573,12 @@ function plotZ(itemp, ws, Z, folder, material, mode= "neva")
     xlabel!(L"\omega ~ \mathrm{(meV)}")
     ylabel!(L"Z(\omega) ~ \mathrm{(1)}")
     savefig(folder* "/Z"*mode*"_T" * string(itemp) * ".png")
+
+    savePlotData(
+        folder * "/Z" * mode * "_T" * string(itemp) * ".dat",
+        "#  ω / meV       Re(Z(ω)) / 1       Im(Z(ω)) / 1",
+        ws, real(Z), imag(Z)
+    )
 end
 
 """
@@ -580,6 +601,12 @@ function plotShift(itemp, ws, shift, folder, material, mode= "neva")
     xlabel!(L"\omega ~ \mathrm{(meV)}")
     ylabel!(L"\chi(\omega) ~ \mathrm{(meV)}")
     savefig(folder* "/shift_"*mode*"_T" * string(itemp) * ".png")
+
+    savePlotData(
+        folder * "/shift_" * mode * "_T" * string(itemp) * ".dat",
+        "#  ω / meV       Re(χ(ω)) / meV       Im(χ(ω)) / meV",
+        ws, real(shift), imag(shift)
+    )
 end
 
 

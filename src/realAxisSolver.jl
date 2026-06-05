@@ -203,14 +203,14 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
 
             if inp.cDOS_flag == 0 && isnothing(realAxisState)
                 # initial values vDOS
-                realAxisState = initialize_real_axis_vDOS(itemp, inp, console["cDOS"], realAxisParameter, log_file)
+                realAxisState = initialize_real_axis_vDOS(itemp, inp, console["cDOS"], matval, realAxisParameter, log_file)
             end
 
             # solve Eliashberg equations
             if inp.cDOS_flag == 0
                 data, realAxisState = solve_realAxis_vDOS(itemp, inp, console["vDOS"], matval, realAxisParameter, realAxisState, log_file)
             elseif inp.cDOS_flag == 1
-                data, realAxisState = solve_realAxis_cDOS(itemp, inp, console["cDOS"], realAxisParameter, log_file)
+                data, realAxisState = solve_realAxis_cDOS(itemp, inp, console["cDOS"], matval, realAxisParameter, log_file)
             end
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
@@ -331,14 +331,14 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
 
             # initial values vDOS
             if inp.cDOS_flag == 0 && iT == 1
-                realAxisState = initialize_real_axis_vDOS(itemp, inp, console["cDOS"], realAxisParameter, log_file)
+                realAxisState = initialize_real_axis_vDOS(itemp, inp, console["cDOS"], matval, realAxisParameter, log_file)
             end
 
             # solve Eliashberg equations
             if inp.cDOS_flag == 0
                 data, realAxisState = solve_realAxis_vDOS(itemp, inp, console["vDOS"], matval, realAxisParameter, realAxisState, log_file)
             elseif inp.cDOS_flag == 1
-                data, realAxisState = solve_realAxis_cDOS(itemp, inp, console["cDOS"], realAxisParameter, log_file)
+                data, realAxisState = solve_realAxis_cDOS(itemp, inp, console["cDOS"], matval, realAxisParameter, log_file)
             end
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
@@ -383,9 +383,19 @@ Solve the real-axis Eliashberg equations in the cDOS+μ approximation.
 When `vDOS_initial_guess=true`, the cDOS solution is returned in a `RealAxisState`
 with zero χ so it can seed the vDOS solver.
 """
-function solve_realAxis_cDOS(itemp, inp, console, realAxisParameter, log_file; vDOS_initial_guess::Bool=false)
-    (; reOmega_c, muc_ME, N_it, conv_thr, minGap, nItFullCoul, min_it) = inp
+function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log_file; vDOS_initial_guess::Bool=false)
+    (; reOmega_c, N_it, conv_thr, minGap, nItFullCoul, min_it) = inp
     (Kp_func, Km_func, w_static, w_dynam, _) = realAxisParameter
+    (_, _, _, _, Weep, dosef, idx_ef, _, BCS_gap, _) = matval
+    # When used as vDOS+W initializer, muc_ME is unset (-1). Derive it from W(εF,εF)·N(εF)
+    # using the Morel-Anderson formula, consistent with calcMucs() in ReadIn.jl.
+    muc_ME = if vDOS_initial_guess && inp.muc_ME < 0 && inp.include_Weep == 1
+        typEl = inp.typEl > 0 ? inp.typEl : inp.efW
+        mu = Weep[idx_ef, idx_ef] * dosef
+        mu / (1 + mu * log(typEl / reOmega_c))
+    else
+        Float64(inp.muc_ME)
+    end
 
     # smaller threshold for initial guess calculation
     conv_thr = vDOS_initial_guess ? max(1e-3, conv_thr) : conv_thr
@@ -394,7 +404,7 @@ function solve_realAxis_cDOS(itemp, inp, console, realAxisParameter, log_file; v
     printTextCentered(title, console["partingLine"], file=log_file, bold=true)
     printTee(log_file, "\n")
 
-    state = initial_real_axis_state(inp, realAxisParameter)
+    state = initial_real_axis_state(inp, realAxisParameter, BCS_gap)
     console["InitValues"] = [0 real(state.Z[1]) imag(state.Z[1]) real(state.delta[1]) imag(state.delta[1]) nothing]
     console = printTableHeader(console, log_file)
 
@@ -499,8 +509,6 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
     β = 1 / (kb * itemp)
     data = [state.Z[1], state.delta[1], state.chi[1]]
 
-    s_flag = true
-
     # ------ integration grid and kernels ----- #
     # w_prime = make_vDOS_wprime_grid(max(0.1, real(state.delta[1])), inp)
     # Kernel_minus, Kernel_plus = evaluate_Kernels(w_static, w_prime, Km_func, Kp_func)
@@ -519,20 +527,20 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
 
 
         if mu_flag == 1 
-            @time fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, Z_prev, delta_prev, chi_prev, inp.outdir, i_it)
+            fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, Z_prev, delta_prev, chi_prev, inp.outdir, i_it)
         end
 
         if inp.include_Weep == 1
-            @time Z_new, delta_new, chi_new, phi_new, s_flag = realEliashbergEq(β, Z_prev, phi_prev, chi_prev, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec, i_it, gap0, s_flag, inp.outdir)
+            Z_new, delta_new, chi_new, phi_new = realEliashbergEq(β, Z_prev, phi_prev::Matrix{ComplexF64}, chi_prev, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
         else
-            Z_new, delta_new, chi_new, s_flag = realEliashbergEq(muc_ME, β, Z_prev, delta_prev, chi_prev, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, fermi_level, i_it, gap0, s_flag, inp.outdir)
+            Z_new, delta_new, chi_new = realEliashbergEq(muc_ME, β, Z_prev, delta_prev, chi_prev, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, fermi_level)
         end
 
         chi_new = (1.0 - abs(broyden_beta)) .* chi_prev .+ abs(broyden_beta) .* chi_new
         Z_new = (1.0 - abs(broyden_beta)) .* Z_prev .+ abs(broyden_beta) .* Z_new
         delta_new = (1.0 - abs(broyden_beta)) .* delta_prev .+ abs(broyden_beta) .* delta_new
         if inp.include_Weep == 1
-            phi_new = (1.0 - abs(broyden_beta)) .* phi_prev .+ abs(broyden_beta) .* phi_new
+            phi_new = (1.0 - abs(broyden_beta)) .* (phi_prev::Matrix{ComplexF64}) .+ abs(broyden_beta) .* (phi_new::Matrix{ComplexF64})
             delta_new = phi_new[:, idx_ef] ./ Z_new
         end
 
@@ -549,6 +557,19 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
                 plotSelfEnergyAtT(inp, itemp, selfEnergy, w_static)
                 plotSelfEnergyAtT(inp, itemp, (chi_new,), w_static_chi, names=["chi"], labels=["χ(ω) / meV"])
             end
+
+            # qdos
+            dos_qp = qdos(w_static, delta_new, 0)
+            plotQDOS(itemp, w_static, dos_qp, inp.outdir, inp.material, "realaxis_vDOS")
+
+            # spectral function — Margine & Giustino PRB 87, 024505 (2013), Eq. (31)
+            # interpolate χ(ω) from w_static_chi onto w_static
+            chi_itp   = linear_interpolation(collect(w_static_chi), chi_new, extrapolation_bc=Line())
+            chi_on_ws = chi_itp.(collect(w_static))
+            theta_ra  = -(w_static .* Z_new).^2 .+ chi_on_ws.^2 .+ (delta_new .* Z_new).^2
+            A11_ra    = -imag.(-(w_static .* Z_new .+ chi_on_ws) ./ theta_ra) ./ pi
+            A12_ra    = -imag.(-(delta_new .* Z_new) ./ theta_ra) ./ pi
+            plotSpectralFunction(itemp, w_static, A11_ra, A12_ra, inp.outdir, inp.material, "realaxis_vDOS")
 
             # next guess
             state.Z = Z_new
@@ -577,15 +598,16 @@ end
 ##############################################################
 # -------------------- Helper functions -------------------- #
 ##############################################################
-function initial_real_axis_state(inp, realAxisParameter)
+function initial_real_axis_state(inp, realAxisParameter, BCS_gap)
     (; numReal_c) = inp
     (_, _, _, _, w_static_chi) = realAxisParameter
 
     return RealAxisState(
-        ones(ComplexF64, numReal_c),
-        ones(ComplexF64, numReal_c) .* (0.1 + im * 1e-4),
-        -zeros(ComplexF64, length(w_static_chi)),
-        0.0,
+        ones(ComplexF64, numReal_c),                        # Z
+        ones(ComplexF64, numReal_c) .* (BCS_gap + im * 1e-4),   # Delta
+        -zeros(ComplexF64, length(w_static_chi)),           # Chi
+        0.0,                                                # fermi-level
+        nothing,                                            # phi (for Weep)             
     )
 end
 
@@ -646,8 +668,8 @@ end
 
 Perform a cDOS calculation as initial guess for vDOS.
 """
-function initialize_real_axis_vDOS(itemp, inp, console, realAxisParameter, log_file)
-    _, state = solve_realAxis_cDOS(itemp, inp, console, realAxisParameter, log_file; vDOS_initial_guess=true)
+function initialize_real_axis_vDOS(itemp, inp, console, matval, realAxisParameter, log_file)
+    _, state = solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log_file; vDOS_initial_guess=true)
     return state
 end
 

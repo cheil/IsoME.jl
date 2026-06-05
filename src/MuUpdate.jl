@@ -50,6 +50,7 @@ function root_finding(fmu, outdir, fermi_level, i_it=0)
         p = plot(mu_error, Ne_error, label="Ne_nsc - Ne_sc", title="Ne in normal state minus sc state")
         #vline(p, [mu0, mu1], label="mu")
         savefig(outdir*"muError.png")
+        savePlotData(outdir*"muError.dat", "#  μ / meV       Ne_nsc - Ne_sc", mu_error, Ne_error)
 
         error("The number of electrons decreases with increasing mu!")
     end
@@ -211,10 +212,9 @@ function diff_Ne_realAxis(mu, Ne_nsc, itemp, w_static, w_static_chi, w_prime, do
 
     z_integrand = eval_spectral_integrals(w_prime.*Z_ongrid, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, false)     
     FLIP = ifelse.(-abs.(z_integrand) .== z_integrand, 1, -1) 
-
+    
     # ------------- ε-integration ------------- #
     omega_integrand = eval_spectral_integrals(shift_ongrid, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, true)     # ε + (χ(ω) - μ_F)
-
     omega_integrand .*= FLIP
     β = 1/(kb*itemp)
     omega_integrand .*= tanh.(β*w_prime/2)

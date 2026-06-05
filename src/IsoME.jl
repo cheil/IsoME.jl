@@ -111,10 +111,10 @@ const kb = 0.08617333262; # meV/K
     # ----------- real axis inputs ----------- #
     # ω-grid
     reOmega_c::Float64          = 2000  # ω-grid cutoff
-    numReal_c::Int64            = 5000  # num of ω-points
+    numReal_c::Int64            = 4000  # num of ω-points
     # χ ω-grid
     reOmega_c_shift::Float64    = 15000 # ω-cutoff χ(ω)
-    numReal_c_shift::Int64      = 8000 # num of ω-points χ
+    numReal_c_shift::Int64      = 10000 # num of ω-points χ
     # Ω-chebyshev
     n_cheb::Int64               = 5000  # number of chebyshev points in Ω-integration
     # ω'-grid

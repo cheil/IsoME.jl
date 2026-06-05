@@ -12,6 +12,19 @@ Comments:
 
 """
 
+"""
+    savePlotData(filepath, header, columns...)
+
+Save tabular plot data as a tab-separated file. `header` is written as the first
+line (prefix a `#` yourself if desired). Each element of `columns` is one data column.
+"""
+function savePlotData(filepath, header, columns...)
+    open(filepath, "w") do io
+        write(io, header * "\n")
+        writedlm(io, zip(columns...), '\t')
+    end
+end
+
 
 """
     printAsciiArt()
@@ -883,6 +896,11 @@ function plotSelfEnergyAtT(inp, itemp, selfEnergy, w_real = nothing; names = ["G
         plot(w_real, real(component), col="blue", label="Real", linewidth=2, ylabel=label, xlabel = "ω / meV")
         plot!(w_real, imag(component), col="red", label="Imag", linewidth=2)
         savefig(folder*name*"_$itemp.png")
+        savePlotData(
+            folder * name * "_$itemp.dat",
+            "#  ω / meV       Re($label)       Im($label)",
+            w_real, real(component), imag(component)
+        )
     end
 
 end

@@ -68,8 +68,13 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
                 # interpolate 
                 dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut, itpWeep=itpWeep, Wen=Wen)
             else
-                # interpolate dos similar as mit
-                dos_en = collect(range(-5,20, 876))*1000
+                # interpolate dos/Weep on same grid
+                enStart = Wen[findfirst(Wen .> dos_en[1])]
+                enEnd = Wen[findlast(Wen .< dos_en[end])]
+                enStart = -3000.0
+                enEnd = 3000.0
+                de = 2.0
+                dos_en = collect(enStart:de:enEnd)
                 dos = itpDos(dos_en)
                 Weep = itpWeep(dos_en, dos_en)
 

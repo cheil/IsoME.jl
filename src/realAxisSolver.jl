@@ -566,10 +566,25 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
             # interpolate χ(ω) from w_static_chi onto w_static
             chi_itp   = linear_interpolation(collect(w_static_chi), chi_new, extrapolation_bc=Line())
             chi_on_ws = chi_itp.(collect(w_static))
-            theta_ra  = -(w_static .* Z_new).^2 .+ chi_on_ws.^2 .+ (delta_new .* Z_new).^2
-            A11_ra    = -imag.(-(w_static .* Z_new .+ chi_on_ws) ./ theta_ra) ./ pi
-            A12_ra    = -imag.(-(delta_new .* Z_new) ./ theta_ra) ./ pi
-            plotSpectralFunction(itemp, w_static, A11_ra, A12_ra, inp.outdir, inp.material, "realaxis_vDOS")
+
+            if inp.flag_writeSelfEnergy == 1
+                try
+                    saveSelfEnergyComponents(itemp, inp, collect(w_static), delta_new, Z_new, chi=chi_on_ws, mode="realAxis_vDOS")
+                catch ex
+                    writeToCrashFile(inp)
+                    printWarning("Error while saving self energy components.", log_file, ex=ex)
+                end
+            end
+
+            theta_pos  = -(w_static .* Z_new).^2 .+ chi_on_ws.^2 .+ (delta_new .* Z_new).^2
+            A11_pos    = -imag.(-(w_static .* Z_new .+ chi_on_ws) ./ theta_pos) ./ pi
+            A12_pos    = -imag.(-(delta_new .* Z_new) ./ theta_pos) ./ pi
+            theta_neg = -(-w_static .* conj.(Z_new)).^2 .+ conj.(chi_on_ws).^2 .+ (conj.(delta_new) .* conj.(Z_new)).^2
+            A11_neg   = -imag.(-(-w_static .* conj.(Z_new) .+ conj.(chi_on_ws)) ./ theta_neg) ./ pi
+            A12_neg   = -imag.(-(conj.(delta_new) .* conj.(Z_new)) ./ theta_neg) ./ pi
+            A11 = append!(A11_neg[:], A11_pos)
+            A12 = append!(A12_neg[:], A12_pos)
+            plotSpectralFunction(itemp, vcat(-collect(w_static), collect(w_static)), A11, A12, inp.outdir, inp.material, "realaxis_vDOS")
 
             # next guess
             state.Z = Z_new

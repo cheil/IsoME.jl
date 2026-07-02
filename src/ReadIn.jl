@@ -30,12 +30,12 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
     console = printStartMessage(console, inp, log_file, mode=mode)
 
 
-    ########## READ-IN ##########
-    ####### a2f file #######
+    # ================ READ-IN ================ #
+    # --------------- a2f file ---------------- #
     a2f_omega, a2f, a2f_itp, inp.ind_smear, inp.a2f_unit = readIn_a2f(inp.a2f_file, inp.ind_smear, inp.a2f_unit, inp.nheader_a2f, inp.nfooter_a2f, inp.nsmear)
 
 
-    ########## Dos and Weep ##########
+    # ------------- Dos and Weep -------------- #
     if isfile(inp.dos_file)
         # read dos
         dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.ef, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos, outdir=inp.outdir, logFile=log_file)
@@ -50,12 +50,12 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
         itpDos = scale(interpolate(dos, BSpline(Linear())), epsilonItp)
 
         # encut in meV
-        if (inp.encut > dos_en[end]) || (-inp.encut < dos_en[1])
+        if !isnothing(inp.encut) && ((inp.encut[1] < dos_en[1]) || (inp.encut[2] > dos_en[end]))
             text = "Energy cutoff exceeds range of DOS!"
             printWarning(text, log_file)
         end
 
-        if inp.include_Weep == 1 || ((isfile(inp.Weep_file) && (isempty(inp.Wen_file) || isfile(inp.Wen_file))) && inp.mu == -1)
+        if inp.include_Weep == 1 || ((isfile(inp.Weep_file) && (isempty(inp.Wen_file) || isfile(inp.Wen_file))) && isnothing(inp.mu))
             # read Weep + energy grid points
             Weep, Wen, inp.efW, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.Wen_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, outdir=inp.outdir, logFile=log_file)
 
@@ -69,11 +69,11 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
                 dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut, itpWeep=itpWeep, Wen=Wen)
             else
                 # interpolate dos/Weep on same grid
-                enStart = Wen[findfirst(Wen .> dos_en[1])]
-                enEnd = Wen[findlast(Wen .< dos_en[end])]
-                enStart = -3000.0
-                enEnd = 3000.0
-                de = 2.0
+                lowCut  = isnothing(inp.encut) ? dos_en[1]   : max(dos_en[1],   inp.encut[1])
+                highCut = isnothing(inp.encut) ? dos_en[end] : min(dos_en[end], inp.encut[2])
+                enStart = Wen[findfirst(Wen .> lowCut)]
+                enEnd   = Wen[findlast( Wen .< highCut)]
+                de = inp.depsilon
                 dos_en = collect(enStart:de:enEnd)
                 dos = itpDos(dos_en)
                 Weep = itpWeep(dos_en, dos_en)
@@ -81,16 +81,18 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
             end
 
             # mu, idxWef = idx_ef
-            (inp.mu != -1) || (idxWef = findmin(abs.(dos_en))[2]; inp.mu = dos[idxWef] .* Weep[idxWef, idxWef])
+            (!isnothing(inp.mu)) || (idxWef = findmin(abs.(dos_en))[2]; inp.mu = dos[idxWef] .* Weep[idxWef, idxWef])
 
         else
             if mode == 0
                 # interpolate 
                 dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut)
             else 
-                # interpolate dos similar as mit
-                #dos_en = collect(range(-5,20, 876))*1000
-                #dos = itpDos(dos_en)
+                enStart = isnothing(inp.encut) ? dos_en[1]   : dos_en[findfirst(dos_en .> inp.encut[1])]
+                enEnd   = isnothing(inp.encut) ? dos_en[end] : dos_en[findlast(dos_en .< inp.encut[2])]
+                de = inp.depsilon
+                dos_en = collect(enStart:de:enEnd)
+                dos = itpDos(dos_en)
                 Weep = nothing
             end
         end
@@ -132,20 +134,20 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
         phonon_cutoff = inp.reOmega_c
     end
 
-    if inp.mu == -1 && inp.muc_ME == -1 && inp.muc_AD == -1
+    if isnothing(inp.mu) && isnothing(inp.muc_ME) && isnothing(inp.muc_AD)
         # defaut value
         inp.muc_AD = 0.12
         calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
 
-    elseif inp.muc_AD == -1 && inp.muc_ME == -1
-        if inp.typEl != -1
+    elseif isnothing(inp.muc_AD) && isnothing(inp.muc_ME)
+        if !isnothing(inp.typEl)
             calcMucs(inp, inp.typEl, a2f, a2f_omega, phonon_cutoff, log_file)
 
-        elseif ~(isnothing(ef) || ef == -1 || ef == 0)
+        elseif ~(isnothing(ef) || ef == 0)
             inp.typEl = ef
             calcMucs(inp, inp.typEl, a2f, a2f_omega, phonon_cutoff, log_file)
 
-        elseif ~(inp.efW == -1 || inp.efW == 0)
+        elseif ~(isnothing(inp.efW) || inp.efW == 0)
             inp.typEl = inp.efW
             calcMucs(inp, inp.typEl, a2f, a2f_omega, phonon_cutoff, log_file)
 
@@ -159,10 +161,10 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
             calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
         end
 
-    elseif inp.include_Weep == 0 && inp.muc_AD != -1 && inp.muc_ME == -1
+    elseif inp.include_Weep == 0 && !isnothing(inp.muc_AD) && isnothing(inp.muc_ME)
         calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
 
-    elseif inp.muc_ME != -1 && inp.muc_AD == -1 
+    elseif !isnothing(inp.muc_ME) && isnothing(inp.muc_AD)
         calcMucAD(inp, a2f, a2f_omega, phonon_cutoff)
     end
 
@@ -336,30 +338,34 @@ function checkInput(inp::arguments; realSolver::Bool=false)
         end
     end
 
+    if inp.encut isa Float64
+        inp.encut = [-inp.encut, inp.encut]
+    end
+
     return inp
 
 end
 
 """
-    readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsmear=-1)   
+    readIn_a2f(a2f_file, indSmear=nothing, unit="", nheader=nothing, nfooter=nothing, nsmear=nothing)
 
 Read in a2f file to solve the isotropic Migdal-Eliashberg equations
 
 The first column must contain the energies, the second column onwards a2F values for different smearings
 """
-function readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsmear=-1)
+function readIn_a2f(a2f_file, indSmear=nothing, unit="", nheader=nothing, nfooter=nothing, nsmear=nothing)
     ### Read in a2f file ###
     a2f_data = readdlm(a2f_file)
 
     ### Define defaults
-    (nheader != -1) || (nheader = findfirst(isa.(a2f_data[:, 1], Number)) - 1)
-    (nfooter != -1) || (nfooter = size(a2f_data, 1) - findlast(isa.(a2f_data[:, 1], Number)))
-    (nsmear != -1) || (nsmear = length(a2f_data[nheader+1, isa.(a2f_data[nheader+1, :], Number)]) - 1)
-    (indSmear != -1) || (indSmear = Int64(ceil(nsmear / 2)))
+    (!isnothing(nheader)) || (nheader = findfirst(isa.(a2f_data[:, 1], Number)) - 1)
+    (!isnothing(nfooter)) || (nfooter = size(a2f_data, 1) - findlast(isa.(a2f_data[:, 1], Number)))
+    (!isnothing(nsmear)) || (nsmear = length(a2f_data[nheader+1, isa.(a2f_data[nheader+1, :], Number)]) - 1)
+    (!isnothing(indSmear)) || (indSmear = Int64(ceil(nsmear / 2)))
 
     ### Remove header & footer
     header = join(a2f_data[1:nheader, :], " ")
-    a2f_data = Float64.(a2f_data[nheader+1:end-nfooter, 1:nsmear+1])  # previous version: nheader+1:end-nfooter
+    a2f_data = Float64.(a2f_data[nheader+1:end-nfooter, 1:nsmear+1]) 
 
     ### Convert omega ###
     omega_raw = a2f_data[:, 1]
@@ -394,20 +400,20 @@ end
 
 # Read in DOS
 """
-    readIn_Dos(dos_file, ef =-1, spin=2, unit="", nheader=-1, nfooter=-1; outdir ="./", logFile = nothing)
+    readIn_Dos(dos_file, ef=nothing, spin=2, unit="", nheader=nothing, nfooter=nothing; outdir ="./", logFile = nothing)
 
 Read the dos file. All quantities are converted to meV.
 
 The energies must be in column 1 and the dos in column 2
 """
-function readIn_Dos(dos_file, ef=-1, spin=2, unit="", nheader=-1, nfooter=-1; outdir="./", logFile=nothing)
+function readIn_Dos(dos_file, ef=nothing, spin=2, unit="", nheader=nothing, nfooter=nothing; outdir="./", logFile=nothing)
 
     ### Read in dos file ###
     dos_data = readdlm(dos_file)
 
     ### Default values ###
-    (nheader != -1) || (nheader = findfirst(isa.(dos_data[:, 1], Number)) - 1)
-    (nfooter != -1) || (nfooter = size(dos_data, 1) - findlast(isa.(dos_data[:, 1], Number)))
+    (!isnothing(nheader)) || (nheader = findfirst(isa.(dos_data[:, 1], Number)) - 1)
+    (!isnothing(nfooter)) || (nfooter = size(dos_data, 1) - findlast(isa.(dos_data[:, 1], Number)))
 
     ### Remove header & footer
     header = dos_data[1:nheader, :]
@@ -423,11 +429,11 @@ function readIn_Dos(dos_file, ef=-1, spin=2, unit="", nheader=-1, nfooter=-1; ou
     dos = dos / spin
 
     ### Fermi energy
-    if ef == -1
+    if isnothing(ef)
         ef = extractFermiEnergy(header, unit, "Weep", outdir=outdir, logFile=logFile)
     end
 
-    ### Convert 
+    ### Convert
     if unit == "meV"
         energies = energies
         dos = dos
@@ -455,19 +461,19 @@ end
 
 
 """
-    readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=-1, unit = "", nheader=-1, nfooter=-1,  nheaderWen=-1, nfooterWen=-1; outdir = "./", logFile = nothing)
+    readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=nothing, unit = "", nheader=nothing, nfooter=nothing,  nheaderWen=nothing, nfooterWen=nothing; outdir = "./", logFile = nothing)
 
 Read in Weep file containing the sreened coulomb interaction.
 Weep data must be in column 3
 """
-function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=-1, unit="", nheader=-1, nfooter=-1, nheaderWen=-1, nfooterWen=-1; outdir="./", logFile=nothing)
+function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=nothing, unit="", nheader=nothing, nfooter=nothing, nheaderWen=nothing, nfooterWen=nothing; outdir="./", logFile=nothing)
 
     ### Read in Weep file ###
     Weep_data = readdlm(Weep_file)
 
     # Default values
-    (nheader != -1) || (nheader = findfirst(isa.(Weep_data[:, 1], Number)) - 1)
-    (nfooter != -1) || (nfooter = size(Weep_data, 1) - findlast(isa.(Weep_data[:, 1], Number)))
+    (!isnothing(nheader)) || (nheader = findfirst(isa.(Weep_data[:, 1], Number)) - 1)
+    (!isnothing(nfooter)) || (nfooter = size(Weep_data, 1) - findlast(isa.(Weep_data[:, 1], Number)))
 
     # Remove header & footer
     header = Weep_data[1:nheader, :]
@@ -484,7 +490,7 @@ function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=-1, unit=
     (~isempty(unit)) || (unit = getUnit(join(header, " "), "Weep"))
 
     ### Fermi energy
-    if ef == -1
+    if isnothing(ef)
         ef = extractFermiEnergy(header, unit, "Weep", outdir=outdir, logFile=logFile)
     end
 
@@ -524,18 +530,18 @@ function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=-1, unit=
 end
 
 """
-    readIn_Wen(Wen_file, Wen_col, nheader=-1, nfooter=-1)
+    readIn_Wen(Wen_file, Wen_col, nheader=nothing, nfooter=nothing)
 
-Read in Wen 
-Energy grid for Weep 
+Read in Wen
+Energy grid for Weep
 """
-function readIn_Wen(Wen_file, Wen_col, nheader=-1, nfooter=-1)
+function readIn_Wen(Wen_file, Wen_col, nheader=nothing, nfooter=nothing)
     ### Read in Weep file ###
     Wen_data = readdlm(Wen_file)
 
     ### Default values ###
-    (nheader != -1) || (nheader = findfirst(isa.(Wen_data[:, 1], Number)) - 1)
-    (nfooter != -1) || (nfooter = size(Wen_data, 1) - findlast(isa.(Wen_data[:, 1], Number)))
+    (!isnothing(nheader)) || (nheader = findfirst(isa.(Wen_data[:, 1], Number)) - 1)
+    (!isnothing(nfooter)) || (nfooter = size(Wen_data, 1) - findlast(isa.(Wen_data[:, 1], Number)))
 
     ### Remove header & footer
     Wen = Float64.(Wen_data[nheader+1:end-nfooter, Wen_col])
@@ -553,7 +559,7 @@ Extract the fermi energy from the header of the input files
 """
 function extractFermiEnergy(header, unit, nameFile=nothing; outdir="./", logFile=nothing)
 
-    ef = -1
+    ef = nothing
     try
         logNums = isa.(header, Number)
         if sum(logNums) == 1

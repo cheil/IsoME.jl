@@ -151,8 +151,8 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
 
 
         # mixing beta
-        if mixing_beta == -1
-            broyden_beta = maximum([0.5, 1.0 - 0.05*(i_it-1)]) 
+        if isnothing(mixing_beta)
+            broyden_beta = maximum([0.5, 1.0 - 0.05*(i_it-1)])
         else
             broyden_beta = mixing_beta
         end 
@@ -366,8 +366,8 @@ end
 Start the Tc search mode or solve the imaginary eliashberg equations for each temperature
 """
 function findTc(inp, console, matval, ML_Tc, log_file)
-    inp.temps = sort(inp.temps)
-    nT = size(inp.temps, 1)
+    isnothing(inp.temps) || (inp.temps = sort(inp.temps))
+    nT = isnothing(inp.temps) ? 0 : size(inp.temps, 1)
     Delta0 = Vector{Float64}()
     Shift0 = Vector{Float64}()
     Znorm0 = Vector{Float64}()
@@ -375,8 +375,8 @@ function findTc(inp, console, matval, ML_Tc, log_file)
     Tc = [NaN, NaN]
 
 
-    if inp.temps == [-1]    # Tc search mode
-        # initial guess, Machine learning Tc           
+    if isnothing(inp.temps)    # Tc search mode
+        # initial guess, Machine learning Tc
         itemp = maximum([1.0, round(ML_Tc)])
 
         # expansion of a + b*log(c-x) at x = 0, a=Delta(T2), b=1, c=Delta(T1)

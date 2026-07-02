@@ -470,7 +470,7 @@ function printFlagsAsText(inp, log_file; mode ="Matsubara")
     end
 
     # search mode
-    if inp.temps == [-1]
+    if isnothing(inp.temps)
         text *= " - Tc search mode activated\n"
     else 
         if length(inp.temps) == 1
@@ -598,7 +598,7 @@ function createInfoFile(inp)
     outfile = open(inp.outdir*name, "w")
     
     ### Input parameters ###
-    print(outfile, replace(replace(replace(join(inp.all, "\n"), "-1.0"=>"-"), "Number[-1]"=>"-"), "-1"=>"-"))
+    print(outfile, replace(join(inp.all, "\n"), "nothing"=>"-"))
 
     close(outfile)
 end

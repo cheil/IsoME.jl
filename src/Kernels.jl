@@ -2,6 +2,11 @@
     File containing the functions for the real axis solver
 """
 
+"""
+    make_integration_axis(W_width, pts_cheb, pts_lin, epsilon)
+
+Set up the Ω-integration axis
+"""
 function make_integration_axis(W_width, pts_cheb, pts_lin, epsilon)
 
     # Chebyshev grid inside [-epsilon, epsilon] to handle 1/Omega singularities.
@@ -21,11 +26,11 @@ end
 
 
 """
-    setUpAxis(inp, mataval)
+    setUpOmegaAxis(inp, mataval)
 
 Set up the integration axis for the Ω integration
 """
-function setUpAxis(inp, matval)
+function setUpOmegaAxis(inp, matval)
     (a2f_omega, a2f) = matval
 
     # nonzero values of a2F, ensure endpoints are zero
@@ -45,9 +50,6 @@ function setUpAxis(inp, matval)
     else
          # ω linear grid to store K(ω,ω'), has to be dimensions max(reOmega_c, reOmega_c_shift) + same for num
         w_axis = range(0, stop=max(inp.reOmega_c, inp.reOmega_c_shift), length=max(inp.numReal_c_shift,inp.numReal_c))
-
-        # TEST
-        #w_axis = range(0, stop=inp.reOmega_c, length=5000)
     end
     int_axis = make_integration_axis(W_right-W_left, 300, 300, 3)      # Ω-integration axis
 
@@ -388,7 +390,7 @@ function precompute(β, inp, matval, a2F_itp, console, log_file)
     print_kernel_log(log_file, "\n")
 
     ### Set up axis and parameters ###
-    W_cut, W_left, w_axis, int_axis = setUpAxis(inp, matval)
+    W_cut, W_left, w_axis, int_axis = setUpOmegaAxis(inp, matval)
 
     Kp_func, Km_func = kernels(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left, log_file, length(console["cDOS"]["partingLine"]))
 

@@ -175,18 +175,17 @@ end
 Solve the real axis eliashberg equations
 """
 function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
-    inp.temps = sort(inp.temps)
-    nT = size(inp.temps, 1)
+    isnothing(inp.temps) || (inp.temps = sort(inp.temps))
+    nT = isnothing(inp.temps) ? 0 : size(inp.temps, 1)
     Delta0 = Vector{ComplexF64}()
     Shift0 = Vector{ComplexF64}()
     Znorm0 = Vector{ComplexF64}()
     Tc = [NaN, NaN]
 
-
     realAxisState = nothing
 
-    if inp.temps == [-1]    # Tc search mode
-        # initial guess, Machine learning Tc           
+    if isnothing(inp.temps)    # Tc search mode
+        # initial guess, Machine learning Tc
         itemp = maximum([1.0, round(ML_Tc)])
 
         # expansion of a + b*log(c-x) at x = 0, a=Delta(T2), b=1, c=Delta(T1)
@@ -387,10 +386,10 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
     (; reOmega_c, N_it, conv_thr, minGap, nItFullCoul, min_it) = inp
     (Kp_func, Km_func, w_static, w_dynam, _) = realAxisParameter
     (_, _, _, _, Weep, dosef, idx_ef, _, BCS_gap, _) = matval
-    # When used as vDOS+W initializer, muc_ME is unset (-1). Derive it from W(εF,εF)·N(εF)
+    # When used as vDOS+W initializer, muc_ME is unset (nothing). Derive it from W(εF,εF)·N(εF)
     # using the Morel-Anderson formula, consistent with calcMucs() in ReadIn.jl.
-    muc_ME = if vDOS_initial_guess && inp.muc_ME < 0 && inp.include_Weep == 1
-        typEl = inp.typEl > 0 ? inp.typEl : inp.efW
+    muc_ME = if vDOS_initial_guess && isnothing(inp.muc_ME) && inp.include_Weep == 1
+        typEl = !isnothing(inp.typEl) ? inp.typEl : inp.efW
         mu = Weep[idx_ef, idx_ef] * dosef
         mu / (1 + mu * log(typEl / reOmega_c))
     else
@@ -632,7 +631,7 @@ end
 linear mixing factor of eliashberg solutions
 """
 function mixing_parameter(inp, i_it)
-    if inp.mixing_beta == -1
+    if isnothing(inp.mixing_beta)
         return maximum([0.5, 1.0 - 0.05 * (i_it - 1)])
     end
 

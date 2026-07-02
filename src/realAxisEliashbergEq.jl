@@ -92,6 +92,19 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
         
         integrands[idx] = eval_spectral_integrals(g, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, shift_int)
     end
+
+    # ------- testing ------- #
+    pole_eqs = [
+        x -> x.^2 .*imag(Z_itp(x)) .*real(Z_itp(x)) - imag(phi_itp(x)) .*real(phi_itp(x)),
+        x -> x.^2 .*(real(Z_itp(x)).^2 - imag(Z_itp(x).^2)) - real(phi_itp(x)).^2 + imag(phi_itp(x)).^2
+        ]
+    poles = []
+    for pole_eq in pole_eqs
+        push!(poles, find_zero(pole_eq, gap0))
+    end
+    plot(w_prime, pole_eqs[1](w_primeas))
+    savefig("pole_eq.png")
+    error("A")
  
     # ------------- Ω-integration ------------- #
     # evaluate K(ω,ω')

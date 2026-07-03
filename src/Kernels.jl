@@ -397,8 +397,8 @@ function precompute(β, inp, matval, a2F_itp, console, log_file)
 
     w_static = 1e-1:inp.domega:inp.reOmega_c        # grid of Z(w), Delta(w), sensitive to start value, do not chose < 1e-1
     w_static_chi = 1e-1:inp.domega_shift:inp.reOmega_c_shift   # grid of χ(ω), 10*inp.reOmega_c
-    w_dynam = reverse(inp.reOmega_c .+ inp.reOmega_c .* cos.((2 .* (inp.n_cheb/2:inp.n_cheb-1) .+ 1) .* π ./ (2 * inp.n_cheb)))    # only positvie chebyshev nodes
-
+    w_dynam = -(inp.reOmega_c .+ inp.reOmega_c .* cos.((2 .* (inp.n_cheb/2:inp.n_cheb-1) .+ 1) .* π ./ (2 * inp.n_cheb)))    # only positvie chebyshev nodes
+    append!(w_dynam, reverse(-w_dynam))   # symmetric chebyshev nodes
     # assert grid sizes
     @assert first(w_axis) <= first(w_static) && last(w_static) <= last(w_axis)
     if inp.include_Weep == 1

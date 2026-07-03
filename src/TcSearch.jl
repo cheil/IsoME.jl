@@ -366,8 +366,8 @@ end
 Start the Tc search mode or solve the imaginary eliashberg equations for each temperature
 """
 function findTc(inp, console, matval, ML_Tc, log_file)
-    isnothing(inp.temps) || (inp.temps = sort(inp.temps))
-    nT = isnothing(inp.temps) ? 0 : size(inp.temps, 1)
+    inp.temps = sort(inp.temps)
+    nT = size(inp.temps, 1)
     Delta0 = Vector{Float64}()
     Shift0 = Vector{Float64}()
     Znorm0 = Vector{Float64}()
@@ -375,7 +375,7 @@ function findTc(inp, console, matval, ML_Tc, log_file)
     Tc = [NaN, NaN]
 
 
-    if isnothing(inp.temps)    # Tc search mode
+    if inp.temps == [-1]    # Tc search mode
         # initial guess, Machine learning Tc
         itemp = maximum([1.0, round(ML_Tc)])
 

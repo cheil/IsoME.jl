@@ -470,7 +470,7 @@ function printFlagsAsText(inp, log_file; mode ="Matsubara")
     end
 
     # search mode
-    if isnothing(inp.temps)
+    if inp.temps == [-1]
         text *= " - Tc search mode activated\n"
     else 
         if length(inp.temps) == 1
@@ -486,7 +486,7 @@ function printFlagsAsText(inp, log_file; mode ="Matsubara")
         text *= " - Matsubara cutoff: "*string(inp.imOmega_c)*" meV\n"
     elseif mode == "realFreq"
         text *= " - Frequency cutoff: "*string(inp.reOmega_c)*" meV\n"
-        text *= " - Frequency grid: "*string(inp.numReal_c)*" points\n"
+        text *= " - Frequency grid step: "*string(inp.domega)*" meV\n"
     end
 
     # cDos
@@ -598,7 +598,7 @@ function createInfoFile(inp)
     outfile = open(inp.outdir*name, "w")
     
     ### Input parameters ###
-    print(outfile, replace(join(inp.all, "\n"), "nothing"=>"-"))
+    print(outfile, replace(replace(join(inp.all, "\n"), "nothing"=>"-"), "[-1]"=>"-"))
 
     close(outfile)
 end
@@ -888,7 +888,7 @@ function plotSelfEnergyAtT(inp, itemp, selfEnergy, w_real = nothing; names = ["G
     end
 
     if isnothing(w_real)
-        w_real = range(0, inp.reOmega_c, inp.numReal_c)
+        w_real = 1e-1:inp.domega:inp.reOmega_c
     end
 
 

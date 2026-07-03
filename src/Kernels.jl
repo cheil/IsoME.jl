@@ -46,10 +46,11 @@ function setUpOmegaAxis(inp, matval)
     # Frequency and integration grids
     # w_axis must be same as w_static_chi
     if inp.cDOS_flag == 1
-        w_axis = range(0, stop=inp.reOmega_c, length=5000)  # w-axis at which K(ω,ω') is calculated
+        w_axis = 0:inp.domega:inp.reOmega_c   # w-axis at which K(ω,ω') is calculated
     else
-         # ω linear grid to store K(ω,ω'), has to be dimensions max(reOmega_c, reOmega_c_shift) + same for num
-        w_axis = range(0, stop=max(inp.reOmega_c, inp.reOmega_c_shift), length=max(inp.numReal_c_shift,inp.numReal_c))
+        # ω linear grid to store K(ω,ω'), has to span max(reOmega_c, reOmega_c_shift).
+        # w_axis must match w_static_chi, so it uses the χ step size domega_shift.
+        w_axis = 0:inp.domega_shift:max(inp.reOmega_c, inp.reOmega_c_shift)
     end
     int_axis = make_integration_axis(W_right-W_left, 300, 300, 3)      # Ω-integration axis
 
@@ -366,7 +367,7 @@ function kernels(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left, log_file=not
 
     # Compute real and imaginary parts of kernels
     Kp_imag, Km_imag = compute_imag_kernels(w_axis, f, n, a2F_itp, log_file, line_width)
-    Kp_real, Km_real = compute_real_kernels(w_axis, length(w_axis), w_axis[end], W_left, W_cut, int_axis, f, n, a2F_itp, log_file, line_width)     # reOmega_c, numReal_c
+    Kp_real, Km_real = compute_real_kernels(w_axis, length(w_axis), w_axis[end], W_left, W_cut, int_axis, f, n, a2F_itp, log_file, line_width)     # reOmega_c, domega
 
     # Combine into complex kernels
     Kp = Kp_real .+ im .* (Kp_imag)
@@ -394,8 +395,8 @@ function precompute(β, inp, matval, a2F_itp, console, log_file)
 
     Kp_func, Km_func = kernels(β, inp, w_axis, W_cut, int_axis, a2F_itp, W_left, log_file, length(console["cDOS"]["partingLine"]))
 
-    w_static = range(1e-1, stop=inp.reOmega_c, length=inp.numReal_c)        # grid of Z(w), Delta(w), sensitive to start value, do not chose < 1e-1
-    w_static_chi = range(1e-1, stop=inp.reOmega_c_shift, length=inp.numReal_c_shift)   # grid of χ(ω), 10*inp.reOmega_c
+    w_static = 1e-1:inp.domega:inp.reOmega_c        # grid of Z(w), Delta(w), sensitive to start value, do not chose < 1e-1
+    w_static_chi = 1e-1:inp.domega_shift:inp.reOmega_c_shift   # grid of χ(ω), 10*inp.reOmega_c
     w_dynam = reverse(inp.reOmega_c .+ inp.reOmega_c .* cos.((2 .* (inp.n_cheb/2:inp.n_cheb-1) .+ 1) .* π ./ (2 * inp.n_cheb)))    # only positvie chebyshev nodes
 
     # assert grid sizes

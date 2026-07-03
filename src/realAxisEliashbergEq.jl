@@ -4,17 +4,24 @@
 
 
 """
+    realEliashbergEq(beta, znormip, phiphip, shiftip, ws, w_static, w_static_chi, dosef,
+                     epsilon, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
 
-real axis Eliashberg equations in the vDOS+W approximation
+Real axis Eliashberg equations in the vDOS+W approximation using the head/tail ω'-kernel
+workspace (see wprimeGrid.jl). The ω'-integration is done as matrix-vector products with
+the trapezoidal weights folded into the vectors, so the (ω × ω') integrand matrices are
+never materialized. Numerically equivalent to the kernel-function version on the same grid.
 """
 function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phiphip::Matrix{ComplexF64}, shiftip::Vector{ComplexF64},
-                          Kp_func::AbstractInterpolation, Km_func::AbstractInterpolation, w_prime::Vector{Float64}, w_static::StepRangeLen,
+                          ws::WPrimeWorkspace, w_static::AbstractVector,
                           w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64}, Weep::Matrix{Float64},
                           idx_ef::Int64, fermi_level::Float64, wgCoulomb::Number, electronic_spec::Tuple)
 
     if size(Weep, 1) != length(epsilon) || size(Weep, 2) != length(epsilon)
         error("The W(ε,ε′) matrix must be defined on the same energy grid as the DOS for real-axis vDOS+W calculations.")
     end
+
+    w_prime = ws.wp_full
 
     # interpolate Z,χ,ϕ onto ω'-integration grid
     Z_itp = linear_interpolation(w_static, znormip, extrapolation_bc=Flat())
@@ -27,41 +34,49 @@ function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phiphip::M
     # ------------- ε-integration ------------- #
     integrands, coulomb_spectral = eval_spectral_and_coulomb_vDOS_W(electronic_spec, epsilon, dos, Weep, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
 
-    # ------------- Ω-integration ------------- #
-    Kernel_minus, Kernel_plus = evaluate_Kernels(w_static, w_prime, Km_func, Kp_func)
-    Kernel_plus_chi = evaluate_Kernels(w_static_chi, w_prime, Kp_func)
-    z_integrand = -abs.(transpose(integrands[1])) .* Kernel_minus
-    FLIP = ifelse.(-abs.(integrands[1]) .== integrands[1], 1, -1)
-    phi_ph_integrand = -FLIP .* integrands[2] .* transpose(Kernel_plus)
-    shift_integrand = -transpose(FLIP .* integrands[3]) .* Kernel_plus_chi
+    # Z-integrand must be positive (causality), flip the others accordingly
+    FLIP = ifelse.(integrands[1] .<= 0, 1, -1)
+    g_z = -abs.(integrands[1])
+    g_phi = -(FLIP .* integrands[2])
+    g_chi = -(FLIP .* integrands[3])
 
-    # Coulomb term: integrate N(ε')W(ε,ε') with the same piecewise-linear
-    # spectral quadrature, rather than multiplying by an interval-averaged W.
-    coulomb_spectral = coulomb_spectral .* transpose(FLIP)
-    coulomb_integrand = wgCoulomb .* dosef .* coulomb_spectral .* transpose(tanh.(beta .* w_prime ./ 2))
+    # ------------- Ω & ω'-integration ------------- #
+    Iz = kernel_omega_integral(ws.Km_head, ws.Km_tail, ws, g_z)
+    Iphi = kernel_omega_integral(ws.Kp_head, ws.Kp_tail, ws, g_phi)
+    Ichi = kernel_omega_integral(ws.Kpchi_head, ws.Kpchi_tail, ws, g_chi)
 
-    # ------------- ω'-integration ------------- #
-    Zval = 1 .+ 1 ./(w_static * π * dosef) .* trapz(w_prime, z_integrand)
-    phi_ph_val = 1 ./(π * dosef) .* trapz(w_prime, transpose(phi_ph_integrand))
-    phi_c_val = 1 ./(π * dosef) .* trapz(w_prime, coulomb_integrand)
-    phi_val = repeat((phi_ph_val), 1, length(epsilon)) .+ transpose(phi_c_val)
-    shift_val = -1 ./(π * dosef) .* trapz(w_prime, shift_integrand)
+    # Coulomb term: integrate N(ε')W(ε,ε') with the same piecewise-linear spectral
+    # quadrature (coulomb_spectral is ndos × M). The dosef prefactor cancels.
+    wgt_full = vcat(ws.wgt_head, ws.wgt_tail)
+    coulomb_weight = wgt_full .* FLIP .* tanh.(beta .* w_prime ./ 2)
+    phi_c_val = (wgCoulomb / π) .* (coulomb_spectral * coulomb_weight)   # length ndos
 
+    Zval = 1 .+ Iz ./ (w_static .* (π * dosef))
+    phi_ph_val = Iphi ./ (π * dosef)
+    shift_val = -Ichi ./ (π * dosef)
+
+    phi_val = repeat(phi_ph_val, 1, length(epsilon)) .+ transpose(phi_c_val)
     delta_val = phi_val[:, idx_ef] ./ Zval
-
 
     return Zval, delta_val, shift_val, phi_val
 end
 
 
 """
-    realEliashbergEq()
+    realEliashbergEq(mu_star, beta, znormip, deltaip, shiftip, ws, w_static, w_static_chi, dosef, epsilon, dos, fermi_level)
 
-real axis Eliashberg equations in vDOS+μ approximation
+Real axis Eliashberg equations in the vDOS+μ approximation using a precomputed
+head/tail ω'-kernel workspace (see wprimeGrid.jl). The ω'-integration is done as
+a matrix-vector product with the trapezoidal weights folded into the vector, so
+the (ω × ω') integrand matrices are never materialized. Numerically equivalent
+to the kernel-function method below when evaluated on the same ω'-grid.
 """
-function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{ComplexF64}, deltaip::Vector{ComplexF64}, shiftip::Vector{ComplexF64},
-                          Kp_func::AbstractInterpolation, Km_func::AbstractInterpolation, w_prime::Vector{Float64}, w_static::StepRangeLen, 
-                          w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64}, fermi_level::Float64)
+function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{ComplexF64}, deltaip::Vector{ComplexF64},
+                          shiftip::Vector{ComplexF64}, ws::WPrimeWorkspace, w_static::AbstractVector,
+                          w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64},
+                          fermi_level::Float64)
+
+    w_prime = ws.wp_full
 
     # delta/Z
     phiphip = deltaip .* znormip
@@ -75,60 +90,44 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
     phi_ongrid = phi_itp.(w_prime)
     shift_ongrid = shift_itp.(w_prime) .- fermi_level
 
-    
-    # ------------- ε-integration ------------- # 
+    # ------------- ε-integration ------------- #
     M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I1_pp, I2_pp, I3_pp, I0_mm, I1_mm, I2_mm, I3_mm = epsilon_helpers(epsilon, dos, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
-    
-    # ω' integrands
-    integrands = Vector{Vector{Float64}}(undef, 3)
-    integrands = [zeros(size(w_prime)) for _ in 1:3]
 
-    for (idx, g) in enumerate((w_prime.*Z_ongrid, phi_ongrid, shift_ongrid))
+    integrands = [eval_spectral_integrals(g, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus,
+                                          I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, idx == 3)
+                  for (idx, g) in enumerate((w_prime .* Z_ongrid, phi_ongrid, shift_ongrid))]
 
-        shift_int = false
-        if idx == 3
-            shift_int = true    # extra terms in ε'-integration
-        end
-        
-        integrands[idx] = eval_spectral_integrals(g, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, shift_int)
-    end
+    # ------- debug plots: grid density vs integrands/poles (set ISOME_DEBUG_POLES=1) ------- #
+    debug_plot_wprime(ws, integrands)
+    # ------------
 
-    # ------- testing ------- #
-    pole_eqs = [
-        x -> x.^2 .*imag(Z_itp(x)) .*real(Z_itp(x)) - imag(phi_itp(x)) .*real(phi_itp(x)),
-        x -> x.^2 .*(real(Z_itp(x)).^2 - imag(Z_itp(x).^2)) - real(phi_itp(x)).^2 + imag(phi_itp(x)).^2
-        ]
-    poles = []
-    for pole_eq in pole_eqs
-        push!(poles, find_zero(pole_eq, gap0))
-    end
-    plot(w_prime, pole_eqs[1](w_primeas))
-    savefig("pole_eq.png")
-    error("A")
- 
-    # ------------- Ω-integration ------------- #
-    # evaluate K(ω,ω')
-    Kernel_minus = evaluate_Kernels(w_static, w_prime, Km_func)
-    Kernel_plus = evaluate_Kernels(w_static, w_prime, Kp_func)
-    Kernel_plus_chi = evaluate_Kernels(w_static_chi, w_prime, Kp_func)
+    # Z-integrand must be positive (causality), flip the others accordingly
+    FLIP = ifelse.(integrands[1] .<= 0, 1, -1)
+    g_z = -abs.(integrands[1])
+    g_phi = -(FLIP .* integrands[2])
+    g_chi = -(FLIP .* integrands[3])
 
-    z_integrand = -abs.(transpose(integrands[1])) .* Kernel_minus    # Z-integrand must be positive (causality)
-    FLIP = ifelse.(-abs.(integrands[1]) .== integrands[1], 1, -1)    # enforce causality through sign flip
-    phi_integrand = -FLIP.*integrands[2] .* (transpose(Kernel_plus) .- mu_star * tanh.(beta .* w_prime ./ 2))
-    shift_integrand = -transpose(FLIP.*integrands[3]) .* Kernel_plus_chi
+    # -------------- testing ------------- #
+    plot(w_prime[1:1500], integrands[1][1:1500])
+    vline!(ws.poles_prev)
+    savefig("integrands.png")
 
-    # ------------- ω'-integration ------------- #
-    # pole is at 0 after ε-integration
-    Zval = 1 .+ 1 ./(w_static* π *dosef) .*trapz(w_prime, z_integrand)  
-    phi_val = 1 ./(π *dosef) .*trapz(w_prime, transpose(phi_integrand))
-    shift_val = -1 ./(π *dosef) .*trapz(w_prime, shift_integrand)
+    # ------------- Ω & ω'-integration ------------- #
+    Iz = kernel_omega_integral(ws.Km_head, ws.Km_tail, ws, g_z)
+    Iphi = kernel_omega_integral(ws.Kp_head, ws.Kp_tail, ws, g_phi)
+    Ichi = kernel_omega_integral(ws.Kpchi_head, ws.Kpchi_tail, ws, g_chi)
+
+    # μ* Coulomb term (scalar, same for all ω)
+    coulomb = wprime_trapz(ws, g_phi .* tanh.(beta .* w_prime ./ 2))
+
+    Zval = 1 .+ Iz ./ (w_static .* (π * dosef))
+    phi_val = (Iphi .- mu_star .* coulomb) ./ (π * dosef)
+    shift_val = -Ichi ./ (π * dosef)
 
     delta_val = phi_val ./ Zval
 
     return Zval, delta_val, shift_val
-    
 end
-
 
 
 """

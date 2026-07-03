@@ -175,8 +175,8 @@ end
 Solve the real axis eliashberg equations
 """
 function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
-    isnothing(inp.temps) || (inp.temps = sort(inp.temps))
-    nT = isnothing(inp.temps) ? 0 : size(inp.temps, 1)
+    inp.temps = sort(inp.temps)
+    nT = size(inp.temps, 1)
     Delta0 = Vector{ComplexF64}()
     Shift0 = Vector{ComplexF64}()
     Znorm0 = Vector{ComplexF64}()
@@ -184,7 +184,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
 
     realAxisState = nothing
 
-    if isnothing(inp.temps)    # Tc search mode
+    if inp.temps == [-1]    # Tc search mode
         # initial guess, Machine learning Tc
         itemp = maximum([1.0, round(ML_Tc)])
 
@@ -509,10 +509,10 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
     data = [state.Z[1], state.delta[1], state.chi[1]]
 
     # ------ integration grid and kernels ----- #
-    # w_prime = make_vDOS_wprime_grid(max(0.1, real(state.delta[1])), inp)
-    # Kernel_minus, Kernel_plus = evaluate_Kernels(w_static, w_prime, Km_func, Kp_func)
-    # Kernel_plus_chi = evaluate_Kernels(w_static_chi, w_prime, Kp_func)
-    # Kernels = (Kernel_minus, Kernel_plus, Kernel_plus_chi)
+    # head/tail split (vDOS): tail kernels are computed once per temperature,
+    # the pole-anchored head grid is rebuilt only when the poles move.
+    # wp_max = 2·Δ(0) of the starting state (cDOS solution / previous temperature).
+    gridws = build_wprime_workspace(inp, realAxisParameter, real(state.delta[1]))
 
     for i_it in 1:N_it
         delta_prev = copy(delta_new)
@@ -521,18 +521,31 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         phi_prev = isnothing(phi_new) ? nothing : copy(phi_new)
         broyden_beta = mixing_parameter(inp, i_it)
         gap0 = real(delta_prev[1])
-        w_prime = make_vDOS_wprime_grid(gap0, inp)
+
+        # locate the ω'-integrand poles (vDOS+W: from the modified S/P quantities)
+        if inp.include_Weep == 1
+            poles = find_integrand_poles_vDOSW(gridws.wp_full, w_static, w_static_chi, Z_prev, phi_prev::Matrix{ComplexF64}, chi_prev, fermi_level, dos_en, idx_ef, gap0)
+        else
+            poles = find_integrand_poles(gridws.wp_full, w_static, w_static_chi, Z_prev, delta_prev, chi_prev, fermi_level, gap0)
+        end
+        if maximum(poles) >= gridws.wp_max
+            # a pole moved past the fixed tail: rebuild with a larger head region
+            gridws = build_wprime_workspace(inp, realAxisParameter, maximum(poles))
+        end
+        maybe_refresh_head!(gridws, poles, w_static, w_static_chi, Kp_func, Km_func, inp.n_cheb)
+        w_prime = gridws.wp_full
+
         wgCoulomb = minimum([1, i_it / nItFullCoul])
 
 
-        if mu_flag == 1 
+        if mu_flag == 1
             fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, Z_prev, delta_prev, chi_prev, inp.outdir, i_it)
         end
 
         if inp.include_Weep == 1
-            Z_new, delta_new, chi_new, phi_new = realEliashbergEq(β, Z_prev, phi_prev::Matrix{ComplexF64}, chi_prev, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
+            Z_new, delta_new, chi_new, phi_new = realEliashbergEq(β, Z_prev, phi_prev::Matrix{ComplexF64}, chi_prev, gridws, w_static, w_static_chi, dosef, dos_en, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
         else
-            Z_new, delta_new, chi_new = realEliashbergEq(muc_ME, β, Z_prev, delta_prev, chi_prev, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, fermi_level)
+            Z_new, delta_new, chi_new = realEliashbergEq(muc_ME, β, Z_prev, delta_prev, chi_prev, gridws, w_static, w_static_chi, dosef, dos_en, dos, fermi_level)
         end
 
         chi_new = (1.0 - abs(broyden_beta)) .* chi_prev .+ abs(broyden_beta) .* chi_new
@@ -613,12 +626,12 @@ end
 # -------------------- Helper functions -------------------- #
 ##############################################################
 function initial_real_axis_state(inp, realAxisParameter, BCS_gap)
-    (; numReal_c) = inp
-    (_, _, _, _, w_static_chi) = realAxisParameter
+    (_, _, w_static, _, w_static_chi) = realAxisParameter
+    nw = length(w_static)
 
     return RealAxisState(
-        ones(ComplexF64, numReal_c),                        # Z
-        ones(ComplexF64, numReal_c) .* (BCS_gap + im * 1e-4),   # Delta
+        ones(ComplexF64, nw),                        # Z
+        ones(ComplexF64, nw) .* (BCS_gap + im * 1e-4),   # Delta
         -zeros(ComplexF64, length(w_static_chi)),           # Chi
         0.0,                                                # fermi-level
         nothing,                                            # phi (for Weep)             
@@ -639,35 +652,12 @@ function mixing_parameter(inp, i_it)
 end
 
 
-"""
-    make_vDOS_wprime_grid(gap0, inp)
-
-ω'-integration grid for vDOS
-"""
-function make_vDOS_wprime_grid(gap0, inp)
-    (; num_wp1, num_wp2, wp_max, reOmega_c_shift,numReal_c_shift) = inp
-
-    wp_inside = gap0 .* cos.((2 .* (0:num_wp1-1) .+ 1) ./ (2*num_wp1) .* π)
-    wp_half = wp_max .+ wp_max .* cos.((2 .* (floor(num_wp2/2):num_wp2-1) .+ 1) ./ (2*num_wp2) .* π)
-    wp_half = reverse(wp_half) .+ gap0
-    wp_rest = range(maximum(wp_half), reOmega_c_shift, length=numReal_c_shift) 
-
-    wp = vcat(
-        reverse(wp_inside[wp_inside .> 0]),
-        wp_half,
-        collect(wp_rest),
-    )
-
-    return wp[wp .> 0]
-end
-
-
 function save_real_axis_cDOS_outputs(itemp, inp, state, log_file)
     plotSelfEnergyAtT(inp, itemp, (state.delta, state.Z))
 
     if inp.flag_writeSelfEnergy == 1
         try
-            w_real = range(0, inp.reOmega_c, inp.numReal_c)
+            w_real = 1e-1:inp.domega:inp.reOmega_c
             saveSelfEnergyComponents(itemp, inp, w_real, state.delta, state.Z, mode="realAxis")
         catch ex
             writeToCrashFile(inp)

@@ -182,7 +182,7 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
     # material specific values
     matval = (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxShiftcut)
 
-    return inp, console, matval, ML_Tc, a2f_itp
+    return inp, console, matval, ML_Tc
 end
 
 
@@ -389,7 +389,7 @@ function readIn_a2f(a2f_file, indSmear=nothing, unit="", nheader=nothing, nfoote
 
     ### interpolate a2F on 10x finer grid ###
     omega = range(1e-2, stop=omega_raw[end], length=size(omega_raw)[1])   
-    a2f_itp = linear_interpolation(omega_raw, a2f_raw, extrapolation_bc=Flat())     
+    a2f_itp = linear_interpolation(omega_raw, a2f_raw, extrapolation_bc=0)     
     a2f = a2f_itp(omega)
     a2f[a2f.<0.0] .= 0.0
 

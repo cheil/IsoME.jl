@@ -446,10 +446,10 @@ function debug_plot_wprime(ws::WPrimeWorkspace, integrands; outdir::String="")
     pov = plot(ws.wp_head[2:end], diff(ws.wp_head); seriestype=:scatter, ms=1.5, msw=0,
                xscale=:log10, yscale=:log10, label="head",
                xlabel="ω' / meV", ylabel="local spacing Δω' / meV",
-               title="ω'-grid spacing (call $it)", legend=:bottomright)
-    plot!(pov, ws.wp_tail[2:end], diff(ws.wp_tail); seriestype=:scatter, ms=1.5, msw=0, label="tail")
+               title="ω'-grid spacing (call $it)", legend=:bottomright, show=false)
+    plot!(pov, ws.wp_tail[2:end], diff(ws.wp_tail); seriestype=:scatter, ms=1.5, msw=0, label="tail", show=false)
     isempty(poles) || vline!(pov, poles; ls=:dash, lc=:red, label="poles")
-    vline!(pov, [ws.wp_max]; ls=:dot, lc=:black, label="wp_max")
+    vline!(pov, [ws.wp_max]; ls=:dot, lc=:black, label="wp_max", show=false)
     savefig(pov, joinpath(outdir, "wprime_debug_grid.png"))
 
     # ---- per-integrand: integrand vs grid density in the head region ----
@@ -457,16 +457,16 @@ function debug_plot_wprime(ws::WPrimeWorkspace, integrands; outdir::String="")
         gh = real.(g[1:nh])
 
         ptop = plot(ws.wp_head, gh; label="integrand", ylabel="integrand ($(labels[idx]))",
-                    title="ω'-integrand vs grid density (call $it)", xlims=(0, ws.wp_max))
-        scatter!(ptop, ws.wp_head, gh; ms=1.2, msw=0, label="grid points")
+                    title="ω'-integrand vs grid density (call $it)", xlims=(0, ws.wp_max), show=false)
+        scatter!(ptop, ws.wp_head, gh; ms=1.2, msw=0, label="grid points", show=false)
         isempty(poles) || vline!(ptop, poles; ls=:dash, lc=:red, label="poles")
 
         pbot = plot(ws.wp_head[2:end], diff(ws.wp_head); seriestype=:scatter, ms=1.5, msw=0,
                     yscale=:log10, label="", xlabel="ω' / meV", ylabel="Δω' / meV",
-                    xlims=(0, ws.wp_max))
-        isempty(poles) || vline!(pbot, poles; ls=:dash, lc=:red, label="")
+                    xlims=(0, ws.wp_max), show=false)
+        isempty(poles) || vline!(pbot, poles; ls=:dash, lc=:red, label="", show=false)
 
-        savefig(plot(ptop, pbot; layout=(2, 1), link=:x),
+        savefig(plot(ptop, pbot; layout=(2, 1), link=:x, show=false),
                 joinpath(outdir, "wprime_debug_$(labels[idx]).png"))
     end
 

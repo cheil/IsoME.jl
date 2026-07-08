@@ -20,6 +20,8 @@ RealAxisState(Z, delta, chi, fermi_level) = RealAxisState(Z, delta, chi, fermi_l
 Real axis eliashberg solver.
 """
 function RealAxisSolver(inp::arguments)
+    # do not show plots
+    default(show = false) 
 
     dt = @elapsed begin
 
@@ -53,7 +55,7 @@ function RealAxisSolver(inp::arguments)
             - adapt messages in printFlagsAsText
             - add names to start message
             """
-            inp, console, matval, ML_Tc, a2F_itp = InputParser(inp, log_file, mode=1)
+            inp, console, matval, ML_Tc = InputParser(inp, log_file, mode=1)
         catch ex
             # crash file
             writeToCrashFile(inp)
@@ -75,7 +77,7 @@ function RealAxisSolver(inp::arguments)
         Znorm0 = Vector{Float64}()
 
         try
-            Tc, temps, Znorm0, Delta0, Shift0 = findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
+            Tc, temps, Znorm0, Delta0, Shift0 = findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
         catch ex
             # crash file
             writeToCrashFile(inp)
@@ -174,7 +176,7 @@ end
 
 Solve the real axis eliashberg equations
 """
-function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
+function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
     inp.temps = sort(inp.temps)
     nT = size(inp.temps, 1)
     Delta0 = Vector{ComplexF64}()
@@ -198,7 +200,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
 
             β = 1 / (kb * itemp)
 
-            realAxisParameter = precompute(β, inp, matval, a2F_itp, console, log_file)
+            realAxisParameter = precompute(β, inp, matval, console, log_file)
 
             if inp.cDOS_flag == 0 && isnothing(realAxisState)
                 # initial values vDOS
@@ -325,7 +327,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, a2F_itp, log_file)
 
             β = 1 / (kb * itemp)
 
-            realAxisParameter = precompute(β, inp, matval, a2F_itp, console, log_file)
+            realAxisParameter = precompute(β, inp, matval, console, log_file)
 
 
             # initial values vDOS
@@ -419,6 +421,8 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
         broyden_beta = mixing_parameter(inp, i_it)
         gap0 = real(delta_prev[1])
 
+        plot(1:length(w_dynam), w_dynam)
+        savefig("wdynam.png")
         Z_new, delta_new = realEliashbergEq(muc_ME, β, delta_prev, Kp_func, Km_func, w_dynam, w_static, reOmega_c, i_it)
 
         Z_new = (1.0 - abs(broyden_beta)) .* Z_prev .+ abs(broyden_beta) .* Z_new

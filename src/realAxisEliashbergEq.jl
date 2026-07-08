@@ -108,8 +108,8 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
     g_chi = -(FLIP .* integrands[3])
 
     # -------------- testing ------------- #
-    plot(w_prime[1:1500], integrands[1][1:1500])
-    vline!(ws.poles_prev)
+    plot(w_prime[1:1500], integrands[1][1:1500], show=false)
+    vline!(ws.poles_prev, show=false)
     savefig("integrands.png")
 
     # ------------- Ω & ω'-integration ------------- #
@@ -141,6 +141,7 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, deltaip::Vector{Compl
     # w_static: grid of the static part of the kernels, on which Z and Δ are evaluated
     # w_dynam:  chebyshev grid shifted to the pole of Θ(ω') to capture the singularity,
     #           used for the integration
+
 
     Delta_func = linear_interpolation(w_static, deltaip, extrapolation_bc=Flat())
     gap0 = real(deltaip[1])

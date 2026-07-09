@@ -60,33 +60,6 @@ function setUpOmegaAxis(inp, matval)
     return G, W_left, W_right, w_axis, int_axis
 end
 
-"""
-    pv_linear(g, x, E)
-
-Cauchy principal-value integral  P ∫ g(Ω)/(Ω − E) dΩ  of a piecewise-linear g
-(knots `x`, values `g`), evaluated in closed form segment by segment (Method B):
-
-    ∫_{Ω_k}^{Ω_{k+1}} (aΩ+b)/(Ω-E) dΩ = a·(Ω_{k+1}-Ω_k) + (aE+b)·ln|(Ω_{k+1}-E)/(Ω_k-E)|.
-
-Exact for piecewise-linear g, valid for E inside or outside [x[1], x[end]], and needs no
-integration grid or symmetric-cancellation trick. A ln-argument that hits a knot exactly is
-dropped: the coefficient (aE+b) is continuous across the shared knot, so that singular
-contribution → 0 in the limit.
-"""
-function pv_linear(g::Vector{Float64}, x::Vector{Float64}, E::Float64)
-    acc = 0.0
-    @inbounds for k in 1:length(x)-1
-        dx = x[k+1] - x[k]
-        a  = (g[k+1] - g[k]) / dx
-        b  = g[k] - a * x[k]
-        d1 = x[k+1] - E
-        d2 = x[k]   - E
-        l1 = abs(d1) < 1e-12 ? 0.0 : log(abs(d1))
-        l2 = abs(d2) < 1e-12 ? 0.0 : log(abs(d2))
-        acc += a * dx + (a * E + b) * (l1 - l2)
-    end
-    return acc
-end
 
 function kernel_integral_helper(
     s_rel::StepRangeLen{Float64},
@@ -136,38 +109,14 @@ function kernel_integral_helper(
         end
     end
 
-    println("nan: ", sum(isnan.(integrand_1)))
+    #println("nan: ", sum(isnan.(integrand_1)))
+    # I think can be removed as no nan's should happen anymore
     integrand_1[isnan.(integrand_1)] .= 0.0
     integrand_2[isnan.(integrand_2)] .= 0.0
 
 
     integral_1 = trapz(int_axis, integrand_1)
     integral_2 = trapz(int_axis, integrand_2)
-
-   
-    # ---- Method B: exact analytic PV of the piecewise-linear α²F, for comparison ----
-    # Same integrals  I₁(s)=P∫α²F(Ω)/(Ω-E)dΩ  and  I₂(s)=P∫α²F(Ω)n(Ω)/(Ω-E)dΩ , E=W_left+s,
-    # but done in closed form over the band [W_left, W_right] instead of the trapz-over-int_axis
-    # scheme above. Reports the largest A(trapz) − B(analytic) discrepancy over the s-vector.
-    
-    # print("B: ")
-    # @time begin
-    # Ω_grid = collect(range(W_left, W_right, length=2000))
-    # g1 = G.(Ω_grid); g1[g1 .< 0.0] .= 0.0
-    # g2 = g1 .* n.(Ω_grid)
-    # integral_1_B = zeros(N)
-    # integral_2_B = zeros(N)
-    # @inbounds for i in 1:N
-    #     E = W_left + s_rel[i]
-    #     integral_1_B[i] = pv_linear(g1, Ω_grid, E)
-    #     integral_2_B[i] = pv_linear(g2, Ω_grid, E)
-    # end
-    # d1v = abs.(integral_1 .- integral_1_B)
-    # d2v = abs.(integral_2 .- integral_2_B)
-    # i1m = argmax(d1v); i2m = argmax(d2v)
-    # @info "kernel PV  A(trapz) − B(analytic)" maxΔI1=d1v[i1m] at_s1=s_rel[i1m] maxΔI2=d2v[i2m] at_s2=s_rel[i2m]
-    # end
-    # ------------------------------------------------------------------------------------------
 
     return integral_1, integral_2
 end
@@ -179,10 +128,12 @@ function precompute_integrals(num_w, w_max, W_left, W_right,int_axis, G, n, log_
     progress_counter = isnothing(log_file) || isnothing(progress_state) ? nothing : Ref(0)
     progress_interval = isnothing(progress_counter) ? nothing : kernel_progress_interval(3 * (2 * num_w - 1), progress_state)
 
-    s1_idx = 0:2*(num_w-1)
-    s1_rel = (s1_idx .- 2*(num_w-1)) .* dw .- W_left
-    I1_1, I1_2 = kernel_integral_helper(
-        s1_rel,
+    # single unified s-grid: position p ↔ frequency index m = p - (2*num_w - 1),
+    # covering every m ∈ -2(num_w-1) … 2(num_w-1) that the ±w±w' combinations reach.
+    s_idx = -2*(num_w-1):2*(num_w-1)
+    s_rel = s_idx .* dw .- W_left
+    I1, I2 = kernel_integral_helper(
+        s_rel,
         int_axis,
         W_cut,
         W_left,
@@ -194,37 +145,8 @@ function precompute_integrals(num_w, w_max, W_left, W_right,int_axis, G, n, log_
         progress_state=progress_state,
     )
 
-    s2_idx = 0:2*(num_w-1)
-    s2_rel = (s2_idx .- (num_w-1)) .* dw .- W_left
-    I2_1, I2_2 = kernel_integral_helper(
-        s2_rel,
-        int_axis,
-        W_cut,
-        W_left,
-        G,
-        n,
-        log_file;
-        progress_counter=progress_counter,
-        progress_interval=progress_interval,
-        progress_state=progress_state,
-    )
 
-    s4_idx = 0:2*(num_w-1)
-    s4_rel = s4_idx .* dw .- W_left
-    I4_1, I4_2 = kernel_integral_helper(
-        s4_rel,
-        int_axis,
-        W_cut,
-        W_left,
-        G,
-        n,
-        log_file;
-        progress_counter=progress_counter,
-        progress_interval=progress_interval,
-        progress_state=progress_state,
-    )
-
-    return [[I1_1, I1_2] [I2_1, I2_2] [I2_1, I2_2] [I4_1, I4_2]]
+    return I1, I2
 end
 
 function compute_real_kernels(w_axis, num_w, w_max, W_left, W_right, int_axis, f, n, G, log_file=nothing, line_width=80)
@@ -234,38 +156,29 @@ function compute_real_kernels(w_axis, num_w, w_max, W_left, W_right, int_axis, f
         progress_state = start_kernel_progress(" Re", log_file, line_width)
     end
 
-    w2_grid = repeat(w_axis, 1, length(w_axis))
-    i1_grid = repeat(transpose((1:num_w)), num_w)
-    i2_grid = repeat(1:num_w, 1, num_w)
-    integrals = precompute_integrals(num_w, w_max, W_left, W_right, int_axis, G, n, log_file; progress_state=progress_state) #slow
-
-    println("Hallo: ", maximum(maximum(integrals)))
+    I1, I2 = precompute_integrals(num_w, w_max, W_left, W_right, int_axis, G, n, log_file; progress_state=progress_state) #slow
 
     if !isnothing(log_file)
         finish_kernel_progress(log_file, progress_state)
     end
 
-    idx_a = @. -i1_grid - i2_grid + 2*num_w+1       #-w-w'
-    idx_b = @. i1_grid - i2_grid + num_w            #w-w'
-    idx_c = @. i2_grid - i1_grid + num_w            #w'-w
-    idx_d = @. i1_grid + i2_grid - 1                #w+w'
+    N = length(w_axis)
+    Kp_real = Matrix{Float64}(undef, N, N)
+    Km_real = Matrix{Float64}(undef, N, N)
+    @inbounds for j in 1:N, i in 1:N              # i innermost (column-major)
+        w  = w_axis[j]                            
+        fm = f(-w); fp = f(w)
+        # indices into the single unified grid: p(m) = m + 2*num_w - 1, with
+        # m = -(i+j-2) [-w-w'],  i-j [w-w'],  j-i [w'-w],  i+j-2 [w+w']
+        ia = -i-j+2num_w+1; ib = i-j+2num_w-1; ic = j-i+2num_w-1; id = i+j+2num_w-3
+        r1 = fm*I1[ia] + I2[ia]
+        r2 = fm*I1[ib] + I2[ib]
+        r3 = fp*I1[ic] + I2[ic]
+        r4 = fp*I1[id] + I2[id]
 
-    Evalf_minus = f.(-w2_grid)
-    Evalf_plus = f.(w2_grid)
-    re1 = transpose(Evalf_minus .* integrals[1, 1][idx_a] .+ integrals[2, 1][idx_a]) 
-    re2 = transpose(Evalf_minus .* integrals[1, 2][idx_b] .+ integrals[2, 2][idx_b])
-    re3 = transpose(Evalf_plus .* integrals[1, 3][idx_c] .+ integrals[2, 3][idx_c])
-    re4 = transpose(Evalf_plus .* integrals[1, 4][idx_d] .+ integrals[2, 4][idx_d])
-
-    Kp_real = re1 .+ re2 .- re3 .- re4
-    Km_real = re1 .- re2 .+ re3 .- re4
-
-    println("Km real: ", maximum(abs.(re1)))
-    println("Km real: ", maximum(abs.(re2)))
-    println("Km real: ", maximum(abs.(re3)))
-    println("Km real: ", maximum(abs.(re4)))
-    
-    println("Km real: ", maximum(Km_real))
+        Kp_real[i,j] =  r1 + r2 - r3 - r4
+        Km_real[i,j] =  r1 - r2 + r3 - r4
+    end
 
     return Kp_real, Km_real
 end
@@ -367,8 +280,8 @@ function precompute(β, inp, matval, console, log_file)
 
     w_static = 1e-1:inp.domega:inp.reOmega_c        # grid of Z(w), Delta(w), sensitive to start value, do not chose < 1e-1
     w_static_chi = 1e-1:inp.domega_shift:inp.reOmega_c_shift   # grid of χ(ω), 10*inp.reOmega_c
-    w_dynam = reverse(inp.reOmega_c .+ inp.reOmega_c .* cos.((2 .* (inp.n_cheb/2:inp.n_cheb-1) .+ 1) .* π ./ (2 * inp.n_cheb)))    # only positvie chebyshev nodes
-    #append!(w_dynam, reverse(-w_dynam))   # symmetric chebyshev nodes
+    w_dynam = -(inp.reOmega_c .+ inp.reOmega_c .* cos.((2 .* (inp.n_cheb/2:inp.n_cheb-1) .+ 1) .* π ./ (2 * inp.n_cheb)))    # only positvie chebyshev nodes
+    append!(w_dynam, reverse(-w_dynam))   # symmetric chebyshev nodes
     # assert grid sizes
     @assert first(w_axis) <= first(w_static) && last(w_static) <= last(w_axis)
     if inp.include_Weep == 1

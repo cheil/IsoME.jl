@@ -9,7 +9,7 @@ mutable struct RealAxisState
     delta::Vector{ComplexF64}
     chi::Vector{ComplexF64}
     fermi_level::Float64
-    phi::Union{Nothing, Matrix{ComplexF64}}
+    phi::Union{Nothing, Vector{ComplexF64}, Matrix{ComplexF64}}
 end
 
 RealAxisState(Z, delta, chi, fermi_level) = RealAxisState(Z, delta, chi, fermi_level, nothing)
@@ -414,6 +414,11 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
     delta_new = state.delta
     data = [Z_new[1], delta_new[1]]
 
+    # --- head/tail (vDOS-style) comparison solver ---
+    # pole-anchored Chebyshev head + static linear tail; the tail kernels are precomputed
+    # once and the head is rebuilt only when the pole of Θ(ω') moves (maybe_refresh_head!).
+    ws_ht = build_cDOS_wprime_workspace(inp, realAxisParameter, real(state.delta[1]))
+
     # Iterate
     for i_it in 1:N_it
         delta_prev = copy(delta_new)
@@ -421,9 +426,13 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
         broyden_beta = mixing_parameter(inp, i_it)
         gap0 = real(delta_prev[1])
 
-        plot(1:length(w_dynam), w_dynam)
-        savefig("wdynam.png")
-        Z_new, delta_new = realEliashbergEq(muc_ME, β, delta_prev, Kp_func, Km_func, w_dynam, w_static, reOmega_c, i_it)
+        pole = find_cDOS_pole(w_static, delta_prev, gap0)
+        if pole >= ws_ht.wp_max
+            ws_ht = build_cDOS_wprime_workspace(inp, realAxisParameter, pole)
+        end
+        maybe_refresh_head!(ws_ht, [pole], w_static, nothing, Kp_func, Km_func, inp.n_cheb)
+        
+        Z_new, delta_new = realEliashbergEq(muc_ME, β, delta_prev, ws_ht, w_static)
 
         Z_new = (1.0 - abs(broyden_beta)) .* Z_prev .+ abs(broyden_beta) .* Z_new
         delta_new = (1.0 - abs(broyden_beta)) .* delta_prev .+ abs(broyden_beta) .* delta_new
@@ -438,6 +447,7 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
 
             state.Z = Z_new
             state.delta = delta_new
+            state.phi = delta_new .* Z_new
             if !vDOS_initial_guess
                 save_real_axis_cDOS_outputs(itemp, inp, state, log_file)
             end
@@ -452,6 +462,7 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
             if  vDOS_initial_guess
                 state.Z = Z_new
                 state.delta = delta_new
+                state.phi = delta_new .* Z_new
             end
 
             return data, state
@@ -465,6 +476,7 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
             if  vDOS_initial_guess
                 state.Z = Z_new
                 state.delta = delta_new
+                state.phi = delta_new .* Z_new
             end
 
             return data, state
@@ -498,10 +510,12 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
     Z_new = state.Z
     delta_new = state.delta
     chi_new = state.chi
+    # φ is the primary sc variable handed to realEliashbergEq; Δ is derived as φ/Z after mixing.
+    # vDOS+W: φ(ω,ε) is an nω×ndos matrix; vDOS+μ: φ(ω) = Δ(ω)·Z(ω) is a vector.
     phi_new = if inp.include_Weep == 1
-            isnothing(state.phi) ? repeat(delta_new .* Z_new, 1, length(dos_en)) : state.phi
+        isnothing(state.phi) ? repeat(delta_new .* Z_new, 1, length(dos_en)) : state.phi
     else
-        nothing
+        isnothing(state.phi) ? (delta_new .* Z_new) : state.phi
     end
     fermi_level = state.fermi_level
 
@@ -522,7 +536,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         delta_prev = copy(delta_new)
         Z_prev = copy(Z_new)
         chi_prev = copy(chi_new)
-        phi_prev = isnothing(phi_new) ? nothing : copy(phi_new)
+        phi_prev = copy(phi_new)
         broyden_beta = mixing_parameter(inp, i_it)
         gap0 = real(delta_prev[1])
 
@@ -542,23 +556,32 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         wgCoulomb = minimum([1, i_it / nItFullCoul])
 
 
-        if mu_flag == 1
-            fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, Z_prev, delta_prev, chi_prev, inp.outdir, i_it)
+        # Add mu thermalization: start mu-update only after a few iterations
+        if mu_flag == 1 # && i_it > maximum([min_it, nItFullCoul + 1]) -1
+            @time fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, Z_prev, phi_prev, chi_prev, inp.outdir, i_it)
         end
 
         if inp.include_Weep == 1
-            Z_new, delta_new, chi_new, phi_new = realEliashbergEq(β, Z_prev, phi_prev::Matrix{ComplexF64}, chi_prev, gridws, w_static, w_static_chi, dosef, dos_en, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
+            Z_new, chi_new, phi_new = realEliashbergEq(β, Z_prev, phi_prev::Matrix{ComplexF64}, chi_prev, gridws, w_static, w_static_chi, dosef, dos_en, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
+            
+            # --- OLD single-grid version (no head/tail split), same ω'-grid, for comparison ---
+            Z_single, delta_single, chi_single, phi_single = realEliashbergEq(β, Z_prev, phi_prev::Matrix{ComplexF64}, chi_prev, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
         else
-            Z_new, delta_new, chi_new = realEliashbergEq(muc_ME, β, Z_prev, delta_prev, chi_prev, gridws, w_static, w_static_chi, dosef, dos_en, dos, fermi_level)
+            Z_new, chi_new, phi_new = realEliashbergEq(muc_ME, β, Z_prev, phi_prev, chi_prev, gridws, w_static, w_static_chi, dosef, dos_en, dos, fermi_level, electronic_spec)
         end
 
+        # # head/tail (new) vs single-grid (old): should match on the same ω'-grid
+        # println("it $i_it  head/tail vs single-grid:  max|ΔZ|=", maximum(abs.(Z_new .- Z_single)),
+        #         "  max|Δδ|=", maximum(abs.(delta_new .- delta_single)),
+        #         "  max|Δχ|=", maximum(abs.(chi_new .- chi_single)))
+
+        # mixing on the primary variables (Z, χ, φ)
         chi_new = (1.0 - abs(broyden_beta)) .* chi_prev .+ abs(broyden_beta) .* chi_new
-        Z_new = (1.0 - abs(broyden_beta)) .* Z_prev .+ abs(broyden_beta) .* Z_new
-        delta_new = (1.0 - abs(broyden_beta)) .* delta_prev .+ abs(broyden_beta) .* delta_new
-        if inp.include_Weep == 1
-            phi_new = (1.0 - abs(broyden_beta)) .* (phi_prev::Matrix{ComplexF64}) .+ abs(broyden_beta) .* (phi_new::Matrix{ComplexF64})
-            delta_new = phi_new[:, idx_ef] ./ Z_new
-        end
+        Z_new   = (1.0 - abs(broyden_beta)) .* Z_prev   .+ abs(broyden_beta) .* Z_new
+        phi_new = (1.0 - abs(broyden_beta)) .* phi_prev .+ abs(broyden_beta) .* phi_new
+
+        # Δ is derived from φ and Z after mixing (φ evaluated at ε_F for vDOS+W)
+        delta_new = (inp.include_Weep == 1 ? phi_new[:, idx_ef] : phi_new) ./ Z_new
 
         convergence = sqrt(sum(abs2.(delta_new .- delta_prev))/length(delta_new))
         data = [Z_new[1], delta_new[1], chi_new[1]]
@@ -591,16 +614,6 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
                     printWarning("Error while saving self energy components.", log_file, ex=ex)
                 end
             end
-
-            theta_pos  = -(w_static .* Z_new).^2 .+ chi_on_ws.^2 .+ (delta_new .* Z_new).^2
-            A11_pos    = -imag.(-(w_static .* Z_new .+ chi_on_ws) ./ theta_pos) ./ pi
-            A12_pos    = -imag.(-(delta_new .* Z_new) ./ theta_pos) ./ pi
-            theta_neg = -(-w_static .* conj.(Z_new)).^2 .+ conj.(chi_on_ws).^2 .+ (conj.(delta_new) .* conj.(Z_new)).^2
-            A11_neg   = -imag.(-(-w_static .* conj.(Z_new) .+ conj.(chi_on_ws)) ./ theta_neg) ./ pi
-            A12_neg   = -imag.(-(conj.(delta_new) .* conj.(Z_new)) ./ theta_neg) ./ pi
-            A11 = append!(A11_neg[:], A11_pos)
-            A12 = append!(A12_neg[:], A12_pos)
-            plotSpectralFunction(itemp, vcat(-collect(w_static), collect(w_static)), A11, A12, inp.outdir, inp.material, "realaxis_vDOS")
 
             # next guess
             state.Z = Z_new
@@ -755,6 +768,7 @@ cDOS console output
 function real_axis_cdOS_output(i_it, Z_new, delta_new, convergence, gap0)
     return [i_it, real(Z_new[1]), imag(Z_new[1]), real(delta_new[1]), imag(delta_new[1]), abs(convergence / gap0)]
 end
+
 
 """
     real_axis_vDOS_output(i_it, Z_new, delta_new, chi_new, fermi_level, convergence, gap0)

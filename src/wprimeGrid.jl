@@ -313,32 +313,23 @@ end
 
 
 """
-    build_cDOS_wprime_workspace(inp, realAxisParameter, BCS_gap)
+    build_cDOS_wprime_workspace(inp, realAxisParameter, gap0_start)
 
 Head/tail ω'-workspace for the cDOS+μ approximation. The head/tail split is at
-wp_max = 2·BCS_gap, the tail is a linear grid up to reOmega_c (step domega), and only the
-Km/Kp channels are built (no χ channel).
+wp_max = 2·gap0_start (kept within [10·domega, reOmega_c/2]); the head is a Chebyshev
+cluster around the pole of Θ(ω') and the tail is a static linear grid up to reOmega_c
+(step domega) whose kernels are built once. Only the Km/Kp channels are built (no χ channel).
 """
-function build_cDOS_wprime_workspace(inp::arguments, realAxisParameter, BCS_gap::Float64)
+function build_cDOS_wprime_workspace(inp::arguments, realAxisParameter, gap0_start::Float64)
     (Kp_func, Km_func, w_static, _, _) = realAxisParameter
 
-    gap = (isfinite(BCS_gap) && BCS_gap > 0) ? BCS_gap : inp.minGap
-    gap = inp.reOmega_c
+    gap = (isfinite(gap0_start) && gap0_start > 0) ? gap0_start : inp.minGap
     wp_max = clamp(2 * gap, 10 * inp.domega, inp.reOmega_c / 2)
-    wp_max = inp.reOmega_c
-    pts_per_pole = inp.n_cheb
+    pts_per_pole = inp.n_cheb    # Chebyshev points in the pole-anchored head region
+    pts_per_pole = 500
 
-    print(gap)
-
-    wp_tail = collect(wp_max:inp.domega:inp.reOmega_c)
-    wp_head = make_head_grid([gap], wp_max, pts_per_pole)
-
-    # # Chebyshev grid over whole range, center it at pole of Θ at each iteration
-    #w_dynam = reverse(inp.reOmega_c .+ inp.reOmega_c .* cos.((2 .* (inp.n_cheb/2:inp.n_cheb-1) .+ 1) .* π ./ (2 * inp.n_cheb)))    # only positvie chebyshev nodes
-    #wp_head = w_dynam
-    # # currently only uses w_dynam
-    # wp_head = w_dynam
-    # wp_tail = [w_dynam[end]]
+    wp_tail = collect(wp_max:inp.domega:inp.reOmega_c)     # static linear tail, kernels built once
+    wp_head = make_head_grid([gap], wp_max, pts_per_pole)  # Chebyshev cluster around the pole
 
     return WPrimeWorkspace(wp_head, wp_tail, w_static, nothing, Kp_func, Km_func; poles=[gap])
 end
@@ -409,84 +400,3 @@ function wprime_trapz(ws::WPrimeWorkspace, g::AbstractVector)
 end
 
 
-##################################################################
-# ---------------------- debug plotting ------------------------ #
-##################################################################
-
-# counter shown in the plot titles so successive iterations can be told apart
-# (the files themselves are overwritten on every call)
-const WPRIME_DEBUG_COUNT = Ref(0)
-
-"""
-    debug_plot_wprime(ws, integrands; outdir="")
-
-Debug plots for the pole-anchored ω'-grid, enabled in realEliashbergEq via
-ENV["ISOME_DEBUG_POLES"] = "1". Written to outdir (default: current directory):
-
-    - wprime_debug_grid.png:  local grid spacing Δω' over the full ω'-grid
-                              (head+tail), poles and wp_max marked
-    - wprime_debug_<z|phi|chi>.png: integrand over the head region (top panel)
-                              and local grid spacing (bottom panel), same x-axis,
-                              to check that the grid clusters where the
-                              integrands are peaked
-    - wprime_debug_pole_<k>.png: zoom of all three integrands (normalized to
-                              max |g| = 1 in the window) onto the grid cluster
-                              around pole k
-
-integrands is indexed like ws.wp_full (as inside realEliashbergEq).
-"""
-function debug_plot_wprime(ws::WPrimeWorkspace, integrands; outdir::String="")
-    WPRIME_DEBUG_COUNT[] += 1
-    it = WPRIME_DEBUG_COUNT[]
-    poles = filter(isfinite, ws.poles_prev)
-    nh = ws.n_head
-    labels = ("z", "phi", "chi")
-
-    # ---- overview: local spacing of the full grid ----
-    pov = plot(ws.wp_head[2:end], diff(ws.wp_head); seriestype=:scatter, ms=1.5, msw=0,
-               xscale=:log10, yscale=:log10, label="head",
-               xlabel="ω' / meV", ylabel="local spacing Δω' / meV",
-               title="ω'-grid spacing (call $it)", legend=:bottomright, show=false)
-    plot!(pov, ws.wp_tail[2:end], diff(ws.wp_tail); seriestype=:scatter, ms=1.5, msw=0, label="tail", show=false)
-    isempty(poles) || vline!(pov, poles; ls=:dash, lc=:red, label="poles")
-    vline!(pov, [ws.wp_max]; ls=:dot, lc=:black, label="wp_max", show=false)
-    savefig(pov, joinpath(outdir, "wprime_debug_grid.png"))
-
-    # ---- per-integrand: integrand vs grid density in the head region ----
-    for (idx, g) in enumerate(integrands)
-        gh = real.(g[1:nh])
-
-        ptop = plot(ws.wp_head, gh; label="integrand", ylabel="integrand ($(labels[idx]))",
-                    title="ω'-integrand vs grid density (call $it)", xlims=(0, ws.wp_max), show=false)
-        scatter!(ptop, ws.wp_head, gh; ms=1.2, msw=0, label="grid points", show=false)
-        isempty(poles) || vline!(ptop, poles; ls=:dash, lc=:red, label="poles")
-
-        pbot = plot(ws.wp_head[2:end], diff(ws.wp_head); seriestype=:scatter, ms=1.5, msw=0,
-                    yscale=:log10, label="", xlabel="ω' / meV", ylabel="Δω' / meV",
-                    xlims=(0, ws.wp_max), show=false)
-        isempty(poles) || vline!(pbot, poles; ls=:dash, lc=:red, label="", show=false)
-
-        savefig(plot(ptop, pbot; layout=(2, 1), link=:x, show=false),
-                joinpath(outdir, "wprime_debug_$(labels[idx]).png"))
-    end
-
-    # ---- zoom onto the cluster around each pole (all integrands, normalized) ----
-    for (k, p) in enumerate(poles)
-        i0 = argmin(abs.(ws.wp_head .- p))
-        window = max(1, i0 - 150):min(nh, i0 + 150)
-        x = ws.wp_head[window]
-
-        pz = plot(xlabel="ω' / meV", ylabel="integrand / max|integrand|",
-                  title="pole $k at ω' = $(round(p, digits=4)) meV (call $it)")
-        for (idx, g) in enumerate(integrands)
-            gw = real.(g[window])
-            gmax = maximum(abs, gw)
-            gmax > 0 && plot!(pz, x, gw ./ gmax; label=labels[idx])
-        end
-        scatter!(pz, x, zero(x); ms=1.2, msw=0, label="grid points")
-        vline!(pz, [p]; ls=:dash, lc=:red, label="pole")
-        savefig(pz, joinpath(outdir, "wprime_debug_pole_$k.png"))
-    end
-
-    return nothing
-end

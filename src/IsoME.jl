@@ -112,7 +112,7 @@ const kb = 0.08617333262; # meV/K
     # linear ω-grid
     reOmega_c::Float64          = 4000.0  # ω-grid cutoff
     domega::Float64             = 1.0   # ω-grid step size / meV
-    dOmega::Float64             = 0.4
+    dOmega::Float64             = 1.0
     # χ linear ω-grid
     reOmega_c_shift::Float64    = 25000.0 # ω-cutoff χ(ω)
     domega_shift::Float64       = 2.0  # χ ω-grid step size / meV

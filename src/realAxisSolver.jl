@@ -513,7 +513,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
     # φ is the primary sc variable handed to realEliashbergEq; Δ is derived as φ/Z after mixing.
     # vDOS+W: φ(ω,ε) is an nω×ndos matrix; vDOS+μ: φ(ω) = Δ(ω)·Z(ω) is a vector.
     phi_new = if inp.include_Weep == 1
-        isnothing(state.phi) ? repeat(delta_new .* Z_new, 1, length(dos_en)) : state.phi
+        isnothing(state.phi) ? repeat(delta_new .* Z_new, 1, length(dos_en)) : repeat(state.phi, 1, length(dos_en))
     else
         isnothing(state.phi) ? (delta_new .* Z_new) : state.phi
     end
@@ -531,6 +531,9 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
     # the pole-anchored head grid is rebuilt only when the poles move.
     # wp_max = 2·Δ(0) of the starting state (cDOS solution / previous temperature).
     gridws = build_wprime_workspace(inp, realAxisParameter, real(state.delta[1]))
+
+    # optional Broyden mixer (broyden_flag == 1); default is linear mixing
+    broyden = inp.broyden_flag == 1 ? BroydenMixer(inp.broyden_mem) : nothing
 
     for i_it in 1:N_it
         delta_prev = copy(delta_new)
@@ -558,27 +561,23 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
 
         # Add mu thermalization: start mu-update only after a few iterations
         if mu_flag == 1 # && i_it > maximum([min_it, nItFullCoul + 1]) -1
-            @time fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, Z_prev, phi_prev, chi_prev, inp.outdir, i_it)
+            fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, Z_prev, phi_prev, chi_prev, inp.outdir, i_it)
         end
 
         if inp.include_Weep == 1
             Z_new, chi_new, phi_new = realEliashbergEq(β, Z_prev, phi_prev::Matrix{ComplexF64}, chi_prev, gridws, w_static, w_static_chi, dosef, dos_en, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
-            
-            # --- OLD single-grid version (no head/tail split), same ω'-grid, for comparison ---
-            Z_single, delta_single, chi_single, phi_single = realEliashbergEq(β, Z_prev, phi_prev::Matrix{ComplexF64}, chi_prev, Kp_func, Km_func, w_prime, w_static, w_static_chi, dosef, dos_en, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
         else
-            Z_new, chi_new, phi_new = realEliashbergEq(muc_ME, β, Z_prev, phi_prev, chi_prev, gridws, w_static, w_static_chi, dosef, dos_en, dos, fermi_level, electronic_spec)
+            Z_new, chi_new, phi_new = realEliashbergEq(muc_ME, β, Z_prev, phi_prev, chi_prev, gridws, w_static, w_static_chi, dosef, dos_en, dos, fermi_level, electronic_spec, poles)
         end
 
-        # # head/tail (new) vs single-grid (old): should match on the same ω'-grid
-        # println("it $i_it  head/tail vs single-grid:  max|ΔZ|=", maximum(abs.(Z_new .- Z_single)),
-        #         "  max|Δδ|=", maximum(abs.(delta_new .- delta_single)),
-        #         "  max|Δχ|=", maximum(abs.(chi_new .- chi_single)))
-
         # mixing on the primary variables (Z, χ, φ)
-        chi_new = (1.0 - abs(broyden_beta)) .* chi_prev .+ abs(broyden_beta) .* chi_new
-        Z_new   = (1.0 - abs(broyden_beta)) .* Z_prev   .+ abs(broyden_beta) .* Z_new
-        phi_new = (1.0 - abs(broyden_beta)) .* phi_prev .+ abs(broyden_beta) .* phi_new
+        if inp.broyden_flag == 1
+            Z_new, chi_new, phi_new = broyden_mix!(broyden, abs(broyden_beta), Z_prev, chi_prev, phi_prev, Z_new, chi_new, phi_new)
+        else
+            chi_new = (1.0 - abs(broyden_beta)) .* chi_prev .+ abs(broyden_beta) .* chi_new
+            Z_new   = (1.0 - abs(broyden_beta)) .* Z_prev   .+ abs(broyden_beta) .* Z_new
+            phi_new = (1.0 - abs(broyden_beta)) .* phi_prev .+ abs(broyden_beta) .* phi_new
+        end
 
         # Δ is derived from φ and Z after mixing (φ evaluated at ε_F for vDOS+W)
         delta_new = (inp.include_Weep == 1 ? phi_new[:, idx_ef] : phi_new) ./ Z_new

@@ -240,8 +240,9 @@ end
     kernels(β, inp, w_axis, W_cut, int_axis, G)
 
 Compute the kernels at a given temperature
-Kp(ω,ω') = -K(ω,ω') + K(ω,-ω')
-Km(ω,ω') = K(ω,ω') + K(ω,-ω')
+    Kp(ω,ω') = -K(ω,ω') + K(ω,-ω')
+    Km(ω,ω') = K(ω,ω') + K(ω,-ω')
+with K(ω,ω') as given in the paper, supplemental eq. (47)
 """
 function kernels(β, inp, w_axis, W_left, W_right, int_axis, G, log_file=nothing, line_width=80)
 

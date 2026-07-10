@@ -29,9 +29,10 @@ function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phiphip::M
     phi_ongrid = interpolate_phi_matrix(w_static, phiphip, w_prime)
 
     # ------------- ε-integration ------------- #
-    integrands, coulomb_spectral = eval_spectral_and_coulomb_vDOS_W(electronic_spec, epsilon, dos, Weep, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
+    integrands, coulomb_spectral = epsilon_helpers_vDOSW(electronic_spec, Weep, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
 
     # Z-integrand must be positive (causality), flip the others accordingly
+    # Note: Minus sign because split of -Θ to (ε+χ +- ε_p) (eq. (51))
     FLIP = ifelse.(integrands[1] .<= 0, 1, -1)
     g_z = -abs.(integrands[1])
     g_phi = -(FLIP .* integrands[2])
@@ -62,13 +63,12 @@ end
 """
     realEliashbergEq(mu_star, beta, znormip, phiip, shiftip, ws, w_static, w_static_chi, dosef, epsilon, dos, fermi_level)
 
-Real axis Eliashberg equations in the vDOS+μ approximation. φ (= Δ·Z) is the primary
-superconducting variable that is handed in and returned; Δ is derived from φ and Z in the solver.
+Real axis Eliashberg equations in the vDOS+μ approximation. 
 """
 function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{ComplexF64}, phiip::Vector{ComplexF64},
                           shiftip::Vector{ComplexF64}, ws::WPrimeWorkspace, w_static::AbstractVector,
                           w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64},
-                          fermi_level::Float64, electronic_spec::Tuple)
+                          fermi_level::Float64, electronic_spec::Tuple, poles)
 
     w_prime = ws.wp_full
 
@@ -84,8 +84,8 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
     # ------------- ε-integration ------------- #
     integrands = epsilon_helpers(electronic_spec, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
 
-
     # Z-integrand must be positive (causality), flip the others accordingly
+    # Note: Minus sign because split of -Θ to (ε+χ +- ε_p) (eq. (51))
     FLIP = ifelse.(integrands[1] .<= 0, 1, -1)
     g_z = -abs.(integrands[1])
     g_phi = -(FLIP .* integrands[2])
@@ -96,69 +96,17 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
     Iphi = kernel_omega_integral(ws.Kp_head, ws.Kp_tail, ws, g_phi)
     Ichi = kernel_omega_integral(ws.Kpchi_head, ws.Kpchi_tail, ws, g_chi)
 
-    # μ* Coulomb term (scalar, same for all ω)
+    # μ* Coulomb term
     coulomb = wprime_trapz(ws, g_phi .* tanh.(beta .* w_prime ./ 2))
 
     Zval = 1 .+ Iz ./ (w_static .* (π * dosef))
     phi_val = (Iphi .- mu_star .* coulomb) ./ (π * dosef)
     shift_val = -Ichi ./ (π * dosef)
 
-    # Δ is derived from φ and Z in the solver after mixing; hand back φ here.
     return Zval, shift_val, phi_val
 end
 
 
-
-"""
-    realEliashbergEq()
-
-real axis Eliashberg equations in the vDOS+W approximation - OLD VERSION -
-"""
-function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phiphip::Matrix{ComplexF64}, shiftip::Vector{ComplexF64},
-                          Kp_func::AbstractInterpolation, Km_func::AbstractInterpolation, w_prime::Vector{Float64}, w_static::StepRangeLen,
-                          w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64}, Weep::Matrix{Float64},
-                          idx_ef::Int64, fermi_level::Float64, wgCoulomb::Number, electronic_spec::Tuple)
-
-    if size(Weep, 1) != length(epsilon) || size(Weep, 2) != length(epsilon)
-        error("The W(ε,ε′) matrix must be defined on the same energy grid as the DOS for real-axis vDOS+W calculations.")
-    end
-
-    # interpolate Z,χ,ϕ onto ω'-integration grid
-    Z_itp = linear_interpolation(w_static, znormip, extrapolation_bc=Flat())
-    shift_itp = linear_interpolation(w_static_chi, shiftip, extrapolation_bc=Flat())
-
-    Z_ongrid = Z_itp.(w_prime)
-    shift_ongrid = shift_itp.(w_prime) .- fermi_level
-    phi_ongrid = interpolate_phi_matrix(w_static, phiphip, w_prime)
-
-    # ------------- ε-integration ------------- #
-    integrands, coulomb_spectral = eval_spectral_and_coulomb_vDOS_W(electronic_spec, epsilon, dos, Weep, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
-
-    # ------------- Ω-integration ------------- #
-    Kernel_minus, Kernel_plus = evaluate_Kernels(w_static, w_prime, Km_func, Kp_func)
-    Kernel_plus_chi = evaluate_Kernels(w_static_chi, w_prime, Kp_func)
-    z_integrand = -abs.(transpose(integrands[1])) .* Kernel_minus
-    FLIP = ifelse.(-abs.(integrands[1]) .== integrands[1], 1, -1)
-    phi_ph_integrand = -FLIP .* integrands[2] .* transpose(Kernel_plus)
-    shift_integrand = -transpose(FLIP .* integrands[3]) .* Kernel_plus_chi
-
-    # Coulomb term: integrate N(ε')W(ε,ε') with the same piecewise-linear
-    # spectral quadrature, rather than multiplying by an interval-averaged W.
-    coulomb_spectral = coulomb_spectral .* transpose(FLIP)
-    coulomb_integrand = wgCoulomb .* dosef .* coulomb_spectral .* transpose(tanh.(beta .* w_prime ./ 2))
-
-    # ------------- ω'-integration ------------- #
-    Zval = 1 .+ 1 ./(w_static * π * dosef) .* trapz(w_prime, z_integrand)
-    phi_ph_val = 1 ./(π * dosef) .* trapz(w_prime, transpose(phi_ph_integrand))
-    phi_c_val = 1 ./(π * dosef) .* trapz(w_prime, coulomb_integrand)
-    phi_val = repeat((phi_ph_val), 1, length(epsilon)) .+ transpose(phi_c_val)
-    shift_val = -1 ./(π * dosef) .* trapz(w_prime, shift_integrand)
-
-    delta_val = phi_val[:, idx_ef] ./ Zval
-
-
-    return Zval, delta_val, shift_val, phi_val
-end
 
 
 """
@@ -237,7 +185,12 @@ function evaluate_Kernels(A, B, K_func, K2_func)
 end
 
 
+"""
+    epsilon_helpers(electronic_spec, Z_ongrid, phi_ongrid, shift_ongrid, w_prime; idx_skip = nothing)
 
+Sovle the epsilon integral in the vDOS+μ approximation
+Returns the ω'-integrands
+"""
 function epsilon_helpers(electronic_spec, Z_ongrid, phi_ongrid, shift_ongrid, w_prime; idx_skip = nothing)
     eps_1, eps_2, dos_1, dos_2, dε, ddos = electronic_spec
 
@@ -256,16 +209,15 @@ function epsilon_helpers(electronic_spec, Z_ongrid, phi_ongrid, shift_ongrid, w_
     lorentzian_moments_p = lorentzian_moments_weighted(eps_1, eps_2, Rplus, Iplus, M0, M1)
     lorentzian_moments_m = lorentzian_moments_weighted(eps_1, eps_2, Rminus, Iminus, M0, M1)
 
-    integrands = [Float64[] for _ in 1:3]
+    # Evaluate ε-integrals to get ω'-integrands 
     integrands = Vector{Vector{Float64}}(undef, 3)
     for (idx, g) in enumerate((w_prime .* Z_ongrid, phi_ongrid, shift_ongrid))
         if ~isnothing(idx_skip) && any(idx .== idx_skip)
             continue
         end
-
-        integrands[idx] = eval_spectral_integrals_fused(g, lorentzian_moments_p, lorentzian_moments_m, ε_p, Rplus, Rminus, Iplus, Iminus, idx == 3)
+        
+        integrands[idx] = eval_spectral_integrals(g, lorentzian_moments_p, lorentzian_moments_m, ε_p, Rplus, Rminus, Iplus, Iminus, idx == 3)
     end
-                        
 
     return integrands
 end
@@ -281,176 +233,140 @@ end
 
 
 """
+    lorentzian_interval_moments(εl, εr, a, b)
 
-Compute the Lorentzian integrals --> I should be able to sum here already over ε
+Scalar Lorentzian moments ∫ εᵏ/((ε+a)²+b²) dε over [εl, εr] for k = 0..3.
+for a single (ω′, ε-interval) pair.
 """
-function Lorentzians_integrals_interval_grid(x0, x1, A::Vector{Float64}, B)
+@inline function lorentzian_interval_moments(εl, εr, a, b)
+    b2 = b^2
+    a2 = a^2
 
-    N = length(x0)
-    M = length(A)
+    i0l = atan((a + εl) / b) / b
+    i0r = atan((a + εr) / b) / b
 
-    Int0 = Matrix{Float64}(undef, M, N)
-    Int1 = Matrix{Float64}(undef, M, N)
-    Int2 = Matrix{Float64}(undef, M, N)
-    Int3 = Matrix{Float64}(undef, M, N)
+    h_l = log((a + εl)^2 + b2)
+    h_r = log((a + εr)^2 + b2)
 
-    @inbounds for jε in 1:N
-        xl = x0[jε]
-        xr = x1[jε]
+    i1l = 0.5 * h_l - a * i0l
+    i1r = 0.5 * h_r - a * i0r
 
-        @simd for iw in 1:M
-            a = A[iw]
-            b = B[iw]
-            b2 = b^2
-            a2 = a^2
+    i2l = -a * h_l + (a2 - b2) * i0l + εl
+    i2r = -a * h_r + (a2 - b2) * i0r + εr
 
-            i0l = atan((a + xl) / b) / b
-            i0r = atan((a + xr) / b) / b
+    i3l = i0l * (3 * a * b2 - a * a2) + 0.5 * (3 * a2 - b2) * h_l + 0.5 * εl * (εl - 4 * a)
+    i3r = i0r * (3 * a * b2 - a * a2) + 0.5 * (3 * a2 - b2) * h_r + 0.5 * εr * (εr - 4 * a)
 
-            h_l = log((a + xl)^2 + b2)
-            h_r = log((a + xr)^2 + b2)
+    return i0r - i0l, i1r - i1l, i2r - i2l, i3r - i3l
+end
 
-            i1l = 0.5 * h_l - a * i0l
-            i1r = 0.5 * h_r - a * i0r
+"""
+    spectral_C0C1(Rg, Ig, Rp, Rm, Ip, Im_, i0pp, i1pp, i2pp, i0mm, i1mm, i2mm)
 
-            i2l = -a * h_l + (a2 - b2) * i0l + xl
-            i2r = -a * h_r + (a2 - b2) * i0r + xr
+Scalar version of `eval_spectral_integral_coefficients` for one (ω′, ε-interval) pair.
+The slope (g_slope) contribution has the same functional form with the moments shifted
+by one order, so it is obtained by calling this with (i1, i2, i3) instead of (i0, i1, i2).
+"""
+@inline function spectral_C0C1(Rg, Ig, Rp, Rm, Ip, Im_, i0pp, i1pp, i2pp, i0mm, i1mm, i2mm)
+    C0 = Ig * (i1pp - i1mm) + Ig * (Rp * i0pp - Rm * i0mm) + Rg * (-Ip * i0pp + Im_ * i0mm)
+    C1 = Ig * (i2pp - i2mm) + Ig * (Rp * i1pp - Rm * i1mm) + Rg * (-Ip * i1pp + Im_ * i1mm)
+    return C0, C1
+end
 
-            i3l = i0l * (3 * a * b2 - a * a2) + 0.5 * (3 * a2 - b2) * h_l + 0.5 * xl * (xl - 4 * a)
-            i3r = i0r * (3 * a * b2 - a * a2) + 0.5 * (3 * a2 - b2) * h_r + 0.5 * xr * (xr - 4 * a)
+"""
+    epsilon_helpers_vDOSW(electronic_spec, epsilon, dos, Weep, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
 
-            Int0[iw, jε] = i0r - i0l
-            Int1[iw, jε] = i1r - i1l
-            Int2[iw, jε] = i2r - i2l
-            Int3[iw, jε] = i3r - i3l
+Fused route for the vDOS+W spectral integrals: instead of materialising the
+I⁰..I³ Lorentzian-moment matrices (and S, P, R±, I± as full ω′×ε matrices), 
+loop over the ε-intervals and accumulate the M0/M1-weighted ε-sum directly 
+into length-M vectors for the Z, φ and χ integrands.
+Only the φ-branch coefficients C0/C1 are stored as matrices, because the Coulomb
+part couples them to M0W/M1W over the *output* ε-grid via a GEMM.
+"""
+function epsilon_helpers_vDOSW(electronic_spec, Weep, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
+    eps_1, eps_2, dos_1, dos_2, dε, ddos = electronic_spec
+
+    M = length(w_prime)
+    Nint = length(dε)
+
+    z_int = zeros(Float64, M)
+    phi_int = zeros(Float64, M)
+    chi_int = zeros(Float64, M)
+
+    # φ-branch coefficients: needed as full matrices for the Coulomb GEMM below
+    C0phi = Matrix{Float64}(undef, M, Nint)
+    C1phi = Matrix{Float64}(undef, M, Nint)
+
+    wZ = w_prime .* Z_ongrid
+
+    @inbounds for jε in 1:Nint
+        xl = eps_1[jε]
+        xr = eps_2[jε]
+        invdε = 1.0 / dε[jε]
+        m1 = ddos[jε] * invdε
+        m0 = dos_1[jε] - xl * m1
+
+        for iw in 1:M
+            ϕl = phi_ongrid[iw, jε]
+            Φ1 = (phi_ongrid[iw, jε+1] - ϕl) * invdε
+            Φ0 = ϕl - xl * Φ1
+            inv_scale = 1 / (1 + Φ1^2)
+            sh = shift_ongrid[iw]
+            wz = wZ[iw]
+
+            S = (sh + Φ0 * Φ1) * inv_scale
+            P = sqrt((wz^2 - sh^2 - Φ0^2) * inv_scale + S^2)
+
+            Sp = S + P
+            Sm = S - P
+            Rp = real(Sp); Ip = imag(Sp)
+            Rm = real(Sm); Im_ = imag(Sm)
+
+            i0pp, i1pp, i2pp, i3pp = lorentzian_interval_moments(xl, xr, Rp, Ip)
+            i0mm, i1mm, i2mm, i3mm = lorentzian_interval_moments(xl, xr, Rm, Im_)
+
+            c = inv_scale / (2 * P)
+
+            # Z branch: g = ωZ/scale, no slope
+            gz = wz * c
+            C0, C1 = spectral_C0C1(real(gz), imag(gz), Rp, Rm, Ip, Im_,
+                                   i0pp, i1pp, i2pp, i0mm, i1mm, i2mm)
+            z_int[iw] += m0 * C0 + m1 * C1
+
+            # φ branch: g = Φ0/scale, slope = Φ1/scale
+            gphi = Φ0 * c
+            gs = Φ1 * c
+            C0, C1 = spectral_C0C1(real(gphi), imag(gphi), Rp, Rm, Ip, Im_,
+                                   i0pp, i1pp, i2pp, i0mm, i1mm, i2mm)
+            D0, D1 = spectral_C0C1(real(gs), imag(gs), Rp, Rm, Ip, Im_,
+                                   i1pp, i2pp, i3pp, i1mm, i2mm, i3mm)
+            C0 += D0
+            C1 += D1
+            C0phi[iw, jε] = C0
+            C1phi[iw, jε] = C1
+            phi_int[iw] += m0 * C0 + m1 * C1
+
+            # χ branch: g = χ/scale, slope = 1/scale
+            gchi = sh * c
+            C0, C1 = spectral_C0C1(real(gchi), imag(gchi), Rp, Rm, Ip, Im_,
+                                   i0pp, i1pp, i2pp, i0mm, i1mm, i2mm)
+            D0, D1 = spectral_C0C1(real(c), imag(c), Rp, Rm, Ip, Im_,
+                                   i1pp, i2pp, i3pp, i1mm, i2mm, i3mm)
+            chi_int[iw] += m0 * (C0 + D0) + m1 * (C1 + D1)
         end
     end
 
-    return Int0, Int1, Int2, Int3
-end
-
-function Lorentzians_integrals_interval_grid(x0, x1, A::Matrix{Float64}, B)
-
-    Int0 = Matrix{Float64}(undef, size(A))
-    Int1 = Matrix{Float64}(undef, size(A))
-    Int2 = Matrix{Float64}(undef, size(A))
-    Int3 = Matrix{Float64}(undef, size(A))
-
-    @inbounds for jε in axes(A, 2)
-        xl = x0[jε]
-        xr = x1[jε]
-
-        @simd for iw in axes(A, 1)
-            a = A[iw, jε]
-            b = B[iw, jε]
-            b2 = b^2
-            a2 = a^2
-
-            i0l = atan((a + xl) / b) / b
-            i0r = atan((a + xr) / b) / b
-
-            h_l = log((a + xl)^2 + b2)
-            h_r = log((a + xr)^2 + b2)
-
-            i1l = 0.5 * h_l - a * i0l
-            i1r = 0.5 * h_r - a * i0r
-
-            i2l = -a * h_l + (a2 - b2) * i0l + xl
-            i2r = -a * h_r + (a2 - b2) * i0r + xr
-
-            i3l = i0l * (3 * a * b2 - a * a2) + 0.5 * (3 * a2 - b2) * h_l + 0.5 * xl * (xl - 4 * a)
-            i3r = i0r * (3 * a * b2 - a * a2) + 0.5 * (3 * a2 - b2) * h_r + 0.5 * xr * (xr - 4 * a)
-
-            Int0[iw, jε] = i0r - i0l
-            Int1[iw, jε] = i1r - i1l
-            Int2[iw, jε] = i2r - i2l
-            Int3[iw, jε] = i3r - i3l
-        end
-    end
-
-    return Int0, Int1, Int2, Int3
-end
-
-function epsilon_helpers_vDOSW(electronic_spec, epsilon, dos, wZ, phi_ongrid, shift, w_prime)
-    eps_1, eps_2, dos_1, dos_2, dε, ddos = electronic_spec
-
-    M1 = ddos ./ dε
-    M0 = dos_1 .- eps_1 .* M1
-
-    Φ1 = @views (phi_ongrid[:, 2:end] .- phi_ongrid[:,1:end-1]) ./ dε
-    Φ0 = @views phi_ongrid[:, 1:end-1] .- eps_1 .* Φ1
-    scale = 1 .+ Φ1.^2
-
-    S = (shift .+ Φ0 .* Φ1) ./ scale
-    P = sqrt.((wZ.^2 .- shift.^2 .- Φ0.^2) ./ scale .+ S.^2)
-
-    Rplus = real.(S .+ P)
-    Rminus = real.(S .- P)
-    Iplus = imag.(S .+ P)
-    Iminus = imag.(S .- P)
-
-    I0_pp, I1_pp, I2_pp, I3_pp = Lorentzians_integrals_interval_grid(eps_1, eps_2, Rplus, Iplus)
-    I0_mm, I1_mm, I2_mm, I3_mm = Lorentzians_integrals_interval_grid(eps_1, eps_2, Rminus, Iminus)
-    
-    return M0, M1, P, S, Φ0, Φ1, scale, Rplus, Rminus, Iplus, Iminus,
-           I0_pp, I1_pp, I2_pp, I3_pp, I0_mm, I1_mm, I2_mm, I3_mm
-end
-
-function eval_spectral_and_coulomb_vDOS_W(electronic_spec, epsilon, dos, Weep, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
-    eps_1, eps_2, dos_1, dos_2, dε, ddos = electronic_spec
-
-    # necessary to reshape?
-    wZ = reshape(w_prime .* Z_ongrid, :, 1)
-    shift = reshape(shift_ongrid, :, 1)
-
-    M0, M1, P, _, Φ0, Φ1, scale, Rplus, Rminus, Iplus, Iminus,
-    I0_pp, I1_pp, I2_pp, I3_pp, I0_mm, I1_mm, I2_mm, I3_mm =
-        epsilon_helpers_vDOSW(electronic_spec, epsilon, dos, wZ, phi_ongrid, shift, w_prime)
-
-    inv_scale = 1 ./ scale
-    
-    z_integrand = eval_spectral_integrals(wZ .* inv_scale, M0, M1, P, Rplus, Rminus, Iplus, Iminus,
-                                          I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm)
-    phi_integrand = eval_spectral_integrals(Φ0 .* inv_scale, M0, M1, P, Rplus, Rminus, Iplus, Iminus,
-                                            I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, true;
-                                            g_slope=Φ1 .* inv_scale)
-    chi_integrand = eval_spectral_integrals(shift .* inv_scale, M0, M1, P, Rplus, Rminus, Iplus, Iminus,
-                                            I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, true;
-                                            g_slope=inv_scale)
-
+    # Coulomb spectral integral: piecewise-linear moments of N(ε')W(ε,ε')
     NW0 = Weep[:, 1:end-1] .* dos_1
     NW1 = Weep[:, 2:end] .* dos_2
     M1W = (NW1 .- NW0) ./ dε
     M0W = NW0 .- eps_1 .* M1W
 
-    C0, C1 = eval_spectral_integral_coefficients(Φ0 .* inv_scale, P, Rplus, Rminus, Iplus, Iminus,
-                                                 I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm;
-                                                 g_slope=Φ1 .* inv_scale)
-    
+    coulomb_spectral = Matrix{Float64}(undef, size(M0W, 1), M)
+    mul!(coulomb_spectral, M0W, transpose(C0phi))
+    mul!(coulomb_spectral, M1W, transpose(C1phi), 1.0, 1.0)
 
-    coulomb_spectral = Matrix{Float64}(undef, size(M0W, 1), size(C0, 1))
-    mul!(coulomb_spectral, M0W, transpose(C0))
-    mul!(coulomb_spectral, M1W, transpose(C1), 1.0, 1.0)
-
-    return [z_integrand, phi_integrand, chi_integrand], coulomb_spectral
-end
-
-
-"""
-    eval_speactral_integrals(g, I0_pp,  shift_int)
-"""
-function eval_spectral_integrals(g, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm, shift_int::Bool=false; g_slope=nothing)
-    slope = if shift_int && isnothing(g_slope)
-        one.(ε_p)
-    else
-        g_slope
-    end
-    C0, C1 = eval_spectral_integral_coefficients(g, ε_p, Rplus, Rminus, Iplus, Iminus,
-                                                 I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm;
-                                                 g_slope=slope)
-    
-
-    return vec(sum(M0 .* C0 .+ M1 .* C1, dims=2))
+    return [z_int, phi_int, chi_int], coulomb_spectral
 end
 
 
@@ -490,11 +406,12 @@ end
 
 
 """
-    eval_spectral_integrals_fused(g, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, eps_1, eps_2, shift_int; g_slope)
+    eval_spectral_integrals(g, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, eps_1, eps_2, shift_int; g_slope)
 
 Evaluate spectral integrals for wZ, delta, chi based on the precomputed lorentzian integrals
+The lorentzian moments are already weighted by M0/M1 and the ε-sumamtion is done
 """
-function eval_spectral_integrals_fused(g, lorentzian_moments_p, lorentzian_moments_m, ε_p, Rplus, Rminus, Iplus, Iminus, shift_int::Bool=false; g_slope=nothing)
+function eval_spectral_integrals(g, lorentzian_moments_p, lorentzian_moments_m, ε_p, Rplus, Rminus, Iplus, Iminus, shift_int::Bool=false; g_slope=nothing)
     slope = (shift_int && isnothing(g_slope)) ? one.(ε_p) : g_slope
 
     M0_I0_pp, M0_I1_pp, M0_I2_pp, M0_I3_pp, M1_I0_pp, M1_I1_pp, M1_I2_pp, M1_I3_pp = lorentzian_moments_p

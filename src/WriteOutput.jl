@@ -799,7 +799,7 @@ end
 
 Save the self-energy components into separate files
 """
-function saveSelfEnergyComponents(itemp, inp, iwn, Delta, Z; epsilon=nothing,  chi=nothing, phiph=nothing, phic=nothing, mode = "Matsubara")
+function saveSelfEnergyComponents(itemp, inp, iwn, Delta, Z; epsilon=nothing,  chi=nothing, ws_chi=nothing, phiph=nothing, phic=nothing, mode = "Matsubara")
 
     folder = inp.outdir*"SelfEnergy/"
 
@@ -869,6 +869,14 @@ function saveSelfEnergyComponents(itemp, inp, iwn, Delta, Z; epsilon=nothing,  c
         open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
             write(io, "#  ω / meV      Δ(ω) / meV \n")
             writedlm(io, [iwn Delta], '\t')
+        end
+
+        # Chi
+        if ~isnothing(chi) && ~isnothing(ws_chi)
+            open(folder*"Chi_"*string(itemp)*"K.dat", "w") do io
+                write(io, "#  iωₙ / meV      Χ(iωₙ) / meV \n")
+                writedlm(io, [ws_chi chi], '\t')
+            end
         end
     end
 end

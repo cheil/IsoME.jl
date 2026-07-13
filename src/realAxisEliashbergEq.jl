@@ -371,6 +371,74 @@ end
 
 
 """
+    epsilon_causality_vDOSW(electronic_spec, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
+
+Lean vDOS+W ε-integration for the μ-update. Same moment loop as
+`epsilon_helpers_vDOSW`, but returns only the Z (causality) and χ (charge)
+ω′-integrands. The φ branch and the Coulomb spectral matrix (hence W) are not
+needed to conserve charge, so they are dropped — this runs on every root-finder
+evaluation of `diff_Ne_realAxis`.
+"""
+function epsilon_causality_vDOSW(electronic_spec, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
+    eps_1, eps_2, dos_1, dos_2, dε, ddos = electronic_spec
+
+    M = length(w_prime)
+    Nint = length(dε)
+
+    z_int = zeros(Float64, M)
+    chi_int = zeros(Float64, M)
+
+    wZ = w_prime .* Z_ongrid
+
+    @inbounds for jε in 1:Nint
+        xl = eps_1[jε]
+        xr = eps_2[jε]
+        invdε = 1.0 / dε[jε]
+        m1 = ddos[jε] * invdε
+        m0 = dos_1[jε] - xl * m1
+
+        for iw in 1:M
+            ϕl = phi_ongrid[iw, jε]
+            Φ1 = (phi_ongrid[iw, jε+1] - ϕl) * invdε
+            Φ0 = ϕl - xl * Φ1
+            inv_scale = 1 / (1 + Φ1^2)
+            sh = shift_ongrid[iw]
+            wz = wZ[iw]
+
+            S = (sh + Φ0 * Φ1) * inv_scale
+            P = sqrt((wz^2 - sh^2 - Φ0^2) * inv_scale + S^2)
+
+            Sp = S + P
+            Sm = S - P
+            Rp = real(Sp); Ip = imag(Sp)
+            Rm = real(Sm); Im_ = imag(Sm)
+
+            i0pp, i1pp, i2pp, i3pp = lorentzian_interval_moments(xl, xr, Rp, Ip)
+            i0mm, i1mm, i2mm, i3mm = lorentzian_interval_moments(xl, xr, Rm, Im_)
+
+            c = inv_scale / (2 * P)
+
+            # Z branch: g = ωZ/scale, no slope
+            gz = wz * c
+            C0, C1 = spectral_C0C1(real(gz), imag(gz), Rp, Rm, Ip, Im_,
+                                   i0pp, i1pp, i2pp, i0mm, i1mm, i2mm)
+            z_int[iw] += m0 * C0 + m1 * C1
+
+            # χ branch: g = χ/scale, slope = 1/scale
+            gchi = sh * c
+            C0, C1 = spectral_C0C1(real(gchi), imag(gchi), Rp, Rm, Ip, Im_,
+                                   i0pp, i1pp, i2pp, i0mm, i1mm, i2mm)
+            D0, D1 = spectral_C0C1(real(c), imag(c), Rp, Rm, Ip, Im_,
+                                   i1pp, i2pp, i3pp, i1mm, i2mm, i3mm)
+            chi_int[iw] += m0 * (C0 + D0) + m1 * (C1 + D1)
+        end
+    end
+
+    return z_int, chi_int
+end
+
+
+"""
     lorentzian_moments_weighted(x0, x1, A, B, M0, M1)
 
 Evaluate lorentzian integrals together with weighting factors M0/M1

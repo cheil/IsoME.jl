@@ -33,15 +33,16 @@ Find the root of f(mu) = Ne_nsc(mu) - Ne_sc = 0.
 function root_finding(fmu, outdir, fermi_level, i_it=0)
 
     ### starting values for mu
-    mu0 = fermi_level-100
-    mu1 = fermi_level+100
+    mu_wndw = 50.0
+    mu0 = fermi_level-mu_wndw
+    mu1 = fermi_level+mu_wndw
     fmu0 = fmu(mu0)
     fmu1 = fmu(mu1)
 
     ### wrong slope 
     if fmu1 > fmu0
         # plot electron number vs mu
-        mu_error = range(mu0 - 100, mu1 + 100, 50)
+        mu_error = range(mu0 - mu_wndw, mu1 + mu_wndw, 50)
         Ne_error = zeros(size(mu_error))
         for k in eachindex(mu_error)
             Ne_error[k] = fmu(mu_error[k])
@@ -61,22 +62,22 @@ function root_finding(fmu, outdir, fermi_level, i_it=0)
     fmu_error = [fmu0, fmu1]
     while fmu0 * fmu1 > 0
         if sign(fmu0) < 0
-            mu0 -= 20
-            mu1 -= 20
+            mu0 -= mu_wndw
+            mu1 -= mu_wndw
             fmu1 = fmu0
             fmu0 = fmu(mu0)
             pushfirst!(mu_error, mu0)
             pushfirst!(fmu_error, fmu0)
         else
-            mu0 += 20
-            mu1 += 20
+            mu0 += mu_wndw
+            mu1 += mu_wndw
             fmu0 = fmu1
             fmu1 = fmu(mu1)
             push!(mu_error, mu1)
             push!(fmu_error, fmu1)
         end
         iter += 1
-        if iter > 100    # 2 eV
+        if iter > 100    # 5 eV
             plot(mu_error, fmu_error, label="Ne_nsc - Ne_sc", title="Ne in normal state minus sc state")
             savefig(outdir*"muError.png")
 
@@ -87,7 +88,7 @@ function root_finding(fmu, outdir, fermi_level, i_it=0)
     end
 
     ### calc new mu using the RegulaFalsi method
-    mu = RegulaFalsi(fmu, mu0, mu1, 1e-3, 1e-6)
+    mu = RegulaFalsi(fmu, fmu0, fmu1, mu0, mu1, 1e-3, 1e-6)
 
     return mu
 end
@@ -156,6 +157,15 @@ end
 ############################################################
 # ---------------------- Real Axis ----------------------- #
 ############################################################
+# φ interpolation onto the ω'-grid.
+#   vDOS+μ: φ(ω)   -> vector, column interpolation
+#   vDOS+W: φ(ω,ε) -> matrix, column-wise interpolation over ω (reuses realAxis helper)
+interp_phi_ongrid(w_static, phi::AbstractVector, w_prime) =
+    linear_interpolation(w_static, phi, extrapolation_bc=Flat()).(w_prime)
+interp_phi_ongrid(w_static, phi::AbstractMatrix, w_prime) =
+    interpolate_phi_matrix(w_static, phi, w_prime)
+
+
 """
     mu_update_real_axis()
 
@@ -166,13 +176,12 @@ function mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime
     ### Calculate N_e in the non-SC state
     Ne_nsc = 2 .* trapz(dos_en, fermiFcn(dos_en, 0.0, itemp) .* dos)   
 
-    # interpolate Z,χ,ϕ 
+    # interpolate Z,χ,ϕ  (φ is a vector in vDOS+μ, a matrix φ(ω,ε) in vDOS+W)
     Z_itp = linear_interpolation(w_static, znormip, extrapolation_bc=Flat())
-    phi_itp = linear_interpolation(w_static, phiphip, extrapolation_bc=Flat())
     shift_itp = linear_interpolation(w_static_chi, shiftip, extrapolation_bc=Flat())
 
     Z_ongrid = Z_itp.(w_prime)
-    phi_ongrid = phi_itp.(w_prime)
+    phi_ongrid = interp_phi_ongrid(w_static, phiphip, w_prime)
     shift_ongrid = shift_itp.(w_prime)
 
     # piecewise-linear DOS segments
@@ -202,22 +211,35 @@ end
 Calculate the number of electrons in the sc state for a given chemical
 potential minus the number of electrons in the normal state
 """
-function diff_Ne_realAxis(mu, Ne_nsc, tanhw, w_prime, electronic_spec, dos_int, Z_ongrid, phi_ongrid, shift_ongrid)
+function diff_Ne_realAxis(mu, Ne_nsc, tanhw, w_prime, electronic_spec, dos_int, Z_ongrid, phi_ongrid::AbstractVector, shift_ongrid)
 
     shift_ongrid = shift_ongrid .- mu
 
-    # --------------- Causality --------------- #
+    # --------------- Causality (vDOS+μ: φ(ω) ε-independent) --------------- #
     integrands = epsilon_helpers(electronic_spec, Z_ongrid, phi_ongrid, shift_ongrid, w_prime, idx_skip = [2])
+    z_int, chi_int = integrands[1], integrands[3]
 
-    FLIP = ifelse.(integrands[1] .<= 0, 1, -1)
+    return Ne_root(Ne_nsc, dos_int, z_int, chi_int, tanhw, w_prime)
+end
 
-    # ------------- ε- & ω-integration ------------- #
-    omega_A = integrands[3] .* FLIP .* tanhw     # ε + (χ(ω) - μ_F)  (shift_int branch)
+function diff_Ne_realAxis(mu, Ne_nsc, tanhw, w_prime, electronic_spec, dos_int, Z_ongrid, phi_ongrid::AbstractMatrix, shift_ongrid)
+
+    shift_ongrid = shift_ongrid .- mu
+
+    # --------------- Causality (vDOS+W: φ(ω,ε) ε-dependent) --------------- #
+    # φ enters ε_p = √((ω'Z)²−φ²) per ε-interval, so the ε-integral runs through
+    # the vDOSW moment loop. Coulomb/W plays no role in charge conservation.
+    z_int, chi_int = epsilon_causality_vDOSW(electronic_spec, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
+
+    return Ne_root(Ne_nsc, dos_int, z_int, chi_int, tanhw, w_prime)
+end
+
+# Shared ε- & ω-integration: causality sign from the Z integrand, N_e from χ.
+function Ne_root(Ne_nsc, dos_int, z_int, chi_int, tanhw, w_prime)
+    FLIP = ifelse.(z_int .<= 0, 1, -1)
+    omega_A = chi_int .* FLIP .* tanhw     # ε + (χ(ω) - μ_F)  (shift_int branch)
     Ne_sc_A = dos_int + 2/π*trapz(w_prime, omega_A)
-    root_eq = Ne_nsc - Ne_sc_A
-
-
-    return root_eq
+    return Ne_nsc - Ne_sc_A
 end
 
 

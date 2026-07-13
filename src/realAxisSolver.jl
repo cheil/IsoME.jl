@@ -591,23 +591,22 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
             print_real_axis_converged(itemp, console, log_file)
 
             if plot_flag
+                try
+                    selfEnergy = (delta_new, Z_new)
+                    plotSelfEnergyAtT(inp, itemp, selfEnergy, w_static)
+                    plotSelfEnergyAtT(inp, itemp, (chi_new,), w_static_chi, names=["chi"], labels=["χ(ω) / meV"])
+                catch ex
+                    writeToCrashFile(inp)
+                    printWarning("Error while plotting the self energy components.", log_file, ex=ex)
+                end
                 selfEnergy = (delta_new, Z_new)
                 plotSelfEnergyAtT(inp, itemp, selfEnergy, w_static)
                 plotSelfEnergyAtT(inp, itemp, (chi_new,), w_static_chi, names=["chi"], labels=["χ(ω) / meV"])
             end
 
-            # qdos
-            dos_qp = qdos(w_static, delta_new, 0)
-            plotQDOS(itemp, w_static, dos_qp, inp.outdir, inp.material, "realaxis_vDOS")
-
-            # spectral function — Margine & Giustino PRB 87, 024505 (2013), Eq. (31)
-            # interpolate χ(ω) from w_static_chi onto w_static
-            chi_itp   = linear_interpolation(collect(w_static_chi), chi_new, extrapolation_bc=Line())
-            chi_on_ws = chi_itp.(collect(w_static))
-
             if inp.flag_writeSelfEnergy == 1
                 try
-                    saveSelfEnergyComponents(itemp, inp, collect(w_static), delta_new, Z_new, chi=chi_on_ws, mode="realAxis_vDOS")
+                    saveSelfEnergyComponents(itemp, inp, collect(w_static), delta_new, Z_new, chi=chi_new, ws_chi=collect(w_static_chi), mode="realAxis_vDOS")
                 catch ex
                     writeToCrashFile(inp)
                     printWarning("Error while saving self energy components.", log_file, ex=ex)

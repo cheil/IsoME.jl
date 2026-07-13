@@ -45,14 +45,12 @@ function setUpOmegaAxis(inp, matval)
     G = scale(interpolate(a2f[idx_left:idx_right], BSpline(Linear())), a2f_omega[idx_left:idx_right])
 
     # Frequency and integration grids
-    # w_axis must be same as w_static_chi
+    # w_axis must be larger than max(w_static, w_static_chi)
     if inp.cDOS_flag == 1
-        w_axis = 0:inp.dOmega:inp.reOmega_c   # w-axis at which K(ω,ω') is calculated
-        #w_axis = range(0, stop=inp.reOmega_c, length=5000) 
+        w_axis = 0:inp.dOmega:(inp.reOmega_c+inp.dOmega)   # w-axis at which K(ω,ω') is calculated
     else
         # ω linear grid to store K(ω,ω'), has to span max(reOmega_c, reOmega_c_shift).
-        # w_axis must match w_static_chi, so it uses the χ step size domega_shift.
-        w_axis = 0:inp.dOmega:max(inp.reOmega_c, inp.reOmega_c_shift)
+        w_axis = 0:inp.dOmega:(max(inp.reOmega_c, inp.reOmega_c_shift)+inp.dOmega)
     end
     int_axis = make_integration_axis(W_right-W_left, 300, 300, 3)      # Ω-integration axis #
 

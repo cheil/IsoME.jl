@@ -64,7 +64,7 @@ end
 
 
 ### Regula Falsi
-function RegulaFalsi(f::Function, a::Number, b::Number, tol::AbstractFloat=1e-6, ftol::AbstractFloat=1e-10,  maxiter::Integer=1000)
+function RegulaFalsi(f::Function, fa::Float64, fb::Float64, a::Float64, b::Float64, tol::AbstractFloat=1e-6, ftol::AbstractFloat=1e-10,  maxiter::Integer=1000)
     """
     The Regula Falsi method is a root finding method superior to bisection
     Two function values with opposite sign need to be known
@@ -91,18 +91,11 @@ function RegulaFalsi(f::Function, a::Number, b::Number, tol::AbstractFloat=1e-6,
     -------------------------------------------------------------------- 
     """
 
-
-    # intitial function evaluation
-    fa =  f(a)
-    fb = f(b)
-
     fa * fb <= 0 || error("No real root in [a,b]")
 
     # init
     it = 0
     c = 0
-    mu_plot = [a,b]
-    fmu_plot = [fa,fb]
     while abs(b - a) > tol
         # max iterations
         it +=1 
@@ -110,20 +103,20 @@ function RegulaFalsi(f::Function, a::Number, b::Number, tol::AbstractFloat=1e-6,
 
         # new guess
         c = (a*fb - b*fa) / (fb - fa)
-        push!(mu_plot, c)
 
         # function evaluation at new point
         fc = f(c)
-        push!(fmu_plot, fc)
 
-        # --- TEMP: in-place progress. Only on a real terminal (Base.TTY): there "\r"+erase blanks
-        #          the line and the following table row (stdout, same cursor) overwrites it cleanly.
-        #          In Jupyter/IJulia there is no ANSI cursor control and committed lines can't be
-        #          reclaimed, so we stay silent to avoid corrupting / shifting the table. ---
-        if stdout isa Base.TTY
-            msg = "  μ-update: it=$it  |b-a|=$(round(abs(b - a), sigdigits=3)) (tol=$tol)  |fc|=$(round(abs(fc), sigdigits=3)) (ftol=$ftol)"
-            print("\r", rpad(msg, 110)); flush(stdout)
-        end
+        # --------- mu-update progress line --------- 
+        # in-place progress. Only on a real terminal (Base.TTY): 
+        # there "\r"+erase blanks
+        # the line and the following table row (stdout, same cursor) overwrites it cleanly.
+        # In Jupyter/IJulia there is no ANSI cursor control and committed lines can't be
+        # reclaimed, so we stay silent to avoid corrupting / shifting the table.
+        # if stdout isa Base.TTY
+        #     msg = "  μ-update: it=$it  |b-a|=$(round(abs(b - a), sigdigits=3)) (tol=$tol)  |fc|=$(round(abs(fc), sigdigits=3)) (ftol=$ftol)"
+        #     print("\r", rpad(msg, 110)); flush(stdout)
+        # end
 
         if abs(fc) < ftol
             break
@@ -136,15 +129,10 @@ function RegulaFalsi(f::Function, a::Number, b::Number, tol::AbstractFloat=1e-6,
         end
     end
 
-    # --- TEMP: erase the progress line (terminal only), cursor back to column 0 so the next
-    #          table row overwrites it ---
-    stdout isa Base.TTY && (print("\r", " "^110, "\r"); flush(stdout))
-
-    p = sortperm(mu_plot)
-    mu_plot = mu_plot[p]
-    fmu_plot = fmu_plot[p]
-    plot(mu_plot, fmu_plot)
-    savefig("mu.png")
+    # --------- mu-update progress line ---------
+    # erase the progress line (terminal only), cursor back to column 0 so the next
+    # table row overwrites it 
+    # stdout isa Base.TTY && (print("\r", " "^110, "\r"); flush(stdout))
 
     return c
 end

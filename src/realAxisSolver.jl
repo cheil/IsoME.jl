@@ -386,7 +386,7 @@ with zero χ so it can seed the vDOS solver.
 """
 function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log_file; vDOS_initial_guess::Bool=false)
     (; reOmega_c, N_it, conv_thr, minGap, nItFullCoul, min_it) = inp
-    (Kp_func, Km_func, w_static, w_dynam, _) = realAxisParameter
+    (w_static, _, _) = realAxisParameter
     (_, _, _, _, Weep, dosef, idx_ef, _, BCS_gap, _) = matval
     # When used as vDOS+W initializer, muc_ME is unset (nothing). Derive it from W(εF,εF)·N(εF)
     # using the Morel-Anderson formula, consistent with calcMucs() in ReadIn.jl.
@@ -430,8 +430,8 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
         if pole >= ws_ht.wp_max
             ws_ht = build_cDOS_wprime_workspace(inp, realAxisParameter, pole)
         end
-        maybe_refresh_head!(ws_ht, [pole], w_static, nothing, Kp_func, Km_func, inp.n_cheb)
-        
+        maybe_refresh_head!(ws_ht, [pole], w_static, nothing, inp.n_cheb)
+
         Z_new, delta_new = realEliashbergEq(muc_ME, β, delta_prev, ws_ht, w_static)
 
         Z_new = (1.0 - abs(broyden_beta)) .* Z_prev .+ abs(broyden_beta) .* Z_new
@@ -493,7 +493,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
     # destruct inputs
     (_, _, dos_en, dos, Weep, dosef, idx_ef, _, _, _) = matval
     (; muc_ME, mu_flag, N_it, conv_thr, minGap, nItFullCoul, min_it, plot_flag) = inp
-    (Kp_func, Km_func, w_static, _, w_static_chi) = realAxisParameter
+    (w_static, _, w_static_chi, _) = realAxisParameter
 
 
     printTextCentered("T = " * string(itemp) * " K ", console["partingLine"], file=log_file, bold=true)
@@ -553,7 +553,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
             # a pole moved past the fixed tail: rebuild with a larger head region
             gridws = build_wprime_workspace(inp, realAxisParameter, maximum(poles))
         end
-        maybe_refresh_head!(gridws, poles, w_static, w_static_chi, Kp_func, Km_func, inp.n_cheb)
+        maybe_refresh_head!(gridws, poles, w_static, w_static_chi, inp.n_cheb)
         w_prime = gridws.wp_full
 
         wgCoulomb = minimum([1, i_it / nItFullCoul])
@@ -561,7 +561,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
 
         # Add mu thermalization: start mu-update only after a few iterations
         if mu_flag == 1 # && i_it > maximum([min_it, nItFullCoul + 1]) -1
-            fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, Z_prev, phi_prev, chi_prev, inp.outdir, i_it)
+            fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, Z_prev, phi_prev, chi_prev, inp.outdir)
         end
 
         if inp.include_Weep == 1
@@ -641,7 +641,7 @@ end
 # -------------------- Helper functions -------------------- #
 ##############################################################
 function initial_real_axis_state(inp, realAxisParameter, BCS_gap)
-    (_, _, w_static, _, w_static_chi) = realAxisParameter
+    (w_static, _, w_static_chi, _) = realAxisParameter
     nw = length(w_static)
 
     return RealAxisState(

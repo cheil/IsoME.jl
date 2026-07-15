@@ -30,7 +30,7 @@ end
 
 Find the root of f(mu) = Ne_nsc(mu) - Ne_sc = 0.
 """
-function root_finding(fmu, outdir, fermi_level, i_it=0)
+function root_finding(fmu, outdir, fermi_level)
 
     ### starting values for mu
     mu_wndw = 50.0
@@ -146,7 +146,7 @@ function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxSh
     # call calc_Ne_Sc with first argument unspecified
     fmu(x) = diff_Ne(x, Ne_nsc, itemp, wsi, dos_en[idxShiftcut[1]:idxShiftcut[2]], dos[idxShiftcut[1]:idxShiftcut[2]], znormip, deltaip, shiftip)  
 
-    mu = root_finding(fmu, outdir, 0)
+    mu = root_finding(fmu, outdir)
     
     return mu
 
@@ -171,7 +171,7 @@ interp_phi_ongrid(w_static, phi::AbstractMatrix, w_prime) =
 
 Update the chemical potential to conserve charge neutrality - real axis implementation.
 """
-function mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, znormip, phiphip, shiftip, outdir, i_it)
+function mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, znormip, phiphip, shiftip, outdir)
 
     ### Calculate N_e in the non-SC state
     Ne_nsc = 2 .* trapz(dos_en, fermiFcn(dos_en, 0.0, itemp) .* dos)   
@@ -198,7 +198,7 @@ function mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime
     # call calc_Ne_Sc with first argument unspecified
     fmu(x)  = diff_Ne_realAxis(x, Ne_nsc, tanhw, w_prime, electronic_spec, dos_int, Z_ongrid, phi_ongrid, shift_ongrid)
 
-    mu = root_finding(fmu, outdir, fermi_level, i_it)
+    mu = root_finding(fmu, outdir, fermi_level)
     #@time mu2 = find_zero((fmu, dfmu), fermi_level, Roots.LithBoonkkampIJzerman(3, 1))
    
     return mu

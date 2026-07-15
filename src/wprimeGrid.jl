@@ -150,30 +150,21 @@ end
 
 
 """
-    evaluate_Kernels!(K_vals, A, B, K_func)
-
-In-place, threaded version of evaluate_Kernels.
-"""
-function evaluate_Kernels!(K_vals::Matrix{ComplexF64}, A, B, K_func)
-    size(K_vals) == (length(A), length(B)) || throw(DimensionMismatch("kernel buffer does not match the grids"))
-    # Add parallelization 
-    #Threads.@threads for i in eachindex(B)
-    for i in eachindex(B)
-        b = B[i]
-        @inbounds for j in eachindex(A)
-            K_vals[j, i] = K_func(A[j], b)
-        end
-    end
-    return K_vals
-end
-
-
-"""
     WPrimeWorkspace
 
-ω'-grids, trapezoidal weights and precomputed kernel blocks for the head/tail split.
+ω'-grids, trapezoidal weights and precomputed kernel data for the head/tail split.
 The junction point wp_max is contained in both head and tail, so
 trapz(wp_full) == trapz(head) + trapz(tail) exactly.
+
+The ω'-integral is done entirely through the 1-D linear kernel `lin` (𝒦 = A(x) + f(ω')·B(x)),
+which needs only O(N) storage:
+  * the materialized head blocks `Km_head_lin`/`Kp_head_lin` (ns×n_head resp. nmaster×n_head),
+    so the pole-clustered head is a plain gemv;
+  * the Fermi factors fp/fm = f(±ω') on the tail together with the Toeplitz/Hankel A,B samples
+    (`A_dif_tail`, …), which let the uniform tail be summed on the fly (A + f·B) without ever
+    materializing the O(N²) tail matrix.
+`w_static` is a prefix of `w_static_chi` (equal step), so the K⁺ blocks live on the master
+(χ) grid and serve both Iphi (first ns rows) and Ichi (all rows).
 """
 mutable struct WPrimeWorkspace
     wp_max::Float64
@@ -183,44 +174,99 @@ mutable struct WPrimeWorkspace
     wp_full::Vector{Float64}
     wgt_head::Vector{Float64}
     wgt_tail::Vector{Float64}
-    Km_head::Matrix{ComplexF64}         # K⁻(w_static, wp_head)
-    Kp_head::Matrix{ComplexF64}         # K⁺(w_static, wp_head)
-    Kpchi_head::Matrix{ComplexF64}      # K⁺(w_static_chi, wp_head)
-    Km_tail::Matrix{ComplexF64}
-    Kp_tail::Matrix{ComplexF64}
-    Kpchi_tail::Matrix{ComplexF64}
+    Km_head_lin::Matrix{ComplexF64}     # K⁻(w_static, wp_head)   materialized head (gemv)
+    Kp_head_lin::Matrix{ComplexF64}     # K⁺(w_master, wp_head)
+    fp_tail::Vector{Float64}            # f(ω')  on wp_tail
+    fm_tail::Vector{Float64}            # f(-ω') on wp_tail
+    A_dif_tail::Vector{ComplexF64}      # A,B sampled on the tail difference/sum arguments
+    B_dif_tail::Vector{ComplexF64}      # (Toeplitz/Hankel, O(ns + n_tail)); tail lookup route
+    A_sum_tail::Vector{ComplexF64}
+    B_sum_tail::Vector{ComplexF64}
     poles_prev::Vector{Float64}
+    lin::LinearKernel                   # 1-D difference-grid kernel (A(x), B(x))
 end
 
 function WPrimeWorkspace(wp_head::Vector{Float64}, wp_tail::Vector{Float64},
-                         w_static, w_static_chi, Kp_func, Km_func;
-                         poles::Vector{Float64}=[NaN])
+                         w_static, w_static_chi;
+                         poles::Vector{Float64}=[NaN], lin::LinearKernel)
     wp_head[end] == wp_tail[1] || error("head and tail grids must share the junction point")
     n_head = length(wp_head)
-    n_tail = length(wp_tail)
-    # w_static_chi === nothing -> cDOS mode: no χ channel, empty (0-row) buffers
-    nchi = isnothing(w_static_chi) ? 0 : length(w_static_chi)
+    ns = length(w_static)
 
-    ws = WPrimeWorkspace(wp_head[end], n_head, wp_head, wp_tail, vcat(wp_head, wp_tail),
-                         trapz_weights(wp_head), trapz_weights(wp_tail),
-                         Matrix{ComplexF64}(undef, length(w_static), n_head),
-                         Matrix{ComplexF64}(undef, length(w_static), n_head),
-                         Matrix{ComplexF64}(undef, nchi, n_head),
-                         Matrix{ComplexF64}(undef, length(w_static), n_tail),
-                         Matrix{ComplexF64}(undef, length(w_static), n_tail),
-                         Matrix{ComplexF64}(undef, nchi, n_tail),
-                         copy(poles))
+    # master ω-grid for the K⁺ channel: w_static is a prefix of w_static_chi (equal step), so one
+    # K⁺ block on the master grid covers Iphi (its first ns rows) and Ichi (all rows). K⁻ is only
+    # needed on w_static. The tail A,B samples are likewise built once on the master grid.
+    # w_static_chi === nothing -> cDOS mode: master grid == w_static.
+    w_master = isnothing(w_static_chi) ? w_static : w_static_chi
+    nmaster = length(w_master)
 
-    evaluate_Kernels!(ws.Km_head, w_static, wp_head, Km_func)
-    evaluate_Kernels!(ws.Kp_head, w_static, wp_head, Kp_func)
-    evaluate_Kernels!(ws.Km_tail, w_static, wp_tail, Km_func)
-    evaluate_Kernels!(ws.Kp_tail, w_static, wp_tail, Kp_func)
-    if nchi > 0
-        evaluate_Kernels!(ws.Kpchi_head, w_static_chi, wp_head, Kp_func)
-        evaluate_Kernels!(ws.Kpchi_tail, w_static_chi, wp_tail, Kp_func)
-    end
+    fp_tail, fm_tail = fermi_pm(lin.β, wp_tail)
+    A_dif_tail, B_dif_tail, A_sum_tail, B_sum_tail = precompute_tail_AB(lin, w_master, wp_tail)
 
-    return ws
+    Km_head_lin = Matrix{ComplexF64}(undef, ns, n_head)       # K⁻ on w_static
+    Kp_head_lin = Matrix{ComplexF64}(undef, nmaster, n_head)  # K⁺ on master grid
+    fill_km_lin!(Km_head_lin, w_static, wp_head, lin)
+    fill_kp_lin!(Kp_head_lin, w_master, wp_head, lin)
+
+    return WPrimeWorkspace(wp_head[end], n_head, wp_head, wp_tail, vcat(wp_head, wp_tail),
+                           trapz_weights(wp_head), trapz_weights(wp_tail),
+                           Km_head_lin, Kp_head_lin,
+                           fp_tail, fm_tail,
+                           A_dif_tail, B_dif_tail, A_sum_tail, B_sum_tail,
+                           copy(poles), lin)
+end
+
+
+"""
+    lin_kernel_omega_integral(ws, w_static, g_z, g_phi)
+
+O(N)-memory linear-route ω'-integrals ∫K⁻g_z and ∫K⁺g_phi over the full (head+tail) grid,
+split into a head part and a tail part. The Chebyshev head uses the materialized
+`Kp_head_lin`/`Km_head_lin` blocks (ns×n_head) via a gemv; the uniform tail uses the
+precomputed Toeplitz/Hankel A,B samples (pure lookups) so it never materializes the O(N²)
+tail matrix. Returns (Iz, Iphi).
+"""
+function lin_kernel_omega_integral(ws::WPrimeWorkspace, w_static, g_z, g_phi)
+    nh = ws.n_head
+    ntot = length(g_z)
+    ns = length(w_static)
+    noff = size(ws.Kp_head_lin, 1)      # master-grid length = difference offset of the tail arrays
+
+    # head: materialized K blocks (gemv). K⁺ lives on the master grid; Iphi is its first ns rows.
+    gh_z = ComplexF64.(ws.wgt_head .* view(g_z, 1:nh))
+    gh_phi = ComplexF64.(ws.wgt_head .* view(g_phi, 1:nh))
+    Iz = ws.Km_head_lin * gh_z
+    Iphi = view(ws.Kp_head_lin, 1:ns, :) * gh_phi
+
+    # tail: precomputed Toeplitz/Hankel A,B lookups (no matrix), loop only the first ns rows
+    lin_tail_accumulate!(Iz, Iphi, ws.A_dif_tail, ws.B_dif_tail, ws.A_sum_tail, ws.B_sum_tail,
+                         noff, ns, ws.wgt_tail, ws.fp_tail, ws.fm_tail,
+                         view(g_z, nh+1:ntot), view(g_phi, nh+1:ntot))
+
+    return Iz, Iphi
+end
+
+
+"""
+    lin_kernel_omega_integral_chi(ws, w_static_chi, g_chi)
+
+O(N) linear-route χ integral ∫K⁺ g_chi on the master (χ) grid: K⁺ head gemv on the full
+`Kp_head_lin` plus the shared Toeplitz/Hankel tail. Returns Ichi (length nchi).
+"""
+function lin_kernel_omega_integral_chi(ws::WPrimeWorkspace, w_static_chi, g_chi)
+    nh = ws.n_head
+    ntot = length(g_chi)
+    nchi = length(w_static_chi)
+    noff = size(ws.Kp_head_lin, 1)      # = nchi
+
+    gh_chi = ComplexF64.(ws.wgt_head .* view(g_chi, 1:nh))
+    Ichi = ws.Kp_head_lin * gh_chi
+
+    lin_tail_accumulate_chi!(Ichi, ws.A_dif_tail, ws.B_dif_tail, ws.A_sum_tail, ws.B_sum_tail,
+                             noff, nchi, ws.wgt_tail, ws.fp_tail, ws.fm_tail,
+                             view(g_chi, nh+1:ntot))
+
+    return Ichi
 end
 
 
@@ -232,16 +278,18 @@ wp_max = 2·Δ(0) of the starting state (the cDOS solution / previous temperatur
 kept within [10·domega_shift, reOmega_c_shift/2].
 """
 function build_wprime_workspace(inp::arguments, realAxisParameter, gap0_start::Float64)
-    (Kp_func, Km_func, w_static, _, w_static_chi) = realAxisParameter
+    (w_static, _, w_static_chi, lin_kernel) = realAxisParameter
 
     gap0 = (isfinite(gap0_start) && gap0_start > 0) ? gap0_start : inp.minGap
     wp_max = clamp(2 * gap0, 10 * inp.domega_shift, inp.reOmega_c_shift / 2)
     pts_per_pole = inp.n_cheb    # Chebyshev points per pole in the head region
 
-    wp_tail = collect(wp_max:inp.domega_shift:inp.reOmega_c_shift)
+    # tail on the domega grid (same step as w_static and w_static_chi) -> all channels k=1
+    wp_tail = collect(wp_max:inp.domega:inp.reOmega_c_shift)
     wp_head = make_head_grid([gap0], wp_max, pts_per_pole)
 
-    return WPrimeWorkspace(wp_head, wp_tail, w_static, w_static_chi, Kp_func, Km_func; poles=[gap0])
+    return WPrimeWorkspace(wp_head, wp_tail, w_static, w_static_chi;
+                           poles=[gap0], lin=lin_kernel)
 end
 
 
@@ -321,22 +369,22 @@ cluster around the pole of Θ(ω') and the tail is a static linear grid up to re
 (step domega) whose kernels are built once. Only the Km/Kp channels are built (no χ channel).
 """
 function build_cDOS_wprime_workspace(inp::arguments, realAxisParameter, gap0_start::Float64)
-    (Kp_func, Km_func, w_static, _, _) = realAxisParameter
+    (w_static, _, _, lin_kernel) = realAxisParameter
 
     gap = (isfinite(gap0_start) && gap0_start > 0) ? gap0_start : inp.minGap
     wp_max = clamp(2 * gap, 10 * inp.domega, inp.reOmega_c / 2)
     pts_per_pole = inp.n_cheb    # Chebyshev points in the pole-anchored head region
-    pts_per_pole = 500
 
     wp_tail = collect(wp_max:inp.domega:inp.reOmega_c)     # static linear tail, kernels built once
     wp_head = make_head_grid([gap], wp_max, pts_per_pole)  # Chebyshev cluster around the pole
 
-    return WPrimeWorkspace(wp_head, wp_tail, w_static, nothing, Kp_func, Km_func; poles=[gap])
+    return WPrimeWorkspace(wp_head, wp_tail, w_static, nothing;
+                           poles=[gap], lin=lin_kernel)
 end
 
 
 """
-    maybe_refresh_head!(ws, poles, w_static, w_static_chi, Kp_func, Km_func, pts_per_pole)
+    maybe_refresh_head!(ws, poles, w_static, w_static_chi, pts_per_pole)
 
 Rebuild the head grid and its kernel columns if the poles moved by more than
 WPRIME_REFRESH_TOL·wp_max since the last rebuild, or if their number changed.
@@ -345,7 +393,7 @@ number of poles; the head kernel buffers are reallocated when that length change
 Returns true if rebuilt.
 """
 function maybe_refresh_head!(ws::WPrimeWorkspace, poles::Vector{Float64},
-                             w_static, w_static_chi, Kp_func, Km_func, pts_per_pole::Int)
+                             w_static, w_static_chi, pts_per_pole::Int)
     stale = length(poles) != length(ws.poles_prev) ||
             any(!isfinite, ws.poles_prev) ||
             maximum(abs.(poles .- ws.poles_prev)) > WPRIME_REFRESH_TOL * ws.wp_max
@@ -357,35 +405,17 @@ function maybe_refresh_head!(ws::WPrimeWorkspace, poles::Vector{Float64},
     ws.wp_full = vcat(ws.wp_head, ws.wp_tail)
 
     # head length changes with the number of poles -> reallocate the head buffers
-    # (row counts are preserved: 0 rows for the χ block keeps the cDOS mode χ-less)
-    if size(ws.Km_head, 2) != ws.n_head
-        ws.Km_head = Matrix{ComplexF64}(undef, size(ws.Km_head, 1), ws.n_head)
-        ws.Kp_head = Matrix{ComplexF64}(undef, size(ws.Kp_head, 1), ws.n_head)
-        ws.Kpchi_head = Matrix{ComplexF64}(undef, size(ws.Kpchi_head, 1), ws.n_head)
+    # (row counts are preserved: K⁻ on w_static, K⁺ on the master grid)
+    if size(ws.Km_head_lin, 2) != ws.n_head
+        ws.Km_head_lin = Matrix{ComplexF64}(undef, size(ws.Km_head_lin, 1), ws.n_head)
+        ws.Kp_head_lin = Matrix{ComplexF64}(undef, size(ws.Kp_head_lin, 1), ws.n_head)
     end
 
-    evaluate_Kernels!(ws.Km_head, w_static, ws.wp_head, Km_func)
-    evaluate_Kernels!(ws.Kp_head, w_static, ws.wp_head, Kp_func)
-    if size(ws.Kpchi_head, 1) > 0
-        evaluate_Kernels!(ws.Kpchi_head, w_static_chi, ws.wp_head, Kp_func)
-    end
+    w_master = isnothing(w_static_chi) ? w_static : w_static_chi
+    fill_km_lin!(ws.Km_head_lin, w_static, ws.wp_head, ws.lin)   # K⁻ on w_static
+    fill_kp_lin!(ws.Kp_head_lin, w_master, ws.wp_head, ws.lin)   # K⁺ on master grid
     ws.poles_prev = copy(poles)
     return true
-end
-
-
-"""
-    kernel_omega_integral(K_head, K_tail, ws, g)
-
-∫ K(ω,ω') g(ω') dω' over the full ω'-grid as two gemv calls with the trapezoidal
-weights folded into g. g is indexed like ws.wp_full.
-"""
-function kernel_omega_integral(K_head::Matrix{ComplexF64}, K_tail::Matrix{ComplexF64},
-                               ws::WPrimeWorkspace, g::AbstractVector{<:Real})
-    nh = ws.n_head
-    gh = ComplexF64.(ws.wgt_head .* view(g, 1:nh))
-    gt = ComplexF64.(ws.wgt_tail .* view(g, nh+1:length(g)))
-    return K_head * gh .+ K_tail * gt
 end
 
 

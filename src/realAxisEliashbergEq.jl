@@ -39,9 +39,9 @@ function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phiphip::M
     g_chi = -(FLIP .* integrands[3])
 
     # ------------- Ω & ω'-integration ------------- #
-    Iz = kernel_omega_integral(ws.Km_head, ws.Km_tail, ws, g_z)
-    Iphi = kernel_omega_integral(ws.Kp_head, ws.Kp_tail, ws, g_phi)
-    Ichi = kernel_omega_integral(ws.Kpchi_head, ws.Kpchi_tail, ws, g_chi)
+    # O(N)-memory linear route: K⁻ g_z and K⁺ g_phi (first ns rows) plus K⁺ g_chi on the master grid.
+    Iz, Iphi = lin_kernel_omega_integral(ws, w_static, g_z, g_phi)
+    Ichi = lin_kernel_omega_integral_chi(ws, w_static_chi, g_chi)
 
     # Coulomb term: integrate N(ε')W(ε,ε') with the same piecewise-linear spectral
     # quadrature (coulomb_spectral is ndos × M). The dosef prefactor cancels.
@@ -92,9 +92,9 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
     g_chi = -(FLIP .* integrands[3])
 
     # ------------- ω'-integration ------------- #
-    Iz = kernel_omega_integral(ws.Km_head, ws.Km_tail, ws, g_z)
-    Iphi = kernel_omega_integral(ws.Kp_head, ws.Kp_tail, ws, g_phi)
-    Ichi = kernel_omega_integral(ws.Kpchi_head, ws.Kpchi_tail, ws, g_chi)
+    # O(N)-memory linear route: K⁻ g_z and K⁺ g_phi (first ns rows) plus K⁺ g_chi on the master grid.
+    Iz, Iphi = lin_kernel_omega_integral(ws, w_static, g_z, g_phi)
+    Ichi = lin_kernel_omega_integral_chi(ws, w_static_chi, g_chi)
 
     # μ* Coulomb term
     coulomb = wprime_trapz(ws, g_phi .* tanh.(beta .* w_prime ./ 2))
@@ -126,9 +126,8 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, deltaip::Vector{Compl
     g_z = @. real(w_prime / sqrt_eval)          # Z   integrand density (∝ quasiparticle DOS)
     g_phi = @. real(Delta_ongrid / sqrt_eval)   # Δ·Z integrand density
 
-    # Ω & ω'-integration via the precomputed head/tail kernel blocks
-    Iz = kernel_omega_integral(ws.Km_head, ws.Km_tail, ws, g_z)
-    Iphi = kernel_omega_integral(ws.Kp_head, ws.Kp_tail, ws, g_phi)
+    # O(N)-memory linear route: materialized K head (gemv) + Toeplitz/Hankel tail (A + f·B on the fly)
+    Iz, Iphi = lin_kernel_omega_integral(ws, w_static, g_z, g_phi)
 
     # μ* Coulomb term (scalar, same for all ω)
     coulomb = wprime_trapz(ws, g_phi .* tanh.(beta .* w_prime ./ 2))
@@ -144,47 +143,6 @@ end
 ###################################################
 # ------------------- Helpers ------------------- #
 ###################################################
-"""
-    evaluate_Kernels(A, B, K_func)
-
-Evaluation of the kernel at K(A,B)
-"""
-function evaluate_Kernels(A, B, K_func)
-    N = length(A)
-    M = length(B)
-    K_vals = Matrix{ComplexF64}(undef, N, M)
-    @inbounds for i in eachindex(B)
-        b = B[i]   
-        for j in eachindex(A)
-            a = A[j]
-            K_vals[j,i] = K_func(a, b)
-        end
-    end
-    return K_vals
-end
-
-"""
-    evaluate_Kernels(A, B, K_func)
-
-Evaluation of the kernel at K(A,B)
-"""
-function evaluate_Kernels(A, B, K_func, K2_func)
-    N = length(A)
-    M = length(B)
-    K_vals = Matrix{ComplexF64}(undef, N, M)
-    K2_vals = Matrix{ComplexF64}(undef, N, M)
-    @inbounds for i in eachindex(B)
-        b = B[i]   
-        for j in eachindex(A)
-            a = A[j]
-            K_vals[j,i] = K_func(a, b)
-            K2_vals[j,i] = K2_func(a, b)
-        end
-    end
-    return K_vals, K2_vals
-end
-
-
 """
     epsilon_helpers(electronic_spec, Z_ongrid, phi_ongrid, shift_ongrid, w_prime; idx_skip = nothing)
 

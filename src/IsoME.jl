@@ -42,9 +42,9 @@ const kb = 0.08617333262; # meV/K
 
 ### Define input struct ###
 # inputs Eliashberg Solver
-@kwdef mutable struct arguments{T<:Number}
+@kwdef mutable struct arguments
     # Parameters
-    temps::Vector{T}                        = [-1]
+    temps::Vector{Float64}                  = [-1.0]        # Vector{Number} ?? How does this affect type stability?
     muc_AD::Union{Float64, Nothing}         = nothing
     imOmega_c::Float64                      = 7000.0
     muc_ME::Union{Float64, Nothing}         = nothing
@@ -136,6 +136,7 @@ include("AllenDynes.jl")
 include("MuUpdate.jl")
 include("WriteOutput.jl")
 include("EliashbergEq.jl")
+include("LinearKernels.jl")
 include("wprimeGrid.jl")
 include("realAxisSolver.jl")
 include("realAxisEliashbergEq.jl")

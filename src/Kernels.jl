@@ -60,7 +60,7 @@ end
 
 
 function kernel_integral_helper(
-    s_rel::StepRangeLen{Float64},
+    s_rel::AbstractVector{Float64},
     int_axis::Vector{Float64},
     W_cut::Float64,
     W_left::Float64,
@@ -181,9 +181,32 @@ function compute_real_kernels(w_axis, num_w, w_max, W_left, W_right, int_axis, f
     return Kp_real, Km_real
 end
 
+"""
+    compute_kernel_integrals(w_axis, num_w, w_max, W_left, W_right, int_axis, f, n, G, log_file, line_width)
+
+Principal-value integrals I1(x)=P∫G(Ω)/(Ω−x) and I2(x)=P∫G(Ω)n(Ω)/(Ω−x) on the unified
+difference grid. These are the only kernel data needed by the linear route
+(𝒦 = A(x) + f(ω')·B(x)); the dense O(N²) Kp/Km matrices are no longer built.
+"""
+function compute_kernel_integrals(w_axis, num_w, w_max, W_left, W_right, int_axis, f, n, G, log_file=nothing, line_width=80)
+
+    progress_state = nothing
+    if !isnothing(log_file)
+        progress_state = start_kernel_progress(" ", log_file, line_width)
+    end
+
+    I1, I2 = precompute_integrals(num_w, w_max, W_left, W_right, int_axis, G, n, log_file; progress_state=progress_state) #slow
+
+    if !isnothing(log_file)
+        finish_kernel_progress(log_file, progress_state)
+    end
+
+    return I1, I2
+end
+
+
 
 function compute_imag_kernels(w_axis, f, n, G, W_left, W_right, log_file=nothing, line_width=80)
-
 
     N = length(w_axis)
 
@@ -225,6 +248,9 @@ function compute_imag_kernels(w_axis, f, n, G, W_left, W_right, log_file=nothing
         end
     end
 
+    if !isnothing(log_file)
+        finish_kernel_progress(log_file, progress_state)
+    end
 
     @. Kp_imag *= π
     @. Km_imag *= π
@@ -237,10 +263,11 @@ end
 """
     kernels(β, inp, w_axis, W_cut, int_axis, G)
 
-Compute the kernels at a given temperature
-    Kp(ω,ω') = -K(ω,ω') + K(ω,-ω')
-    Km(ω,ω') = K(ω,ω') + K(ω,-ω')
-with K(ω,ω') as given in the paper, supplemental eq. (47)
+Build the linear-route kernel at a given temperature: the 1-D interpolants A(x), B(x) with
+    𝒦(ω,ω') = A(x) + f(ω')·B(x),   x = ω'−ω
+    Kp(ω,ω') = -𝒦(ω,ω') + 𝒦(ω,-ω')
+    Km(ω,ω') =  𝒦(ω,ω') + 𝒦(ω,-ω')
+with K(ω,ω') as given in the paper, supplemental eq. (47). Returns the `LinearKernel`.
 """
 function kernels(β, inp, w_axis, W_left, W_right, int_axis, G, log_file=nothing, line_width=80)
 
@@ -248,23 +275,25 @@ function kernels(β, inp, w_axis, W_left, W_right, int_axis, G, log_file=nothing
     f = x -> 1 / (exp(β * x) + 1)
     n = x -> x == 0 ? 0.0 : abs(1 / (exp(β * x) - 1))
 
-    # Compute real and imaginary parts of kernels
-    @time Kp_imag, Km_imag = compute_imag_kernels(w_axis, f, n, G, W_left, W_right, log_file, line_width)
-    @time Kp_real, Km_real = compute_real_kernels(w_axis, length(w_axis), w_axis[end], W_left, W_right, int_axis, f, n, G, log_file, line_width)     # reOmega_c, domega
+    # @time begin
+    # # Compute real and imaginary parts of kernels
+    # Kp_imag, Km_imag = compute_imag_kernels(w_axis, f, n, G, W_left, W_right, log_file, line_width)
+    # Kp_real, Km_real = compute_real_kernels(w_axis, length(w_axis), w_axis[end], W_left, W_right, int_axis, f, n, G, log_file, line_width)     # reOmega_c, domega
 
-    # Combine into complex kernels
-    Kp = Kp_real .+ im .* (Kp_imag)
-    Km = Km_real .+ im .* (Km_imag)
+    # # Combine into complex kernels
+    # Kp = Kp_real .+ im .* (Kp_imag)
+    # Km = Km_real .+ im .* (Km_imag)
+    # end
 
-    # more accurate but slower
-    # Kp_func = interpolate((w_axis, w_axis), Kp, Gridded(Linear()))
-    # Km_func = interpolate((w_axis, w_axis), Km, Gridded(Linear()))
+    @time begin
+        I1, I2 = compute_kernel_integrals(w_axis, length(w_axis), w_axis[end], W_left, W_right, int_axis, f, n, G, log_file, line_width)
+    end
 
-    # faster
-    Kp_func = scale(interpolate(Kp, BSpline(Linear())), w_axis, w_axis)
-    Km_func = scale(interpolate(Km, BSpline(Linear())), w_axis, w_axis)
+    # Linear route: the kernel as two 1-D interpolants A(x), B(x) on the difference grid.
+    # 𝒦(ω,ω') = A(x) + f(ω')·B(x), x = ω'−ω, so the full O(N²) Kp/Km matrices are never built.
+    lin_kernel = build_linear_kernel(β, length(w_axis), Float64(w_axis[end]), I1, I2, G, W_left, W_right)
 
-    return Kp_func, Km_func
+    return lin_kernel
 end
 
 function precompute(β, inp, matval, console, log_file)
@@ -275,19 +304,18 @@ function precompute(β, inp, matval, console, log_file)
     ### Set up axis and parameters ###
     G, W_left, W_right, w_axis, int_axis = setUpOmegaAxis(inp, matval)
 
-    Kp_func, Km_func = kernels(β, inp, w_axis, W_left, W_right, int_axis, G, log_file, length(console["cDOS"]["partingLine"]))
+    @time lin_kernel = kernels(β, inp, w_axis, W_left, W_right, int_axis, G, log_file, length(console["cDOS"]["partingLine"]))
 
     w_static = 1e-1:inp.domega:inp.reOmega_c        # grid of Z(w), Delta(w), sensitive to start value, do not chose < 1e-1
-    w_static_chi = 1e-1:inp.domega_shift:inp.reOmega_c_shift   # grid of χ(ω), 10*inp.reOmega_c
-    w_dynam = -(inp.reOmega_c .+ inp.reOmega_c .* cos.((2 .* (inp.n_cheb/2:inp.n_cheb-1) .+ 1) .* π ./ (2 * inp.n_cheb)))    # only positvie chebyshev nodes
-    append!(w_dynam, reverse(-w_dynam))   # symmetric chebyshev nodes
+    w_static_chi = 1e-1:inp.domega:inp.reOmega_c_shift   # grid of χ(ω); same step as w_static so all channels are k=1
+
     # assert grid sizes
     @assert first(w_axis) <= first(w_static) && last(w_static) <= last(w_axis)
     if inp.include_Weep == 1
         @assert first(w_axis) <= first(w_static_chi) && last(w_static_chi) <= last(w_axis)
     end
 
-    return (Kp_func, Km_func, w_static, w_dynam, w_static_chi)
+    return (w_static, w_static_chi, lin_kernel)
 
 end
 

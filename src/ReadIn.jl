@@ -36,7 +36,7 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
 
 
     # ------------- Dos and Weep -------------- #
-    if isfile(inp.dos_file)
+    if isfile(inp.dos_file) && (inp.cDOS_flag == 0 || !isnothing(inp.mu))
         # read dos
         dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.ef, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos, outdir=inp.outdir, logFile=log_file)
         inp.ef = ef
@@ -393,6 +393,9 @@ function readIn_a2f(a2f_file, indSmear=nothing, unit="", nheader=nothing, nfoote
     a2f = a2f_itp(omega)
     a2f[a2f.<0.0] .= 0.0
 
+    plot(omega, a2f)
+    savefig("a2f-isome.png")
+    
     return omega, a2f, a2f_itp, indSmear, unit
 
 end

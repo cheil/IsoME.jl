@@ -322,7 +322,7 @@ Initialize sparse matsubara basis (IR-Basis)
 function initSparseSampling(beta, imOmega_c, M)
 
 
-    IRbasis = FiniteTempBasis(Fermionic(), beta, imOmega_c)
+    IRbasis = FiniteTempBasis(Fermionic(), beta, imOmega_c, 1e-10)
     ir_mat  = MatsubaraSampling(IRbasis; positive_only=true)
     ir_mat  = SparseIR.value.(ir_mat.ωn, beta)
     ir_indices_str = MatsubaraSampling(IRbasis; positive_only=true)

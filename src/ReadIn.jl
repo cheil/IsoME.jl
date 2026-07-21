@@ -392,9 +392,6 @@ function readIn_a2f(a2f_file, indSmear=nothing, unit="", nheader=nothing, nfoote
     a2f_itp = linear_interpolation(omega_raw, a2f_raw, extrapolation_bc=0)     
     a2f = a2f_itp(omega)
     a2f[a2f.<0.0] .= 0.0
-
-    plot(omega, a2f)
-    savefig("a2f-isome.png")
     
     return omega, a2f, a2f_itp, indSmear, unit
 

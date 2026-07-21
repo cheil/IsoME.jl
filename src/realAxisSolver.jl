@@ -493,18 +493,31 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
     # destruct inputs
     (_, _, dos_en, dos, Weep, dosef, idx_ef, _, _, _) = matval
     (; muc_ME, mu_flag, N_it, conv_thr, minGap, nItFullCoul, min_it, plot_flag) = inp
-    (w_static, _, w_static_chi, _) = realAxisParameter
+    (w_static, w_static_chi, _) = realAxisParameter
 
 
     printTextCentered("T = " * string(itemp) * " K ", console["partingLine"], file=log_file, bold=true)
     printTee(log_file, "\n")
 
     # ----- electronic spectral information ----- #
+    # INFO: Could be calculated in read in once instead of here
     eps_1, eps_2 = transpose(dos_en[1:end-1]), transpose(dos_en[2:end])
     dos_1, dos_2 = transpose(dos[1:end-1]), transpose(dos[2:end])
     dε = eps_2 .- eps_1
     ddos = dos_2 .- dos_1
-    electronic_spec = (eps_1, eps_2, dos_1, dos_2, dε, ddos)
+
+    if inp.include_Weep == 1
+        # Coulomb spectral integral: piecewise-linear moments of N(ε')W(ε,ε')
+        NW0 = Weep[:, 1:end-1] .* dos_1
+        NW1 = Weep[:, 2:end] .* dos_2
+        M1W = (NW1 .- NW0) ./ dε
+        M0W = NW0 .- eps_1 .* M1W
+    else
+        M1W = nothing
+        M0W = nothing
+    end
+
+    electronic_spec = (eps_1, eps_2, dos_1, dos_2, dε, ddos, M0W, M1W)
 
     # ----- initial guesses -----#
     Z_new = state.Z
@@ -561,11 +574,11 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
 
         # Add mu thermalization: start mu-update only after a few iterations
         if mu_flag == 1 # && i_it > maximum([min_it, nItFullCoul + 1]) -1
-            fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, Z_prev, phi_prev, chi_prev, inp.outdir)
+            fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, electronic_spec, dos_en, dos, Z_prev, phi_prev, chi_prev, inp.outdir)
         end
 
         if inp.include_Weep == 1
-            Z_new, chi_new, phi_new = realEliashbergEq(β, Z_prev, phi_prev::Matrix{ComplexF64}, chi_prev, gridws, w_static, w_static_chi, dosef, dos_en, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
+            @time Z_new, chi_new, phi_new = realEliashbergEq(β, Z_prev, phi_prev::Matrix{ComplexF64}, chi_prev, gridws, w_static, w_static_chi, dosef, dos_en, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
         else
             Z_new, chi_new, phi_new = realEliashbergEq(muc_ME, β, Z_prev, phi_prev, chi_prev, gridws, w_static, w_static_chi, dosef, dos_en, dos, fermi_level, electronic_spec, poles)
         end
@@ -641,7 +654,7 @@ end
 # -------------------- Helper functions -------------------- #
 ##############################################################
 function initial_real_axis_state(inp, realAxisParameter, BCS_gap)
-    (w_static, _, w_static_chi, _) = realAxisParameter
+    (w_static, w_static_chi, _) = realAxisParameter
     nw = length(w_static)
 
     return RealAxisState(

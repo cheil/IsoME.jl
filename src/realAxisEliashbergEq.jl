@@ -2,6 +2,18 @@
     file containing the real axis eliashberg equations
 """
 
+# --- DEBUG: memory overview per section (remove later) -----------------------
+# @memdbg "label" expr  -> evaluates expr, prints bytes allocated by it and the
+# process peak RSS so far, and returns expr's value so it can be used inline.
+macro memdbg(label, expr)
+    quote
+        local _s = @timed $(esc(expr))
+        @info string("[MEMDBG] ", $(esc(label))) alloc_MiB = round(_s.bytes / 2^20, digits = 1) peak_rss_MiB = round(Sys.maxrss() / 2^20, digits = 1)
+        _s.value
+    end
+end
+# ----------------------------------------------------------------------------
+
 
 """
     realEliashbergEq(beta, znormip, phiphip, shiftip, ws, w_static, w_static_chi, dosef,
@@ -26,10 +38,10 @@ function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phiphip::M
 
     Z_ongrid = Z_itp.(w_prime)
     shift_ongrid = shift_itp.(w_prime) .- fermi_level
-    phi_ongrid = interpolate_phi_matrix(w_static, phiphip, w_prime)
+    phi_ongrid = @memdbg "phi_ongrid" interpolate_phi_matrix(w_static, phiphip, w_prime)
 
     # ------------- ε-integration ------------- #
-    integrands, coulomb_spectral = epsilon_helpers_vDOSW(electronic_spec, Weep, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
+    integrands, coulomb_spectral = @memdbg "epsilon_helpers_vDOSW" epsilon_helpers_vDOSW(electronic_spec, Weep, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
 
     # Z-integrand must be positive (causality), flip the others accordingly
     # Note: Minus sign because split of -Θ to (ε+χ +- ε_p) (eq. (51))
@@ -38,10 +50,16 @@ function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phiphip::M
     g_phi = -(FLIP .* integrands[2])
     g_chi = -(FLIP .* integrands[3])
 
+    plot(w_prime[1:ws.n_head], g_phi[1:ws.n_head])
+    plot!(w_prime[1:ws.n_head], g_z[1:ws.n_head])
+    plot!(w_prime[1:ws.n_head], g_chi[1:ws.n_head])
+    vline!(ws.poles_prev, ls=:dash)
+    savefig("Poles.png")
+
     # ------------- Ω & ω'-integration ------------- #
     # O(N)-memory linear route: K⁻ g_z and K⁺ g_phi (first ns rows) plus K⁺ g_chi on the master grid.
-    Iz, Iphi = lin_kernel_omega_integral(ws, w_static, g_z, g_phi)
-    Ichi = lin_kernel_omega_integral_chi(ws, w_static_chi, g_chi)
+    Iz, Iphi = @memdbg "kernels Iz/Iphi" lin_kernel_omega_integral(ws, w_static, g_z, g_phi)
+    Ichi = @memdbg "kernels Ichi" lin_kernel_omega_integral_chi(ws, w_static_chi, g_chi)
 
     # Coulomb term: integrate N(ε')W(ε,ε') with the same piecewise-linear spectral
     # quadrature (coulomb_spectral is ndos × M). The dosef prefactor cancels.
@@ -90,6 +108,14 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
     g_z = -abs.(integrands[1])
     g_phi = -(FLIP .* integrands[2])
     g_chi = -(FLIP .* integrands[3])
+
+
+    plot(w_prime[1:ws.n_head], g_phi[1:ws.n_head])
+    plot!(w_prime[1:ws.n_head], g_z[1:ws.n_head])
+    plot!(w_prime[1:ws.n_head], g_chi[1:ws.n_head])
+    vline!(ws.poles_prev, ls=:dash)
+    savefig("Poles.png")
+
 
     # ------------- ω'-integration ------------- #
     # O(N)-memory linear route: K⁻ g_z and K⁺ g_phi (first ns rows) plus K⁺ g_chi on the master grid.
@@ -150,7 +176,7 @@ Sovle the epsilon integral in the vDOS+μ approximation
 Returns the ω'-integrands
 """
 function epsilon_helpers(electronic_spec, Z_ongrid, phi_ongrid, shift_ongrid, w_prime; idx_skip = nothing)
-    eps_1, eps_2, dos_1, dos_2, dε, ddos = electronic_spec
+    eps_1, eps_2, dos_1, dos_2, dε, ddos, _, _ = electronic_spec
 
     # assuming a linear form of the dos
     M1 = transpose((dos_2 - dos_1)./(eps_2 - eps_1))
@@ -242,7 +268,7 @@ Only the φ-branch coefficients C0/C1 are stored as matrices, because the Coulom
 part couples them to M0W/M1W over the *output* ε-grid via a GEMM.
 """
 function epsilon_helpers_vDOSW(electronic_spec, Weep, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
-    eps_1, eps_2, dos_1, dos_2, dε, ddos = electronic_spec
+    eps_1, eps_2, dos_1, dos_2, dε, ddos, M0W, M1W = electronic_spec
 
     M = length(w_prime)
     Nint = length(dε)
@@ -314,12 +340,6 @@ function epsilon_helpers_vDOSW(electronic_spec, Weep, Z_ongrid, phi_ongrid, shif
         end
     end
 
-    # Coulomb spectral integral: piecewise-linear moments of N(ε')W(ε,ε')
-    NW0 = Weep[:, 1:end-1] .* dos_1
-    NW1 = Weep[:, 2:end] .* dos_2
-    M1W = (NW1 .- NW0) ./ dε
-    M0W = NW0 .- eps_1 .* M1W
-
     coulomb_spectral = Matrix{Float64}(undef, size(M0W, 1), M)
     mul!(coulomb_spectral, M0W, transpose(C0phi))
     mul!(coulomb_spectral, M1W, transpose(C1phi), 1.0, 1.0)
@@ -338,7 +358,7 @@ needed to conserve charge, so they are dropped — this runs on every root-finde
 evaluation of `diff_Ne_realAxis`.
 """
 function epsilon_causality_vDOSW(electronic_spec, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
-    eps_1, eps_2, dos_1, dos_2, dε, ddos = electronic_spec
+    eps_1, eps_2, dos_1, dos_2, dε, ddos, _, _ = electronic_spec
 
     M = length(w_prime)
     Nint = length(dε)

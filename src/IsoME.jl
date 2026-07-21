@@ -117,7 +117,6 @@ const kb = 0.08617333262; # meV/K
     dOmega::Float64             = 1.0
     # χ linear ω-grid
     reOmega_c_shift::Float64    = 25000.0 # ω-cutoff χ(ω)
-    domega_shift::Float64       = 2.0  # χ ω-grid step size / meV
     # ω'-chebyshev
     n_cheb::Int64               = 5000  # number of chebyshev points in ω'-integration
     # ε-stepsize

@@ -1,77 +1,81 @@
 # Input
 Input parameters are collected in the [composite type](https://docs.julialang.org/en/v1/manual/types/#Composite-Types) `arguments()`.
-We recommend creating a fresh `arguments()` instance for each call to `EliashbergSolver()` or `RealAxisSolver()`, because some fields are inferred or updated during a run.
-Fields that are meant to be inferred are usually marked by `-1` for numeric values or `""` for strings.
+Only the path to the ``\alpha^2F`` file is mandatory; everything else either has a default or is inferred during the run.
+Fields that are meant to be inferred are left at `nothing` (numeric values) or `""` (strings), and are overwritten once their value is known.
+Because of this, we recommend creating a fresh `arguments()` instance for each call to `EliashbergSolver()` or `RealAxisSolver()` — see [Best practices](@ref).
 
 All energies are handled internally in meV.
 If an input file uses another supported unit, IsoME tries to extract the unit from the file header and convert the data automatically.
-If automatic unit detection fails, check the header of the input file or set the corresponding unit parameter manually.
+Should the automatic detection fail, check the header of the input file or set the corresponding unit parameter manually.
 
-The most relevant inputs are grouped below into general inputs, imaginary-axis inputs, and real-axis inputs.
-More detailed descriptions of the input-file formats are given in the following sections.
+The inputs are grouped below into general inputs, inputs specific to the imaginary-axis solver, and inputs specific to the real-axis solver.
+How the latter two act on the respective solvers is described on the [Matsubara Solver](@ref) and [Real Axis Solver](@ref) pages.
+The formats of the input files themselves are documented in the [Read-In](@ref) section further down.
 
 ## General inputs
-These inputs are shared by the imaginary-axis and real-axis solvers unless noted otherwise.
+These inputs are shared by both solvers unless noted otherwise.
 
 | Name    |      Type      |   Default   | Description | Comment  |
 |:--------|:---------------|:------------|:------------|:---------|
-| temps   | Vector{Number} |  [-1] | Temperatures considered in the calculation | `[-1]`: search for ``T_c``; otherwise solve at the specified temperatures |
-| a2f_file    | String   |    ""    | Path to ``\alpha^2F``-file | Required for all calculations |
-| ind_smear   | Int64    |    -1    | Smearing column used from the ``\alpha^2F`` file | The middle column is used by default |
+| temps   | Vector{Float64} |  [-1.0] | Temperatures considered in the calculation | `[-1.0]`: search for ``T_c``; otherwise solve at the specified temperatures |
+| a2f_file    | String   |  -  | Path to the ``\alpha^2F`` file | The only mandatory input |
+| ind_smear   | Int64 or nothing |  nothing | Smearing column used from the ``\alpha^2F`` file | The middle column is used by default |
 | cDOS_flag | Int64 |  1   | Selects constant or variable DOS mode | 0: variable DOS; 1: constant DOS |
 | include_Weep | Int64 | 0 | Selects Morel-Anderson or screened-Coulomb mode | 0: ``\mu^*`` approximation; 1: static ``W(\varepsilon,\varepsilon')`` interaction |
 | dos_file  |  String  |     ""    | Path to the DOS file | Required if `cDOS_flag = 0` or `include_Weep = 1` |
-| Weep_file |  String  |     ""    | Path to the ``W`` file | Required if `include_Weep = 1`; real-axis calculations currently require `include_Weep = 0` |
+| Weep_file |  String  |     ""    | Path to the ``W`` file | Required if `include_Weep = 1` |
 | Wen_file  |  String  |     ""    | Path to a file containing the energy grid points of ``W`` | Only required if the grid is not contained in `Weep_file` |
-| mu      | Float64        |   -1  | ``\mu=N(\varepsilon_F)W(\varepsilon_F,\varepsilon_F)`` | Measure of the Coulomb strength |
-| muc_AD     | Float64     |  -1 | Morel-Anderson pseudopotential for Allen-Dynes estimates, ``\mu^*_{AD}`` | If unset, the default convention described below is used |
-| muc_ME  | Float64        | -1 | Morel-Anderson pseudopotential for Migdal-Eliashberg calculations, ``\mu^*_{ME}`` | Inferred from `muc_AD`, `mu`, or ``W`` when possible |
-| typEl | Float64|  -1 | Typical electronic energy scale | In meV; used to calculate ``\mu^*`` from ``\mu`` |
-| ef        | Float64  |     -1    | Fermi energy of the DOS in meV | Extracted from the DOS-file header if not set |
-| efW       | Float64  |     -1    | Fermi energy of the ``W`` grid in meV | Extracted from the ``W``-file header if not set |
+| mu      | Float64 or nothing |   nothing  | ``\mu=N(\varepsilon_F)W(\varepsilon_F,\varepsilon_F)`` | Measure of the Coulomb strength |
+| muc_AD  | Float64 or nothing |  nothing | Morel-Anderson pseudopotential for Allen-Dynes estimates, ``\mu^*_{AD}`` | If unset, the default convention described below is used |
+| muc_ME  | Float64 or nothing | nothing | Morel-Anderson pseudopotential for Migdal-Eliashberg calculations, ``\mu^*_{ME}`` | Inferred from `muc_AD`, `mu` or ``W`` when possible |
+| typEl | Float64 or nothing |  nothing | Typical electronic energy scale | In meV; used to calculate ``\mu^*`` from ``\mu`` |
+| ef        | Float64 or nothing |  nothing | Fermi energy of the DOS | In meV; extracted from the DOS-file header if not set |
+| efW       | Float64 or nothing |  nothing | Fermi energy of the ``W`` grid | In meV; extracted from the ``W``-file header if not set |
+| encut  | Float64, Vector{Float64} or nothing |  10000.0  | Energy cutoff of the ``\varepsilon``-grid | In meV; a scalar is interpreted as ``\pm`` `encut`, an interval as `[lower, upper]` |
 | mu_flag    | Int64 | 1   | Update the chemical potential in vDOS calculations | 0: no; 1: yes, recommended |
-| mixing_beta | Number     | -1 | Linear mixing factor | `-1`: use the default iteration-dependent schedule |
-| nItFullCoul | Number     |  10    | Number of iterations used to ramp up the Coulomb contribution | Helps stabilize the initial iterations |
+| mixing_beta | Float64 or nothing | nothing | Linear mixing factor | `nothing`: use the default iteration-dependent schedule |
+| broyden_flag | Int64 | 0 | Mixing scheme | 0: linear mixing; 1: Broyden mixing (real-axis vDOS only) |
+| broyden_mem | Int64 | 4 | Broyden history depth | Number of stored iterations |
+| nItFullCoul | Int64 |  10    | Number of iterations used to ramp up the Coulomb contribution | Helps stabilize the initial iterations |
 | conv_thr | Float64 | ``10^{-4}`` | Convergence threshold | Applied to the gap update |
-| minGap   | Float64 | 0.1  | Lower gap threshold | Stop if ``\Delta(0) <`` `minGap` |
+| minGap   | Float64 | 0.1  | Lower gap threshold | In meV; the temperature is treated as normal conducting if ``\Delta(0) <`` `minGap` |
 | N_it | Int64 | 5000 | Maximum number of iterations | - |
 | min_it | Int64 | 10 | Minimum number of iterations before convergence is accepted | - |
 | outdir | String |  pwd() | Path to the output directory | |
 | flag_figure | Int64 |  1 | Plot the gap and ``\alpha^2F`` values | 0: no; 1: yes |
 | flag_writeSelfEnergy | Int64 | 0  | Save self-energy components | 0: no; 1: yes |
+| plot_flag | Bool | false | Plot additional diagnostic quantities | Intended for development and diagnostics |
 | material | String | "Material" | Name of the compound | Used in plots and summaries |
-| returnTc | Bool | false | Return the estimated ``T_c`` interval from `EliashbergSolver()` | Mainly useful for scripts and tests |
+| returnTc | Bool | false | Return the estimated ``T_c`` interval | Mainly useful for scripts and tests |
+| testMode | Bool | false | Suppress all file output | Used by the test suite |
 
 
 ## Imaginary-axis inputs
-These inputs control the imaginary-axis solver `EliashbergSolver()` and related post-processing.
+These inputs control the imaginary-axis solver `EliashbergSolver()` and its post-processing.
 
 | Name    |      Type      |   Default   | Description | Comment  |
 |:--------|:---------------|:------------|:------------|:---------|
-| imOmega_c | Float64 | 7000.0 | Matsubara cutoff ``\omega_c`` | In meV |
-| encut  | Float64 |  5000.0  | Energy cutoff for DOS and ``W`` integrations | In meV |
-| shiftcut  | Float64 | 2000.0 | Energy cutoff for the shift and charge-neutrality integrations | In meV; should be smaller than `encut` |
-| sparseSamplingTemp | Float64 | 2.0 | Maximum temperature for sparse sampling | Used in ``T_c`` search mode |
-| itpBounds | Vector{Float64} | [100, 500] | Bounds of DOS interpolation regions around the Fermi level | In meV |
-| itpStepSize | Vector{Int64} | [1, 5, 50] | Step sizes used in the interpolation regions | In meV |
-| flag_acon | Bool | false | Run analytic continuation after the imaginary-axis solution | Uses the implemented real-frequency continuation routines |
-| plot_flag | Bool | false | Plot additional diagnostic quantities | Intended for development and diagnostics |
+| imOmega_c | Float64 | 7000.0 | Matsubara cutoff ``\omega_c`` | In meV; determines the number of Matsubara frequencies at a given temperature |
+| shiftcut  | Float64 | 2000.0 | Energy cutoff of the shift and charge-neutrality integrations | In meV; should be smaller than `encut` |
+| sparseSamplingTemp | Float64 | 2.0 | Temperature below which sparse sampling is used | In K |
+| itpBounds | Vector{Float64} | [100.0, 500.0] | Bounds of the DOS interpolation regions around the Fermi level | In meV |
+| itpStepSize | Vector{Int64} | [1, 5, 50] | Step sizes used within the interpolation regions | In meV; one entry more than `itpBounds` |
+| flag_acon | Bool | false | Analytically continue the converged solution to real frequencies | Padé approximants |
 
 ## Real-axis inputs
-These inputs control the direct real-axis solver `RealAxisSolver()`.
-The real-axis solver currently supports the ``\mu`` approximation; set `include_Weep = 0`.
-For vDOS real-axis calculations, provide a DOS file and set `cDOS_flag = 0`.
+These inputs control the direct real-axis solver `RealAxisSolver()`, which supports cDOS``+\mu``, vDOS``+\mu`` and vDOS``+W``.
+Note that `include_Weep = 1` requires `cDOS_flag = 0` here.
+The ``\varepsilon``-grid of the real-axis solver is uniform (step `depsilon`) and does not use `itpBounds`/`itpStepSize`.
 
 | Name    |      Type      |   Default   | Description | Comment  |
 |:--------|:---------------|:------------|:------------|:---------|
-| reOmega_c  | Float64 | 2000.0 | Real-frequency cutoff for ``Z(\omega)`` and ``\Delta(\omega)`` | In meV |
-| numReal_c | Int64 | 5000 | Number of real-frequency grid points for ``Z(\omega)`` and ``\Delta(\omega)`` | - |
-| reOmega_c_shift | Float64 | 15000.0 | Real-frequency cutoff for ``\chi(\omega)`` in vDOS calculations | In meV |
-| numReal_c_shift | Int64 | 25000 | Number of real-frequency grid points for ``\chi(\omega)`` | - |
-| n_cheb | Int64 | 5000 | Number of Chebyshev points used for the ``\Omega`` integration | Controls the dynamical kernel integration |
-| num_wp1 | Int64 | 1000 | Number of inner ``\omega'`` grid points near the gap edge | Used in vDOS real-axis calculations |
-| num_wp2 | Int64 | 5000 | Number of outer ``\omega'`` grid points | Used in vDOS real-axis calculations |
-| wp_max | Float64 | 2.0 | Width/location parameter for the outer ``\omega'`` Chebyshev grid | In meV |
+| reOmega_c  | Float64 | 4000.0 | Frequency cutoff of ``Z(\omega)`` and ``\Delta(\omega)`` | In meV; also bounds the ``\omega'``-integration in cDOS calculations |
+| domega | Float64 | 1.0 | Step of the ``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` grids | In meV; also the step of the ``\omega'``-tail |
+| dOmega | Float64 | 1.0 | Step of the tabulated kernel | In meV; sets the resolution of the ``\Omega``-integral over ``\alpha^2F`` |
+| reOmega_c_shift | Float64 | 25000.0 | Frequency cutoff of ``\chi(\omega)`` | In meV; also bounds the ``\omega'``-integration in vDOS calculations |
+| domega_shift | Float64 | 2.0 | Minimum width of the pole-resolved head region of the ``\omega'``-grid | In meV; only enters as a lower bound of the head/tail split |
+| n_cheb | Int64 | 5000 | Chebyshev points per pole in the head region of the ``\omega'``-grid | Resolves the poles of the ``\omega'``-integrand |
+| depsilon | Int64 | 10 | Step of the ``\varepsilon``-grid | In meV; vDOS calculations only |
 
 
 ### Pseudopotentials ``\mu,~\mu^*_{AD}~\&~\mu^*_{ME}``
@@ -81,9 +85,10 @@ It is connected to the pseudopotentials via:
 \mu^*_{AD}=\frac{\mu}{1+\mu \text{ ln}\left(\frac{\varepsilon_{el}}{\hbar \omega_{ph}}\right)}
 ```
 where ``\omega_{ph}`` is a characteristic cutoff frequency for the phonon-induced interaction and ``\varepsilon_{el}`` is a characteristic electronic energy scale.
-The typical electronic energy can be specified explicitly through *typEl*; otherwise, the Fermi energy (*ef* or *efW*) will be used. For the characteristic phonon cutoff, the Matsubara cutoff and the maximum given phonon frequency are used for ME and AD, respectively.
+The typical electronic energy can be specified explicitly through *typEl*; otherwise, the Fermi energy (*ef* or *efW*) will be used.
+For the characteristic phonon cutoff, the maximum given phonon frequency is used for AD, while ME uses the frequency cutoff of the respective solver — *imOmega_c* on the imaginary axis and *reOmega_c* on the real axis.
 
-By default, the ``\mu`` and ``\mu^*`` values are set to -1, which indicates that *muc_AD* = 0.12 is used. This also fixes *muc_ME* through
+By default, the ``\mu`` and ``\mu^*`` values are unset (`nothing`), which means that *muc_AD* = 0.12 is used. This also fixes *muc_ME* through
 ```math
 \mu^*_{ME}= \frac{\mu^*_{AD}}{(1 + \mu^*_{AD} \ln(\frac{\omega_{ph}}{\omega_c}))}~.
 ```
@@ -92,7 +97,11 @@ Furthermore, if neither ``\mu`` nor ``\mu^*`` is specified but a `Weep_file` is 
 
 
 ### Interpolation of the energy grid
-To resolve the properties of the electron-phonon coupling, IsoME interpolates the energy grid using the bounds and steps specified by *itpBounds* and *itpStepSize*. The bounds define regions around the Fermi level, and each region uses the corresponding step size from *itpStepSize*. For example, the first step size is used within the first region around the Fermi level.
+Since the electronic structure close to the Fermi level drives the results, the imaginary-axis solver interpolates the DOS (and ``W``) onto a piecewise-uniform energy grid defined by *itpBounds* and *itpStepSize*.
+The bounds define regions around the Fermi level, and each region uses the corresponding step size from *itpStepSize*; the first step size is used within the first region around the Fermi level, the last one beyond the outermost bound.
+With the defaults, the grid uses a 1 meV step within ``\pm 100`` meV of ``\varepsilon_F``, 5 meV up to ``\pm 500`` meV, and 50 meV out to *encut*.
+
+The real-axis solver instead uses a uniform grid of step *depsilon* over the whole *encut* range, because its ``\varepsilon``-integrals are evaluated analytically on a piecewise-linear DOS.
 
 
 ## Read-In
@@ -131,18 +140,18 @@ The number of header/footer lines and smearing values should be recognized autom
     > The first column must contain the energies, the second column onwards the ``\alpha^2F`` values for different smearings.
     >
 
-    > **ind_smear** :: INTEGER | Default: 1
+    > **ind_smear** :: INTEGER | Default: nothing
     >
-    > Index of the smearing that should be used.
+    > Index of the smearing that should be used. If unset, the column in the middle is used.
     >
 
-    >  **a2f_unit** :: STRING    | Default: nothing
+    >  **a2f_unit** :: STRING | Default: ""
     >
     > Energy unit in the ``\alpha^2F``-file
     >
     > | Value | Description |
     > | ---   | ----------- |
-    > | -1   | Auto-extraction from header |
+    > | ""   | Auto-extraction from header |
     > | meV     | - |
     > | eV  | - |
     > | THz     | - |
@@ -155,7 +164,7 @@ The number of header/footer lines and smearing values should be recognized autom
     >
     > | Value | Description |
     > | ---   | ----------- |
-    > | -1   | Auto-recognition |
+    > | nothing | Auto-recognition |
 
     >  **nfooter_a2f** :: INTEGER  | Default: nothing
     >
@@ -163,7 +172,7 @@ The number of header/footer lines and smearing values should be recognized autom
     >
     > | Value | Description |
     > | ---   | ----------- |
-    > | -1   | Auto-recognition |
+    > | nothing | Auto-recognition |
 
 
 ### ``N(\epsilon)``
@@ -189,7 +198,7 @@ The first and second columns of the DOS file are interpreted as the energies and
     > Path to the DOS file
     > Only required for vDOS calculations
 
-    >  **spinDos** :: INTEGER | Default: 1
+    >  **spinDos** :: INTEGER | Default: 2
     >
     > Spin convention used in the DOS file
     >
@@ -198,13 +207,13 @@ The first and second columns of the DOS file are interpreted as the energies and
     > | 1     | Spin is not considered in the DOS |
     > | 2     | DOS contains spin degeneracy |
 
-    >  **dos_unit** :: STRING    | Default: nothing
+    >  **dos_unit** :: STRING | Default: ""
     >
     > Energy unit in the DOS file
     >
     > | Value | Description |
     > | ---   | ----------- |
-    > | -1   | Auto-extraction from header |
+    > | ""   | Auto-extraction from header |
     > | meV     | - |
     > | eV     | - |
     > | THz     | - |
@@ -217,7 +226,7 @@ The first and second columns of the DOS file are interpreted as the energies and
     >
     > | Value | Description |
     > | ---   | ----------- |
-    > | -1   | Auto-recognition |
+    > | nothing | Auto-recognition |
 
     >  **nfooter_dos** :: INTEGER  | Default: nothing
     >
@@ -225,7 +234,7 @@ The first and second columns of the DOS file are interpreted as the energies and
     >
     > | Value | Description |
     > | ---   | ----------- |
-    > | -1   | Auto-recognition |
+    > | nothing | Auto-recognition |
 
 
 ### Weep
@@ -267,26 +276,26 @@ If the *Weep_file* does not contain the energies, an additional *Wen_file* can b
     > Optional path to a file containing the energy grid of ``W(\varepsilon,\varepsilon')``.
     > Only required if the grid is not contained in `Weep_file`.
 
-    >  **Weep_unit** :: STRING | Default: nothing
+    >  **Weep_unit** :: STRING | Default: ""
     >
     > Energy unit in the ``W`` file.
     >
     > | Value | Description |
     > | ---   | ----------- |
-    > | nothing | Auto-extraction from header |
+    > | ""   | Auto-extraction from header |
     > | meV     | - |
     > | eV      | - |
     > | THz     | - |
     > | Ry      | - |
     > | Ha      | - |
 
-    >  **Wen_unit** :: STRING | Default: nothing
+    >  **Wen_unit** :: STRING | Default: ""
     >
     > Energy unit in the optional ``W`` energy-grid file.
     >
     > | Value | Description |
     > | ---   | ----------- |
-    > | nothing | Auto-extraction from header |
+    > | ""   | Auto-extraction from header |
     > | meV     | - |
     > | eV      | - |
     > | THz     | - |

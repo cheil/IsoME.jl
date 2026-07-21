@@ -138,9 +138,10 @@ function find_integrand_poles(wp::Vector{Float64}, w_static, w_static_chi,
     ε_p = sqrt.(wp .^ 2 .* Z_ongrid .^ 2 .- phi_ongrid .^ 2)
 
     poles = Float64[]
-    append!(poles, grid_sign_roots(wp, imag.(shift_ongrid .+ ε_p)))
-    append!(poles, grid_sign_roots(wp, imag.(shift_ongrid .- ε_p)))
+    #append!(poles, grid_sign_roots(wp, imag.(shift_ongrid .+ ε_p)))
+    #append!(poles, grid_sign_roots(wp, imag.(shift_ongrid .- ε_p)))
     push!(poles, wp[argmin(abs2.(ε_p))])
+    #print(poles)
 
     filter!(x -> isfinite(x) && x > 0, poles)
     isempty(poles) && push!(poles, gap0)
@@ -278,7 +279,7 @@ wp_max = 2·Δ(0) of the starting state (the cDOS solution / previous temperatur
 kept within [10·domega_shift, reOmega_c_shift/2].
 """
 function build_wprime_workspace(inp::arguments, realAxisParameter, gap0_start::Float64)
-    (w_static, _, w_static_chi, lin_kernel) = realAxisParameter
+    (w_static, w_static_chi, lin_kernel) = realAxisParameter
 
     gap0 = (isfinite(gap0_start) && gap0_start > 0) ? gap0_start : inp.minGap
     wp_max = clamp(2 * gap0, 10 * inp.domega_shift, inp.reOmega_c_shift / 2)
@@ -329,9 +330,11 @@ function find_integrand_poles_vDOSW(wp::Vector{Float64}, w_static, w_static_chi,
     P = sqrt.((wZ .^ 2 .- chi_ong .^ 2 .- Φ0 .^ 2) ./ scale .+ S .^ 2)
 
     poles = Float64[]
-    append!(poles, grid_sign_roots(wp, imag.(S .+ P)))
-    append!(poles, grid_sign_roots(wp, imag.(S .- P)))
+    #append!(poles, grid_sign_roots(wp, imag.(S .+ P)))
+    #append!(poles, grid_sign_roots(wp, imag.(S .- P)))
     push!(poles, wp[argmin(abs2.(P))])
+
+    #println("Poles: ", poles)
 
     filter!(x -> isfinite(x) && x > 0, poles)
     isempty(poles) && push!(poles, gap0)
@@ -369,7 +372,7 @@ cluster around the pole of Θ(ω') and the tail is a static linear grid up to re
 (step domega) whose kernels are built once. Only the Km/Kp channels are built (no χ channel).
 """
 function build_cDOS_wprime_workspace(inp::arguments, realAxisParameter, gap0_start::Float64)
-    (w_static, _, _, lin_kernel) = realAxisParameter
+    (w_static, _, lin_kernel) = realAxisParameter
 
     gap = (isfinite(gap0_start) && gap0_start > 0) ? gap0_start : inp.minGap
     wp_max = clamp(2 * gap, 10 * inp.domega, inp.reOmega_c / 2)
@@ -399,6 +402,8 @@ function maybe_refresh_head!(ws::WPrimeWorkspace, poles::Vector{Float64},
             maximum(abs.(poles .- ws.poles_prev)) > WPRIME_REFRESH_TOL * ws.wp_max
     stale || return false
 
+    #println("Refresh head: ", length(ws.poles_prev)," --> ",length(poles))
+
     ws.wp_head = make_head_grid(poles, ws.wp_max, pts_per_pole)
     ws.n_head = length(ws.wp_head)
     ws.wgt_head = trapz_weights(ws.wp_head)
@@ -411,7 +416,7 @@ function maybe_refresh_head!(ws::WPrimeWorkspace, poles::Vector{Float64},
         ws.Kp_head_lin = Matrix{ComplexF64}(undef, size(ws.Kp_head_lin, 1), ws.n_head)
     end
 
-    w_master = isnothing(w_static_chi) ? w_static : w_static_chi
+    @time w_master = isnothing(w_static_chi) ? w_static : w_static_chi
     fill_km_lin!(ws.Km_head_lin, w_static, ws.wp_head, ws.lin)   # K⁻ on w_static
     fill_kp_lin!(ws.Kp_head_lin, w_master, ws.wp_head, ws.lin)   # K⁺ on master grid
     ws.poles_prev = copy(poles)

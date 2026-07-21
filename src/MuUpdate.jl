@@ -171,7 +171,7 @@ interp_phi_ongrid(w_static, phi::AbstractMatrix, w_prime) =
 
 Update the chemical potential to conserve charge neutrality - real axis implementation.
 """
-function mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, dos_en, dos, znormip, phiphip, shiftip, outdir)
+function mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, electronic_spec, dos_en, dos, znormip, phiphip, shiftip, outdir)
 
     ### Calculate N_e in the non-SC state
     Ne_nsc = 2 .* trapz(dos_en, fermiFcn(dos_en, 0.0, itemp) .* dos)   
@@ -183,11 +183,6 @@ function mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime
     Z_ongrid = Z_itp.(w_prime)
     phi_ongrid = interp_phi_ongrid(w_static, phiphip, w_prime)
     shift_ongrid = shift_itp.(w_prime)
-
-    # piecewise-linear DOS segments
-    eps_1, eps_2 = transpose(dos_en[1:end-1]), transpose(dos_en[2:end])
-    dos_1, dos_2 = transpose(dos[1:end-1]), transpose(dos[2:end])
-    electronic_spec = (eps_1, eps_2, dos_1, dos_2, eps_2 .- eps_1, dos_2 .- dos_1)
 
     dos_int = trapz(dos_en, dos)
 

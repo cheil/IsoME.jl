@@ -52,7 +52,7 @@ julia> inp.imOmega_c
 7000.0
 ```
 gives the cutoff of the Matsubara summation in meV.
-Values that are determined during execution are marked by `nothing` for numeric values or `""` for strings.
+Values that are determined during execution are marked by `NaN` for real-valued fields, `-1` for integer fields or `""` for strings.
 For example, if the ``\alpha^2F`` file contains several smearing columns and `ind_smear` is left unset, the middle column is used by default.
 In the same spirit, IsoME recognizes the formatting of the input files automatically: it strips header and footer lines, extracts the units and, for vDOS or ``W`` calculations, the Fermi energy from the file headers.
 For a detailed description, see the [Input](@ref) page.

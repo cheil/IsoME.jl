@@ -46,7 +46,7 @@ The structure of the DOS near ``\varepsilon_F`` is what drives the results, henc
 
 Two cutoffs limit the ``\varepsilon``-integrations:
 
-- `encut` bounds the grid itself, and with it the ``Z``- and ``\Delta``-integrations. It may be given as a scalar (interpreted as ``\pm`` `encut`) or as an interval.
+- `encut` bounds the grid itself, and with it the ``Z``- and ``\Delta``-integrations. It is a scalar giving the symmetric window ``\pm`` `encut`.
 - `shiftcut` bounds the ``\chi``-integration and the charge-neutrality condition, and should be chosen smaller than `encut`. The shift converges faster in ``\varepsilon`` than the other components, and the electron number is only meaningful within a window in which the DOS is well resolved.
 
 ## Sparse sampling

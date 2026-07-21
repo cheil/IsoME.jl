@@ -29,8 +29,8 @@ function interpolateInputs(itpDos, dos_en, itpStepSize, itpBounds, encut; itpWee
         enEnd = [Wen[findlast(Wen .< dos_en[end])]]
     end
     if !isnothing(encut)
-        enStart = [maximum(push!(enStart, encut[1]))]
-        enEnd = [minimum(push!(enEnd, encut[2]))]
+        enStart = [maximum(push!(enStart, -encut))]
+        enEnd = [minimum(push!(enEnd, encut))]
     end
 
     en_range = append!(enStart, -reverse(bndItp), [0,0], bndItp, enEnd)

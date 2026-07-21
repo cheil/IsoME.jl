@@ -298,13 +298,13 @@ end
 
 function precompute(β, inp, matval, console, log_file)
 
-    printTextCentered("Precomputing Kernels", console["cDOS"]["partingLine"], file=log_file, bold=true)
+    printTextCentered("Precomputing Kernels", console.cDOS.partingLine, file=log_file, bold=true)
     print_kernel_log(log_file, "\n")
 
     ### Set up axis and parameters ###
     G, W_left, W_right, w_axis, int_axis = setUpOmegaAxis(inp, matval)
 
-    @time lin_kernel = kernels(β, inp, w_axis, W_left, W_right, int_axis, G, log_file, length(console["cDOS"]["partingLine"]))
+    @time lin_kernel = kernels(β, inp, w_axis, W_left, W_right, int_axis, G, log_file, length(console.cDOS.partingLine))
 
     w_static = 1e-1:inp.domega:inp.reOmega_c        # grid of Z(w), Delta(w), sensitive to start value, do not chose < 1e-1
     w_static_chi = 1e-1:inp.domega:inp.reOmega_c_shift   # grid of χ(ω); same step as w_static so all channels are k=1

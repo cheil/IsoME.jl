@@ -25,6 +25,9 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
     (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxShiftcut) = matval
     (; cDOS_flag, include_Weep, imOmega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag, outdir, sparseSamplingTemp, flag_acon) = inp
 
+    # active output table (mode 0 populates cDOS or vDOS by cDOS_flag)
+    table = cDOS_flag == 1 ? console.cDOS : console.vDOS
+
     ### Matsubara frequencies ###
     beta = 1 / (kb * itemp)
     M = ceil(Int, (imOmega_c / (pi * kb * itemp) - 1) / 2)
@@ -37,7 +40,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
         ind_mat_freq = initSparseSampling(beta, imOmega_c, M)       
 
         # write to console
-        printTextCentered("T = "*string(itemp)*" K ", console["partingLine"], file = log_file, bold = true)
+        printTextCentered("T = "*string(itemp)*" K ", console.partingLine, file = log_file, bold = true)
         printstyled("\n - Number of Matsubara Frequencies = ", length(ind_mat_freq), " / ", nsiw)
         println("\n")
 
@@ -49,7 +52,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
         ind_mat_freq = collect(1:M+1)
 
         # write to console
-        printTextCentered("T = "*string(itemp)*" K ", console["partingLine"], file = log_file, bold = true)
+        printTextCentered("T = "*string(itemp)*" K ", console.partingLine, file = log_file, bold = true)
         printstyled("\n - Number of Matsubara Frequencies = ", nsiw)
         println("\n")
 
@@ -75,8 +78,8 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             fermi_level = 0.0
 
             ### Print to console & log file
-            console["InitValues"] = [0 phici[idx_ef] phiphi[1] znormi[1] shifti[1] -fermi_level deltai[idx_ef, 1] nothing]
-            console = printTableHeader(console, log_file)
+            initValues = [0 phici[idx_ef] phiphi[1] znormi[1] shifti[1] -fermi_level deltai[idx_ef, 1] nothing]
+            printTableHeader(table, initValues, log_file)
 
         elseif cDOS_flag == 1
             ### Initialize
@@ -86,8 +89,8 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             phiphi = ones(nsiw) .* maximum([BCS_gap, 2*phici[1]])
 
             ### Print to console & log file
-            console["InitValues"] = [0 phici[idx_ef] phiphi[1] znormi[1] deltai[idx_ef, 1] nothing]
-            console = printTableHeader(console, log_file)
+            initValues = [0 phici[idx_ef] phiphi[1] znormi[1] deltai[idx_ef, 1] nothing]
+            printTableHeader(table, initValues, log_file)
 
         end
 
@@ -101,8 +104,8 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             fermi_level = 0.0
 
             ### Print to console & log file
-            console["InitValues"] = [0 znormi[1] shifti[1] -fermi_level deltai[1] nothing]
-            console = printTableHeader(console, log_file)
+            initValues = [0 znormi[1] shifti[1] -fermi_level deltai[1] nothing]
+            printTableHeader(table, initValues, log_file)
 
         elseif cDOS_flag == 1
             ### Initialize 
@@ -110,8 +113,8 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             znormi = ones(nsiw) 
 
             ### Print to console & log file
-            console["InitValues"] = [0 znormi[1] deltai[1] nothing]
-            console = printTableHeader(console, log_file)
+            initValues = [0 znormi[1] deltai[1] nothing]
+            printTableHeader(table, initValues, log_file)
 
         end
 
@@ -151,7 +154,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
 
 
         # mixing beta
-        if isnothing(mixing_beta)
+        if isnan(mixing_beta)
             broyden_beta = maximum([0.5, 1.0 - 0.05*(i_it-1)])
         else
             broyden_beta = mixing_beta
@@ -250,7 +253,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
 
 
         ##### Print to console #####
-        outputVec, strConsole, format = formatTableRow(outputVec, console["width"], console["precision"])
+        outputVec, strConsole, format = formatTableRow(outputVec, table.width, table.precision)
         for i in axes(strConsole, 1)
             Printf.format(stdout, Printf.Format(strConsole[i]), format[i, 1], " ", format[i, 2], format[i, 3], outputVec[i], format[i, 4], " ")
         end
@@ -264,10 +267,10 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
         ##### check convergence & termination criterion #####
         minIt = 15
         if err_delta < inp.conv_thr && i_it > maximum([minIt, inp.nItFullCoul+1])
-            println(replace(console["Hline"], "." => " "))
+            println(replace(table.Hline, "." => " "))
             printstyled("\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 
-            println(log_file, replace(console["Hline"], "." => " "))
+            println(log_file, replace(table.Hline, "." => " "))
             printstyled(log_file, "\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 
             # save Z, Delta, chi, phi
@@ -327,10 +330,10 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
 
         # Gap too small
         if data[2] < inp.minGap && i_it > maximum([minIt, inp.nItFullCoul+1])
-            println(replace(console["Hline"], "." => " "))
+            println(replace(table.Hline, "." => " "))
             printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than "*string(round(inp.minGap, digits=2))*" meV!\n\n"; bold=false)
 
-            println(log_file, replace(console["Hline"], "." => " "))
+            println(log_file, replace(table.Hline, "." => " "))
             printstyled(log_file, "\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than "*string(round(inp.minGap, digits=2))*" meV!\n\n"; bold=false)
 
             data[2] = NaN
@@ -340,12 +343,12 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
 
         # max number iterations reached
         if i_it == inp.N_it
-            println(replace(console["Hline"], "." => " "))
+            println(replace(table.Hline, "." => " "))
             printstyled("\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"; bold=true)
             println("\n")
 
             # log file
-            println(log_file, replace(console["Hline"], "." => " "))
+            println(log_file, replace(table.Hline, "." => " "))
             printstyled(log_file, "\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"; bold=true)
             println(log_file, "\n")
     
@@ -532,7 +535,7 @@ function findTc(inp, console, matval, ML_Tc, log_file)
 
     end
 
-    printTextCentered("Stopping now!", console["partingLine"], file = log_file, bold = true)
+    printTextCentered("Stopping now!", console.partingLine, file = log_file, bold = true)
 
     return Tc, inp.temps, Znorm0, Delta0, Shift0, EfMu
 
@@ -569,7 +572,7 @@ function EliashbergSolver(inp::arguments)
         ### read inputs
         matval = ()
         ML_Tc = NaN
-        console = Dict()
+        console = Console()
         try
             inp, console, matval, ML_Tc = InputParser(inp, log_file)
         catch ex

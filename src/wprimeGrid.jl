@@ -64,9 +64,9 @@ function make_head_grid(poles::Vector{Float64}, wp_max::Float64, pts_per_pole::I
     pts_per_pole >= 2 || error("pts_per_pole must be >= 2 (got $pts_per_pole)")
 
     # keep only poles strictly inside (0, wp_max), merge near-duplicates
-    p = sort(filter(x -> isfinite(x) && 0 < x < wp_max, poles))
+    p_sorted = sort(filter(x -> isfinite(x) && 0 < x < wp_max, poles))
     tol = max(1e-3 * wp_max, 5) # poles min 5 meV apart
-    p = [p[i] for i in eachindex(p) if i == 1 || p[i] - p[i-1] > tol]
+    p = [p_sorted[i] for i in eachindex(p_sorted) if i == 1 || p_sorted[i] - p_sorted[i-1] > tol]
     if isempty(p)
         p = [wp_max / 4]
     end
@@ -276,13 +276,13 @@ end
 
 Set up the vDOS workspace for one temperature. The head/tail split is at
 wp_max = 2·Δ(0) of the starting state (the cDOS solution / previous temperature),
-kept within [10·domega_shift, reOmega_c_shift/2].
+kept within [10·domega, reOmega_c_shift/2].
 """
 function build_wprime_workspace(inp::arguments, realAxisParameter, gap0_start::Float64)
     (w_static, w_static_chi, lin_kernel) = realAxisParameter
 
     gap0 = (isfinite(gap0_start) && gap0_start > 0) ? gap0_start : inp.minGap
-    wp_max = clamp(2 * gap0, 10 * inp.domega_shift, inp.reOmega_c_shift / 2)
+    wp_max = clamp(2 * gap0, 10 * inp.domega, inp.reOmega_c_shift / 2)
     pts_per_pole = inp.n_cheb    # Chebyshev points per pole in the head region
 
     # tail on the domega grid (same step as w_static and w_static_chi) -> all channels k=1
@@ -321,7 +321,7 @@ function find_integrand_poles_vDOSW(wp::Vector{Float64}, w_static, w_static_chi,
     dε = dos_en[j+1] - dos_en[j]
     phi_j = linear_interpolation(w_static, phi_mat[:, j], extrapolation_bc=Flat()).(wp)
     phi_jp = linear_interpolation(w_static, phi_mat[:, j+1], extrapolation_bc=Flat()).(wp)
-    Φ1 = dε == 0 ? zero(wp) : (phi_jp .- phi_j) ./ dε
+    Φ1 = dε == 0 ? zero(phi_j) : (phi_jp .- phi_j) ./ dε   # keep ComplexF64 in both branches (else Φ1 is a type-unstable Union)
     Φ0 = phi_j .- dos_en[j] .* Φ1
 
     scale = 1 .+ Φ1 .^ 2

@@ -8,9 +8,40 @@ Julia Packages:
     - 
 
 Comments:
-    - 
+    -
 
 """
+
+"""
+    TableSpec(header, width, precision)
+
+One console output table: column `header`s, column `width`s and `precision`s, plus the
+lazily-filled horizontal rule `Hline` (set in `printTableHeader`) and `partingLine`
+(set in `printStartMessage`).
+"""
+mutable struct TableSpec
+    header::Vector{String}
+    width::Vector{Int64}
+    precision::Vector{Int64}
+    Hline::String
+    partingLine::String
+end
+TableSpec() = TableSpec(String[], Int64[], Int64[], "", "")
+TableSpec(header, width, precision) = TableSpec(header, width, precision, "", "")
+
+"""
+    Console()
+
+Console output state: a `cDOS` and a `vDOS` `TableSpec` (accessed uniformly for both
+solvers; the imaginary-axis solver populates only the one selected by `cDOS_flag`) plus
+the top-level `partingLine`.
+"""
+mutable struct Console
+    cDOS::TableSpec
+    vDOS::TableSpec
+    partingLine::String
+end
+Console() = Console(TableSpec(), TableSpec(), "")
 
 """
     savePlotData(filepath, header, columns...)
@@ -51,47 +82,29 @@ end
 
 Start message - Eliashberg Solver
 """
-function printStartMessage(console::Dict, inp, log_file; mode = 0)
+function printStartMessage(console::Console, inp, log_file; mode = 0)
 
     strAuthors =  "  Authors: Christoph Heil, Dominik Spath, Eva Kogler\n\n"
 
-    if mode == 0
-        strLine = "-"^(sum(console["width"])+length(console["width"])+1)
+    # parting line of each sub-table (empty table -> trivial line, never used)
+    console.cDOS.partingLine = "-"^(sum(console.cDOS.width) + length(console.cDOS.width) + 1)
+    console.vDOS.partingLine = "-"^(sum(console.vDOS.width) + length(console.vDOS.width) + 1)
 
-        strMode = "Eliashberg Solver started"
+    # active table (cDOS_flag selects it for both solvers)
+    strLine = inp.cDOS_flag == 1 ? console.cDOS.partingLine : console.vDOS.partingLine
 
-    elseif mode == 1
-        width = console["cDOS"]["width"]
-        strLine_cDOS = "-"^(sum(width)+length(width)+1)
-        console["cDOS"]["partingLine"] = strLine_cDOS
+    strMode = mode == 0 ? "Eliashberg Solver started" : "Real Axis Solver started"
 
-        width = console["vDOS"]["width"]
-        strLine_vDOS = "-"^(sum(width)+length(width)+1)
-        console["vDOS"]["partingLine"] = strLine_vDOS
-
-
-        strMode = "Real Axis Solver started"
-
-        # save parting lines
-        console["cDOS"]["partingLine"] = strLine_cDOS
-        console["vDOS"]["partingLine"] = strLine_vDOS
-
-        if inp.cDOS_flag == 1
-            strLine = strLine_cDOS
-        else
-            strLine = strLine_vDOS
-        end
-    end
     printTee(log_file, strAuthors)
     printTee(log_file, strLine)
 
     printTextCentered(strMode, strLine, file = log_file, bold = true)
     printTee(log_file, strLine*"\n\n\n")
-    
-    console["partingLine"] = strLine
-    
+
+    console.partingLine = strLine
+
     return console
-                                    
+
 end
 
 
@@ -103,7 +116,7 @@ Print the Allen-Dynes results to the console.
 function printADtable(console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log, log_file)
 
     # hline in rest of console
-    partingLineCons = console["partingLine"]
+    partingLineCons = console.partingLine
 
     # table headline
     headline = "Allen-Dynes-McMillan Formula";
@@ -251,15 +264,15 @@ end
 
 
 """
-    printTableHeader(console)
+    printTableHeader(table, initValues, log_file)
 
-Initialize the Table header and print it to the console
+Initialize the table header (setting `table.Hline`) and print it, together with the
+initial-value row `initValues`, to the console and log file.
 """
-function printTableHeader(console, log_file)
+function printTableHeader(table::TableSpec, initValues, log_file)
 
-    width = console["width"]
-    header = console["header"]
-    initValues = console["InitValues"]
+    width = table.width
+    header = table.header
 
     ### Define boundary ###
     tableHline = ""
@@ -309,9 +322,9 @@ function printTableHeader(console, log_file)
         end
     end
 
-    console["Hline"] = tableHline
+    table.Hline = tableHline
 
-    return console
+    return table
 
 end
 
@@ -322,25 +335,18 @@ end
 Format the header of the console output s.t. each column has the 
 specified length
 """
-function formatTableHeader(console::Dict)
-    if haskey(console, "cDOS") && haskey(console, "vDOS")
-        console["cDOS"] = formatTableHeader(console["cDOS"])
-        console["vDOS"] = formatTableHeader(console["vDOS"])
-        return console
-    end
-
-    header = console["header"]
-    width = console["width"]
-
-    for k in eachindex(header)
-        blanks = (width[k]-length(header[k]))/2
-        header[k] = " "^Int(floor(blanks))*header[k]*" "^Int(ceil(blanks))
-    end
-
-
-    console["header"] = header
-
+function formatTableHeader(console::Console)
+    formatTableHeader(console.cDOS)
+    formatTableHeader(console.vDOS)
     return console
+end
+
+function formatTableHeader(t::TableSpec)
+    for k in eachindex(t.header)
+        blanks = (t.width[k] - length(t.header[k])) / 2
+        t.header[k] = " "^Int(floor(blanks)) * t.header[k] * " "^Int(ceil(blanks))
+    end
+    return t
 end
 
 function formatTableHeader(header, width)

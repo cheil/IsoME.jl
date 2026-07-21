@@ -24,7 +24,7 @@ Real axis Eliashberg equations in the vDOS+W approximation
 function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phiphip::Matrix{ComplexF64}, shiftip::Vector{ComplexF64},
                           ws::WPrimeWorkspace, w_static::AbstractVector,
                           w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64}, Weep::Matrix{Float64},
-                          idx_ef::Int64, fermi_level::Float64, wgCoulomb::Number, electronic_spec::Tuple)
+                          idx_ef::Int64, fermi_level::Float64, wgCoulomb::Float64, electronic_spec::Tuple)
 
     if size(Weep, 1) != length(epsilon) || size(Weep, 2) != length(epsilon)
         error("The W(ε,ε′) matrix must be defined on the same energy grid as the DOS for real-axis vDOS+W calculations.")
@@ -49,12 +49,6 @@ function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phiphip::M
     g_z = -abs.(integrands[1])
     g_phi = -(FLIP .* integrands[2])
     g_chi = -(FLIP .* integrands[3])
-
-    plot(w_prime[1:ws.n_head], g_phi[1:ws.n_head])
-    plot!(w_prime[1:ws.n_head], g_z[1:ws.n_head])
-    plot!(w_prime[1:ws.n_head], g_chi[1:ws.n_head])
-    vline!(ws.poles_prev, ls=:dash)
-    savefig("Poles.png")
 
     # ------------- Ω & ω'-integration ------------- #
     # O(N)-memory linear route: K⁻ g_z and K⁺ g_phi (first ns rows) plus K⁺ g_chi on the master grid.
@@ -85,8 +79,8 @@ Real axis Eliashberg equations in the vDOS+μ approximation.
 """
 function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{ComplexF64}, phiip::Vector{ComplexF64},
                           shiftip::Vector{ComplexF64}, ws::WPrimeWorkspace, w_static::AbstractVector,
-                          w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64},
-                          fermi_level::Float64, electronic_spec::Tuple, poles)
+                          w_static_chi, dosef::Float64, wgCoulomb::Float64,
+                          fermi_level::Float64, electronic_spec::Tuple)
 
     w_prime = ws.wp_full
 
@@ -109,14 +103,6 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
     g_phi = -(FLIP .* integrands[2])
     g_chi = -(FLIP .* integrands[3])
 
-
-    plot(w_prime[1:ws.n_head], g_phi[1:ws.n_head])
-    plot!(w_prime[1:ws.n_head], g_z[1:ws.n_head])
-    plot!(w_prime[1:ws.n_head], g_chi[1:ws.n_head])
-    vline!(ws.poles_prev, ls=:dash)
-    savefig("Poles.png")
-
-
     # ------------- ω'-integration ------------- #
     # O(N)-memory linear route: K⁻ g_z and K⁺ g_phi (first ns rows) plus K⁺ g_chi on the master grid.
     Iz, Iphi = lin_kernel_omega_integral(ws, w_static, g_z, g_phi)
@@ -126,7 +112,7 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
     coulomb = wprime_trapz(ws, g_phi .* tanh.(beta .* w_prime ./ 2))
 
     Zval = 1 .+ Iz ./ (w_static .* (π * dosef))
-    phi_val = (Iphi .- mu_star .* coulomb) ./ (π * dosef)
+    phi_val = (Iphi .- wgCoulomb .* mu_star .* coulomb) ./ (π * dosef)
     shift_val = -Ichi ./ (π * dosef)
 
     return Zval, shift_val, phi_val
@@ -141,7 +127,7 @@ end
 Real axis Eliashberg equations in cDOS+μ approximation
 """
 function realEliashbergEq(mu_star::Float64, beta::Float64, deltaip::Vector{ComplexF64},
-                          ws::WPrimeWorkspace, w_static::AbstractVector)
+                          ws::WPrimeWorkspace, w_static::AbstractVector, wgCoulomb::Float64)
 
     Delta_func = linear_interpolation(w_static, deltaip, extrapolation_bc=Flat())
 
@@ -159,7 +145,7 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, deltaip::Vector{Compl
     coulomb = wprime_trapz(ws, g_phi .* tanh.(beta .* w_prime ./ 2))
 
     Zval = 1 .- Iz ./ w_static
-    Delta = (Iphi .- mu_star .* coulomb) ./ Zval
+    Delta = (Iphi .- wgCoulomb .* mu_star .* coulomb) ./ Zval
 
     return Zval, Delta
 end

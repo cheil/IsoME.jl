@@ -6,10 +6,10 @@ If it is still not working enter the unit manually via the input parameters (a2f
 ## Q2: Why does the order parameter start to oscillate between positive and negative values?
 The eliashberg equations are unstable when the coulomb part of the order parameter exceeds the phonon part at any iteration. Double check if the *muc_ME* is set correctly. Try setting the damping of the coulomb part to a higher value via *nItFullCoul* or use a different mixing factor. It is also possible that the material is simply not a superconductor at the given temperature.
 
-## Q3: What does `nothing`, -1 and "" indicate in the input structure?
-These values indicate that either a default value is used or that the input is optional. If a mandatory input parameter is left at `nothing`, -1 or "", it will be determined during the run and the placeholder will be overwritten.
+## Q3: What does `NaN`, -1 and "" indicate in the input structure?
+These sentinel values indicate that either a default value is used or that the input is optional: `NaN` for real-valued fields, `-1` for integer fields (line counts, column indices) and `""` for strings. If such an input is left at its sentinel, it will be determined during the run and the placeholder will be overwritten.
 
-E.g. if the Fermi energy (*ef*) is unspecified, its value will be extracted from the header of the dos-file and the `nothing` will be replaced by the actual value.
+E.g. if the Fermi energy (*ef*) is unspecified (`NaN`), its value will be extracted from the header of the dos-file and the `NaN` will be replaced by the actual value.
 
 ## Q4: Why is the code unable to read my input files?
 Per default, a certain structure of the input files is assumed:

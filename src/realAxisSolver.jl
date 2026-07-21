@@ -47,7 +47,7 @@ function RealAxisSolver(inp::arguments)
         ### read inputs
         matval = ()
         ML_Tc = NaN
-        console = Dict()
+        console = Console()
         a2F_itp = nothing
         try
             """ 
@@ -204,14 +204,14 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
 
             if inp.cDOS_flag == 0 && isnothing(realAxisState)
                 # initial values vDOS
-                realAxisState = initialize_real_axis_vDOS(itemp, inp, console["cDOS"], matval, realAxisParameter, log_file)
+                realAxisState = initialize_real_axis_vDOS(itemp, inp, console.cDOS, matval, realAxisParameter, log_file)
             end
 
             # solve Eliashberg equations
             if inp.cDOS_flag == 0
-                data, realAxisState = solve_realAxis_vDOS(itemp, inp, console["vDOS"], matval, realAxisParameter, realAxisState, log_file)
+                data, realAxisState = solve_realAxis_vDOS(itemp, inp, console.vDOS, matval, realAxisParameter, realAxisState, log_file)
             elseif inp.cDOS_flag == 1
-                data, realAxisState = solve_realAxis_cDOS(itemp, inp, console["cDOS"], matval, realAxisParameter, log_file)
+                data, realAxisState = solve_realAxis_cDOS(itemp, inp, console.cDOS, matval, realAxisParameter, log_file)
             end
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
@@ -332,14 +332,14 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
 
             # initial values vDOS
             if inp.cDOS_flag == 0 && iT == 1
-                realAxisState = initialize_real_axis_vDOS(itemp, inp, console["cDOS"], matval, realAxisParameter, log_file)
+                realAxisState = initialize_real_axis_vDOS(itemp, inp, console.cDOS, matval, realAxisParameter, log_file)
             end
 
             # solve Eliashberg equations
             if inp.cDOS_flag == 0
-                data, realAxisState = solve_realAxis_vDOS(itemp, inp, console["vDOS"], matval, realAxisParameter, realAxisState, log_file)
+                data, realAxisState = solve_realAxis_vDOS(itemp, inp, console.vDOS, matval, realAxisParameter, realAxisState, log_file)
             elseif inp.cDOS_flag == 1
-                data, realAxisState = solve_realAxis_cDOS(itemp, inp, console["cDOS"], matval, realAxisParameter, log_file)
+                data, realAxisState = solve_realAxis_cDOS(itemp, inp, console.cDOS, matval, realAxisParameter, log_file)
             end
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
@@ -369,7 +369,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
 
     end
 
-    printTextCentered("Stopping now!", console["partingLine"], file=log_file, bold=true)
+    printTextCentered("Stopping now!", console.partingLine, file=log_file, bold=true)
 
     return Tc, inp.temps, Znorm0, Delta0, Shift0
 
@@ -390,8 +390,8 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
     (_, _, _, _, Weep, dosef, idx_ef, _, BCS_gap, _) = matval
     # When used as vDOS+W initializer, muc_ME is unset (nothing). Derive it from W(εF,εF)·N(εF)
     # using the Morel-Anderson formula, consistent with calcMucs() in ReadIn.jl.
-    muc_ME = if vDOS_initial_guess && isnothing(inp.muc_ME) && inp.include_Weep == 1
-        typEl = !isnothing(inp.typEl) ? inp.typEl : inp.efW
+    muc_ME = if vDOS_initial_guess && isnan(inp.muc_ME) && inp.include_Weep == 1
+        typEl = !isnan(inp.typEl) ? inp.typEl : inp.efW
         mu = Weep[idx_ef, idx_ef] * dosef
         mu / (1 + mu * log(typEl / reOmega_c))
     else
@@ -402,12 +402,12 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
     conv_thr = vDOS_initial_guess ? max(1e-3, conv_thr) : conv_thr
 
     title = vDOS_initial_guess ? "Initial guess: cDOS at T = " * string(itemp) * " K" : "T = " * string(itemp) * " K "
-    printTextCentered(title, console["partingLine"], file=log_file, bold=true)
+    printTextCentered(title, console.partingLine, file=log_file, bold=true)
     printTee(log_file, "\n")
 
     state = initial_real_axis_state(inp, realAxisParameter, BCS_gap)
-    console["InitValues"] = [0 real(state.Z[1]) imag(state.Z[1]) real(state.delta[1]) imag(state.delta[1]) nothing]
-    console = printTableHeader(console, log_file)
+    initValues = [0 real(state.Z[1]) imag(state.Z[1]) real(state.delta[1]) imag(state.delta[1]) nothing]
+    printTableHeader(console, initValues, log_file)
 
     β = 1 / (kb * itemp)
     Z_new = state.Z
@@ -432,7 +432,11 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
         end
         maybe_refresh_head!(ws_ht, [pole], w_static, nothing, inp.n_cheb)
 
-        Z_new, delta_new = realEliashbergEq(muc_ME, β, delta_prev, ws_ht, w_static)
+        # weight coulomb interaction
+        wgCoulomb = minimum([1, i_it / nItFullCoul])
+
+        # Update Eliashberg
+        Z_new, delta_new = realEliashbergEq(muc_ME, β, delta_prev, ws_ht, w_static, wgCoulomb)
 
         Z_new = (1.0 - abs(broyden_beta)) .* Z_prev .+ abs(broyden_beta) .* Z_new
         delta_new = (1.0 - abs(broyden_beta)) .* delta_prev .+ abs(broyden_beta) .* delta_new
@@ -496,7 +500,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
     (w_static, w_static_chi, _) = realAxisParameter
 
 
-    printTextCentered("T = " * string(itemp) * " K ", console["partingLine"], file=log_file, bold=true)
+    printTextCentered("T = " * string(itemp) * " K ", console.partingLine, file=log_file, bold=true)
     printTee(log_file, "\n")
 
     # ----- electronic spectral information ----- #
@@ -533,8 +537,8 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
     fermi_level = state.fermi_level
 
     # print console table
-    console["InitValues"] = [0 real(state.Z[1]) imag(state.Z[1]) real(state.chi[1]) imag(state.chi[1]) state.fermi_level real(state.delta[1]) imag(state.delta[1]) nothing]
-    console = printTableHeader(console, log_file)
+    initValues = [0 real(state.Z[1]) imag(state.Z[1]) real(state.chi[1]) imag(state.chi[1]) state.fermi_level real(state.delta[1]) imag(state.delta[1]) nothing]
+    printTableHeader(console, initValues, log_file)
 
     β = 1 / (kb * itemp)
     data = [state.Z[1], state.delta[1], state.chi[1]]
@@ -569,6 +573,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         maybe_refresh_head!(gridws, poles, w_static, w_static_chi, inp.n_cheb)
         w_prime = gridws.wp_full
 
+        # weight coulomb interaction
         wgCoulomb = minimum([1, i_it / nItFullCoul])
 
 
@@ -580,7 +585,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         if inp.include_Weep == 1
             @time Z_new, chi_new, phi_new = realEliashbergEq(β, Z_prev, phi_prev::Matrix{ComplexF64}, chi_prev, gridws, w_static, w_static_chi, dosef, dos_en, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
         else
-            Z_new, chi_new, phi_new = realEliashbergEq(muc_ME, β, Z_prev, phi_prev, chi_prev, gridws, w_static, w_static_chi, dosef, dos_en, dos, fermi_level, electronic_spec, poles)
+            Z_new, chi_new, phi_new = realEliashbergEq(muc_ME, β, Z_prev, phi_prev, chi_prev, gridws, w_static, w_static_chi, dosef, wgCoulomb, fermi_level, electronic_spec)
         end
 
         # mixing on the primary variables (Z, χ, φ)
@@ -672,7 +677,7 @@ end
 linear mixing factor of eliashberg solutions
 """
 function mixing_parameter(inp, i_it)
-    if isnothing(inp.mixing_beta)
+    if isnan(inp.mixing_beta)
         return maximum([0.5, 1.0 - 0.05 * (i_it - 1)])
     end
 
@@ -717,7 +722,7 @@ end
 print state of current iteration
 """
 function print_real_axis_iteration(outputVec, console, log_file)
-    outputVec, strConsole, format = formatTableRow(outputVec, console["width"], console["precision"])
+    outputVec, strConsole, format = formatTableRow(outputVec, console.width, console.precision)
     for i in axes(strConsole, 1)
         Printf.format(stdout, Printf.Format(strConsole[i]), format[i, 1], " ", format[i, 2], format[i, 3], outputVec[i], format[i, 4], " ")
     end
@@ -734,10 +739,10 @@ end
 Print temperature converged
 """
 function print_real_axis_converged(itemp, console, log_file)
-    println(replace(console["Hline"], "." => " "))
+    println(replace(console.Hline, "." => " "))
     printstyled("\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 
-    println(log_file, replace(console["Hline"], "." => " "))
+    println(log_file, replace(console.Hline, "." => " "))
     printstyled(log_file, "\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 end
 
@@ -748,10 +753,10 @@ end
 gap at temperature too small
 """
 function print_real_axis_gap_too_small(itemp, minGap, console, log_file)
-    println(replace(console["Hline"], "." => " "))
+    println(replace(console.Hline, "." => " "))
     printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than " * string(round(minGap, digits=2)) * " meV!\n\n"; bold=false)
 
-    println(log_file, replace(console["Hline"], "." => " "))
+    println(log_file, replace(console.Hline, "." => " "))
     printstyled(log_file, "\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than " * string(round(minGap, digits=2)) * " meV!\n\n"; bold=false)
 end
 
@@ -762,11 +767,11 @@ end
 print max iterations exceeded
 """
 function print_real_axis_not_converged(inp, console, log_file)
-    println(replace(console["Hline"], "." => " "))
+    println(replace(console.Hline, "." => " "))
     printstyled("\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"; bold=true)
     println("\n")
 
-    println(log_file, replace(console["Hline"], "." => " "))
+    println(log_file, replace(console.Hline, "." => " "))
     printstyled(log_file, "\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"; bold=true)
     println(log_file, "\n")
 end

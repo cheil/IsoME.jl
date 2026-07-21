@@ -44,23 +44,23 @@ const kb = 0.08617333262; # meV/K
 # inputs Eliashberg Solver
 @kwdef mutable struct arguments
     # Parameters
-    temps::Vector{Float64}                  = [-1.0]        # Vector{Number} ?? How does this affect type stability?
-    muc_AD::Union{Float64, Nothing}         = nothing
+    temps::Vector{Float64}                  = [-1.0]        # concrete: Vector{Float64} is type-stable; Int entries auto-convert
+    muc_AD::Float64                         = NaN           # NaN == "not assigned" (isnan check); NaN never a valid μ*
     imOmega_c::Float64                      = 7000.0
-    muc_ME::Union{Float64, Nothing}         = nothing
-    mu::Union{Float64, Nothing}             = nothing
-    ef::Union{Float64, Nothing}             = nothing
-    efW::Union{Float64, Nothing}            = nothing
-    mixing_beta::Union{Float64, Nothing}    = nothing
+    muc_ME::Float64                         = NaN
+    mu::Float64                             = NaN
+    ef::Float64                             = NaN           # NaN == "auto-extract from DOS file header"
+    efW::Float64                            = NaN           # NaN == "auto-extract from Weep file header"
+    mixing_beta::Float64                    = NaN
     nItFullCoul::Int64                      = 10
     conv_thr::Float64                       = 1e-4
     minGap::Float64                         = 0.1
     N_it::Int64                             = 5000
     min_it::Int64                           = 10            # min iterations in eliashberg solver   
-    encut::Union{Float64, Vector{Float64}, Nothing} = 10000.0      # outer cutoff energies
+    encut::Float64                          = 10000.0      # symmetric outer energy cutoff: window [-encut, encut]
     shiftcut::Float64                       = 2000.0      # cutoff shift & Ne
     sparseSamplingTemp::Float64             = 2.0
-    typEl::Union{Float64, Nothing}          = nothing
+    typEl::Float64                          = NaN
     flag_acon::Bool                         = false   
     plot_flag::Bool                         = false  
     
@@ -77,29 +77,29 @@ const kb = 0.08617333262; # meV/K
 
     # a2f input file
     a2f_file::String
-    ind_smear::Union{Int64, Nothing}    = nothing
-    nsmear::Union{Int64, Nothing}       = nothing
-    nheader_a2f::Union{Int64, Nothing}  = nothing
-    nfooter_a2f::Union{Int64, Nothing}  = nothing
+    ind_smear::Int64    = -1            # -1 == auto (all header/footer/smear indices: -1 == auto-detect)
+    nsmear::Int64       = -1
+    nheader_a2f::Int64  = -1
+    nfooter_a2f::Int64  = -1
     a2f_unit::String    = ""
 
     # dos input file
     dos_file::String    = ""
-    nheader_dos::Union{Int64, Nothing}  = nothing
-    nfooter_dos::Union{Int64, Nothing}  = nothing
+    nheader_dos::Int64  = -1
+    nfooter_dos::Int64  = -1
     dos_unit::String    = ""
     spinDos::Int64      = 2
 
     # Weep input file
     Weep_file::String   = ""
-    nheader_Weep::Union{Int64, Nothing} = nothing
-    nfooter_Weep::Union{Int64, Nothing} = nothing
+    nheader_Weep::Int64 = -1
+    nfooter_Weep::Int64 = -1
     Weep_unit::String   = ""
     Weep_col::Int64     = 3
     Wen_col::Int64      = 1
     Wen_file::String    = ""
-    nheader_Wen::Union{Int64, Nothing}  = nothing
-    nfooter_Wen::Union{Int64, Nothing}  = nothing
+    nheader_Wen::Int64  = -1
+    nfooter_Wen::Int64  = -1
     Wen_unit::String    = ""
 
     # Output

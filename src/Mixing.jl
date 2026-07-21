@@ -25,7 +25,7 @@
 The bisection method is a simple root-finding method
 Two function values with opposite sign need to be known
 """
-function bisection(f::Function, a::Number, b::Number, tol::AbstractFloat=1e-6, ftol::AbstractFloat=1e-10, maxiter::Integer=1000)
+function bisection(f::F, a::Number, b::Number, tol::Float64=1e-6, ftol::Float64=1e-10, maxiter::Int=1000) where {F}
 
 
     # intitial function evaluation
@@ -36,7 +36,7 @@ function bisection(f::Function, a::Number, b::Number, tol::AbstractFloat=1e-6, f
 
     # init
     it = 0
-    c = 0
+    c = 0.0     # Float64 so the return type is Float64, not Union{Float64,Int64}
     while abs(b - a) > tol
         # max iterations
         it += 1
@@ -64,7 +64,7 @@ end
 
 
 ### Regula Falsi
-function RegulaFalsi(f::Function, fa::Float64, fb::Float64, a::Float64, b::Float64, tol::AbstractFloat=1e-6, ftol::AbstractFloat=1e-10,  maxiter::Integer=1000)
+function RegulaFalsi(f::F, fa::Float64, fb::Float64, a::Float64, b::Float64, tol::Float64=1e-6, ftol::Float64=1e-10, maxiter::Int=1000) where {F}
     """
     The Regula Falsi method is a root finding method superior to bisection
     Two function values with opposite sign need to be known
@@ -95,7 +95,7 @@ function RegulaFalsi(f::Function, fa::Float64, fb::Float64, a::Float64, b::Float
 
     # init
     it = 0
-    c = 0
+    c = 0.0     # Float64 so the return type is Float64, not Union{Float64,Int64}
     while abs(b - a) > tol
         # max iterations
         it +=1 
@@ -157,11 +157,11 @@ mutable struct BroydenMixer
     v::Vector{Vector{Float64}}
     nz::Int                         # component sizes (for un-flatten)
     nc::Int
-    phi_shape::Tuple
+    phi_shape::Union{Tuple{Int}, NTuple{2,Int}}   # φ is a 1D (cDOS) or 2D (vDOS) array
     started::Bool
 end
 
-BroydenMixer(m::Int=8) = BroydenMixer(m, Float64[], Float64[], Vector{Float64}[], Vector{Float64}[], 0, 0, (), false)
+BroydenMixer(m::Int=8) = BroydenMixer(m, Float64[], Float64[], Vector{Float64}[], Vector{Float64}[], 0, 0, (0, 0), false)
 
 # stack (Z, χ, φ) into one real vector: [Re Z; Im Z; Re χ; Im χ; Re vec(φ); Im vec(φ)]
 _broyden_flatten(Z, chi, phi) = vcat(real(Z), imag(Z), real(chi), imag(chi), real(vec(phi)), imag(vec(phi)))

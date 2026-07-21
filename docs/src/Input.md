@@ -1,7 +1,7 @@
 # Input
 Input parameters are collected in the [composite type](https://docs.julialang.org/en/v1/manual/types/#Composite-Types) `arguments()`.
 Only the path to the ``\alpha^2F`` file is mandatory; everything else either has a default or is inferred during the run.
-Fields that are meant to be inferred are left at `nothing` (numeric values) or `""` (strings), and are overwritten once their value is known.
+Fields that are meant to be inferred are left at a sentinel — `NaN` (real-valued fields), `-1` (integer fields such as line counts and column indices) or `""` (strings) — and are overwritten once their value is known.
 Because of this, we recommend creating a fresh `arguments()` instance for each call to `EliashbergSolver()` or `RealAxisSolver()` — see [Best practices](@ref).
 
 All energies are handled internally in meV.
@@ -19,21 +19,21 @@ These inputs are shared by both solvers unless noted otherwise.
 |:--------|:---------------|:------------|:------------|:---------|
 | temps   | Vector{Float64} |  [-1.0] | Temperatures considered in the calculation | `[-1.0]`: search for ``T_c``; otherwise solve at the specified temperatures |
 | a2f_file    | String   |  -  | Path to the ``\alpha^2F`` file | The only mandatory input |
-| ind_smear   | Int64 or nothing |  nothing | Smearing column used from the ``\alpha^2F`` file | The middle column is used by default |
+| ind_smear   | Int64 |  -1 | Smearing column used from the ``\alpha^2F`` file | `-1`: the middle column is used |
 | cDOS_flag | Int64 |  1   | Selects constant or variable DOS mode | 0: variable DOS; 1: constant DOS |
 | include_Weep | Int64 | 0 | Selects Morel-Anderson or screened-Coulomb mode | 0: ``\mu^*`` approximation; 1: static ``W(\varepsilon,\varepsilon')`` interaction |
 | dos_file  |  String  |     ""    | Path to the DOS file | Required if `cDOS_flag = 0` or `include_Weep = 1` |
 | Weep_file |  String  |     ""    | Path to the ``W`` file | Required if `include_Weep = 1` |
 | Wen_file  |  String  |     ""    | Path to a file containing the energy grid points of ``W`` | Only required if the grid is not contained in `Weep_file` |
-| mu      | Float64 or nothing |   nothing  | ``\mu=N(\varepsilon_F)W(\varepsilon_F,\varepsilon_F)`` | Measure of the Coulomb strength |
-| muc_AD  | Float64 or nothing |  nothing | Morel-Anderson pseudopotential for Allen-Dynes estimates, ``\mu^*_{AD}`` | If unset, the default convention described below is used |
-| muc_ME  | Float64 or nothing | nothing | Morel-Anderson pseudopotential for Migdal-Eliashberg calculations, ``\mu^*_{ME}`` | Inferred from `muc_AD`, `mu` or ``W`` when possible |
-| typEl | Float64 or nothing |  nothing | Typical electronic energy scale | In meV; used to calculate ``\mu^*`` from ``\mu`` |
-| ef        | Float64 or nothing |  nothing | Fermi energy of the DOS | In meV; extracted from the DOS-file header if not set |
-| efW       | Float64 or nothing |  nothing | Fermi energy of the ``W`` grid | In meV; extracted from the ``W``-file header if not set |
-| encut  | Float64, Vector{Float64} or nothing |  10000.0  | Energy cutoff of the ``\varepsilon``-grid | In meV; a scalar is interpreted as ``\pm`` `encut`, an interval as `[lower, upper]` |
+| mu      | Float64 |   NaN  | ``\mu=N(\varepsilon_F)W(\varepsilon_F,\varepsilon_F)`` | Measure of the Coulomb strength; `NaN`: inferred |
+| muc_AD  | Float64 |  NaN | Morel-Anderson pseudopotential for Allen-Dynes estimates, ``\mu^*_{AD}`` | `NaN`: the default convention described below is used |
+| muc_ME  | Float64 | NaN | Morel-Anderson pseudopotential for Migdal-Eliashberg calculations, ``\mu^*_{ME}`` | `NaN`: inferred from `muc_AD`, `mu` or ``W`` when possible |
+| typEl | Float64 |  NaN | Typical electronic energy scale | In meV; used to calculate ``\mu^*`` from ``\mu`` |
+| ef        | Float64 |  NaN | Fermi energy of the DOS | In meV; `NaN`: extracted from the DOS-file header |
+| efW       | Float64 |  NaN | Fermi energy of the ``W`` grid | In meV; `NaN`: extracted from the ``W``-file header |
+| encut  | Float64 |  10000.0  | Symmetric energy cutoff of the ``\varepsilon``-grid | In meV; the grid spans ``\pm`` `encut` |
 | mu_flag    | Int64 | 1   | Update the chemical potential in vDOS calculations | 0: no; 1: yes, recommended |
-| mixing_beta | Float64 or nothing | nothing | Linear mixing factor | `nothing`: use the default iteration-dependent schedule |
+| mixing_beta | Float64 | NaN | Linear mixing factor | `NaN`: use the default iteration-dependent schedule |
 | broyden_flag | Int64 | 0 | Mixing scheme | 0: linear mixing; 1: Broyden mixing (real-axis vDOS only) |
 | broyden_mem | Int64 | 4 | Broyden history depth | Number of stored iterations |
 | nItFullCoul | Int64 |  10    | Number of iterations used to ramp up the Coulomb contribution | Helps stabilize the initial iterations |
@@ -73,7 +73,6 @@ The ``\varepsilon``-grid of the real-axis solver is uniform (step `depsilon`) an
 | domega | Float64 | 1.0 | Step of the ``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` grids | In meV; also the step of the ``\omega'``-tail |
 | dOmega | Float64 | 1.0 | Step of the tabulated kernel | In meV; sets the resolution of the ``\Omega``-integral over ``\alpha^2F`` |
 | reOmega_c_shift | Float64 | 25000.0 | Frequency cutoff of ``\chi(\omega)`` | In meV; also bounds the ``\omega'``-integration in vDOS calculations |
-| domega_shift | Float64 | 2.0 | Minimum width of the pole-resolved head region of the ``\omega'``-grid | In meV; only enters as a lower bound of the head/tail split |
 | n_cheb | Int64 | 5000 | Chebyshev points per pole in the head region of the ``\omega'``-grid | Resolves the poles of the ``\omega'``-integrand |
 | depsilon | Int64 | 10 | Step of the ``\varepsilon``-grid | In meV; vDOS calculations only |
 
@@ -88,7 +87,7 @@ where ``\omega_{ph}`` is a characteristic cutoff frequency for the phonon-induce
 The typical electronic energy can be specified explicitly through *typEl*; otherwise, the Fermi energy (*ef* or *efW*) will be used.
 For the characteristic phonon cutoff, the maximum given phonon frequency is used for AD, while ME uses the frequency cutoff of the respective solver — *imOmega_c* on the imaginary axis and *reOmega_c* on the real axis.
 
-By default, the ``\mu`` and ``\mu^*`` values are unset (`nothing`), which means that *muc_AD* = 0.12 is used. This also fixes *muc_ME* through
+By default, the ``\mu`` and ``\mu^*`` values are unset (`NaN`), which means that *muc_AD* = 0.12 is used. This also fixes *muc_ME* through
 ```math
 \mu^*_{ME}= \frac{\mu^*_{AD}}{(1 + \mu^*_{AD} \ln(\frac{\omega_{ph}}{\omega_c}))}~.
 ```
@@ -140,7 +139,7 @@ The number of header/footer lines and smearing values should be recognized autom
     > The first column must contain the energies, the second column onwards the ``\alpha^2F`` values for different smearings.
     >
 
-    > **ind_smear** :: INTEGER | Default: nothing
+    > **ind_smear** :: INTEGER | Default: -1
     >
     > Index of the smearing that should be used. If unset, the column in the middle is used.
     >
@@ -158,21 +157,21 @@ The number of header/footer lines and smearing values should be recognized autom
     > | Ry     | - |
     > | Ha     | - |
 
-    >  **nheader_a2f** :: INTEGER | Default: nothing
+    >  **nheader_a2f** :: INTEGER | Default: -1
     >
     > Number of header lines in the ``\alpha^2F``-file
     >
     > | Value | Description |
     > | ---   | ----------- |
-    > | nothing | Auto-recognition |
+    > | -1 | Auto-recognition |
 
-    >  **nfooter_a2f** :: INTEGER  | Default: nothing
+    >  **nfooter_a2f** :: INTEGER  | Default: -1
     >
     > Number of footer lines in the ``\alpha^2F``-file
     >
     > | Value | Description |
     > | ---   | ----------- |
-    > | nothing | Auto-recognition |
+    > | -1 | Auto-recognition |
 
 
 ### ``N(\epsilon)``
@@ -220,21 +219,21 @@ The first and second columns of the DOS file are interpreted as the energies and
     > | Ry     | - |
     > | Ha     | - |
 
-    >  **nheader_dos** :: INTEGER | Default: nothing
+    >  **nheader_dos** :: INTEGER | Default: -1
     >
     > Number of header lines in the DOS file
     >
     > | Value | Description |
     > | ---   | ----------- |
-    > | nothing | Auto-recognition |
+    > | -1 | Auto-recognition |
 
-    >  **nfooter_dos** :: INTEGER  | Default: nothing
+    >  **nfooter_dos** :: INTEGER  | Default: -1
     >
     > Number of footer lines in the DOS file
     >
     > | Value | Description |
     > | ---   | ----------- |
-    > | nothing | Auto-recognition |
+    > | -1 | Auto-recognition |
 
 
 ### Weep

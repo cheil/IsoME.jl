@@ -50,12 +50,12 @@ The root finder then returns ``\mu \approx 0`` regardless of temperature, i.e. t
 
 **Fix:** decrease *depsilon* until the shift stabilizes. This is the real-axis counterpart of the *itpStepSize*/*itpBounds* convergence test on the imaginary axis; keep in mind that the cost of an iteration grows with the number of ``\varepsilon``-points.
 
-### No ``T_c`` is found although one is expected — decrease *dOmega*
-The kernel is not evaluated pair by pair. Instead, the ``\Omega``-integrals over ``\alpha^2F`` are tabulated on a uniform grid of step *dOmega* and the kernel is reconstructed from these tables by interpolation.
-*dOmega* therefore controls how well the phonon structure of ``\alpha^2F`` is resolved in the kernel.
+### No ``T_c`` is found although one is expected — decrease *dKernel*
+The kernel is not evaluated pair by pair. Instead, the ``\Omega``-integrals over ``\alpha^2F`` are tabulated on a uniform grid of step *dKernel* and the kernel is reconstructed from these tables by interpolation.
+*dKernel* therefore controls how well the phonon structure of ``\alpha^2F`` is resolved in the kernel.
 
-If *dOmega* is too coarse, sharp phonon peaks are smeared out, the effective coupling is underestimated and the gap is suppressed.
+If *dKernel* is too coarse, sharp phonon peaks are smeared out, the effective coupling is underestimated and the gap is suppressed.
 The solver then reports ``\Delta(0) <`` *minGap* even at low temperatures and the ``T_c`` search terminates without a transition, although Allen-Dynes (printed at the start of the run) predicts a finite ``T_c``.
 An Allen-Dynes ``T_c`` that is orders of magnitude above the ``T_c`` returned by the solver is a good indicator for this.
 
-**Fix:** decrease *dOmega* — in particular for materials with narrow phonon peaks. It is the parameter that dominates the setup cost of each temperature, so it is worth converging it on a single temperature rather than during a full ``T_c`` search.
+**Fix:** decrease *dKernel* — in particular for materials with narrow phonon peaks. It is the parameter that dominates the setup cost of each temperature, so it is worth converging it on a single temperature rather than during a full ``T_c`` search.

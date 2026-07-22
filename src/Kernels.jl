@@ -47,10 +47,10 @@ function setUpOmegaAxis(inp, matval)
     # Frequency and integration grids
     # w_axis must be larger than max(w_static, w_static_chi)
     if inp.cDOS_flag == 1
-        w_axis = 0:inp.dOmega:(inp.reOmega_c+inp.dOmega)   # w-axis at which K(ω,ω') is calculated
+        w_axis = 0:inp.dKernel:(inp.reOmega_c+inp.dKernel)   # w-axis at which K(ω,ω') is calculated
     else
         # ω linear grid to store K(ω,ω'), has to span max(reOmega_c, reOmega_c_shift).
-        w_axis = 0:inp.dOmega:(max(inp.reOmega_c, inp.reOmega_c_shift)+inp.dOmega)
+        w_axis = 0:inp.dKernel:(max(inp.reOmega_c, inp.reOmega_c_shift)+inp.dKernel)
     end
     int_axis = make_integration_axis(W_right-W_left, 300, 300, 3)      # Ω-integration axis #
 

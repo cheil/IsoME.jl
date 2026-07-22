@@ -88,7 +88,7 @@ function root_finding(fmu, outdir, fermi_level)
     end
 
     ### calc new mu using the RegulaFalsi method
-    mu = RegulaFalsi(fmu, fmu0, fmu1, mu0, mu1, 1e-3, 1e-6)
+    mu = RegulaFalsi(fmu, fmu0, fmu1, mu0, mu1, 1e-3, 1e-6)     # Check which ftol is sufficient (1e-4?, 1e-3?)
 
     return mu
 end
@@ -157,31 +157,23 @@ end
 ############################################################
 # ---------------------- Real Axis ----------------------- #
 ############################################################
-# φ interpolation onto the ω'-grid.
-#   vDOS+μ: φ(ω)   -> vector, column interpolation
-#   vDOS+W: φ(ω,ε) -> matrix, column-wise interpolation over ω (reuses realAxis helper)
-interp_phi_ongrid(w_static, phi::AbstractVector, w_prime) =
-    linear_interpolation(w_static, phi, extrapolation_bc=Flat()).(w_prime)
-interp_phi_ongrid(w_static, phi::AbstractMatrix, w_prime) =
-    interpolate_phi_matrix(w_static, phi, w_prime)
-
-
 """
     mu_update_real_axis()
 
 Update the chemical potential to conserve charge neutrality - real axis implementation.
+φ is passed in separable form: φ_ph(ω) always, φ_c(ε) only in vDOS+W (empty in vDOS+μ).
 """
-function mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, electronic_spec, dos_en, dos, znormip, phiphip, shiftip, outdir)
+function mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, electronic_spec, dos_en, dos, znormip, phi_ph, phi_c, shiftip, outdir)
 
     ### Calculate N_e in the non-SC state
-    Ne_nsc = 2 .* trapz(dos_en, fermiFcn(dos_en, 0.0, itemp) .* dos)   
+    Ne_nsc = 2 .* trapz(dos_en, fermiFcn(dos_en, 0.0, itemp) .* dos)
 
-    # interpolate Z,χ,ϕ  (φ is a vector in vDOS+μ, a matrix φ(ω,ε) in vDOS+W)
+    # interpolate Z, χ, φ_ph onto the ω'-grid (φ_c lives on the ε-grid, no ω-interp)
     Z_itp = linear_interpolation(w_static, znormip, extrapolation_bc=Flat())
     shift_itp = linear_interpolation(w_static_chi, shiftip, extrapolation_bc=Flat())
 
     Z_ongrid = Z_itp.(w_prime)
-    phi_ongrid = interp_phi_ongrid(w_static, phiphip, w_prime)
+    phi_ph_ongrid = linear_interpolation(w_static, phi_ph, extrapolation_bc=Flat()).(w_prime)
     shift_ongrid = shift_itp.(w_prime)
 
     dos_int = trapz(dos_en, dos)
@@ -189,9 +181,9 @@ function mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime
     # temperature
     β = 1/(kb*itemp)
     tanhw = tanh.(β .* w_prime ./ 2)
-    
+
     # call calc_Ne_Sc with first argument unspecified
-    fmu(x)  = diff_Ne_realAxis(x, Ne_nsc, tanhw, w_prime, electronic_spec, dos_int, Z_ongrid, phi_ongrid, shift_ongrid)
+    fmu(x)  = diff_Ne_realAxis(x, Ne_nsc, tanhw, w_prime, electronic_spec, dos_int, Z_ongrid, phi_ph_ongrid, phi_c, shift_ongrid)
 
     mu = root_finding(fmu, outdir, fermi_level)
     #@time mu2 = find_zero((fmu, dfmu), fermi_level, Roots.LithBoonkkampIJzerman(3, 1))
@@ -206,25 +198,19 @@ end
 Calculate the number of electrons in the sc state for a given chemical
 potential minus the number of electrons in the normal state
 """
-function diff_Ne_realAxis(mu, Ne_nsc, tanhw, w_prime, electronic_spec, dos_int, Z_ongrid, phi_ongrid::AbstractVector, shift_ongrid)
+function diff_Ne_realAxis(mu, Ne_nsc, tanhw, w_prime, electronic_spec, dos_int, Z_ongrid, phi_ph_ongrid, phi_c, shift_ongrid)
 
     shift_ongrid = shift_ongrid .- mu
 
-    # --------------- Causality (vDOS+μ: φ(ω) ε-independent) --------------- #
-    integrands = epsilon_helpers(electronic_spec, Z_ongrid, phi_ongrid, shift_ongrid, w_prime, idx_skip = [2])
-    z_int, chi_int = integrands[1], integrands[3]
-
-    return Ne_root(Ne_nsc, dos_int, z_int, chi_int, tanhw, w_prime)
-end
-
-function diff_Ne_realAxis(mu, Ne_nsc, tanhw, w_prime, electronic_spec, dos_int, Z_ongrid, phi_ongrid::AbstractMatrix, shift_ongrid)
-
-    shift_ongrid = shift_ongrid .- mu
-
-    # --------------- Causality (vDOS+W: φ(ω,ε) ε-dependent) --------------- #
-    # φ enters ε_p = √((ω'Z)²−φ²) per ε-interval, so the ε-integral runs through
-    # the vDOSW moment loop. Coulomb/W plays no role in charge conservation.
-    z_int, chi_int = epsilon_causality_vDOSW(electronic_spec, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
+    # Causality integrand. vDOS+μ (phi_c empty): φ(ω) ε-independent -> scalar epsilon_helpers.
+    # vDOS+W: φ(ω,ε)=φ_ph(ω)+φ_c(ε) enters ε_p=√((ω'Z)²−φ²) per interval -> vDOSW moment loop
+    # (Coulomb/W plays no role in charge conservation, so it is dropped here).
+    if isempty(phi_c)
+        integrands = epsilon_helpers(electronic_spec, Z_ongrid, phi_ph_ongrid, shift_ongrid, w_prime, idx_skip = [2])
+        z_int, chi_int = integrands[1], integrands[3]
+    else
+        z_int, chi_int = epsilon_causality_vDOSW(electronic_spec, Z_ongrid, phi_ph_ongrid, phi_c, shift_ongrid, w_prime)
+    end
 
     return Ne_root(Ne_nsc, dos_int, z_int, chi_int, tanhw, w_prime)
 end

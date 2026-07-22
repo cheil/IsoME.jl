@@ -119,6 +119,7 @@ function RegulaFalsi(f::F, fa::Float64, fb::Float64, a::Float64, b::Float64, tol
         # end
 
         if abs(fc) < ftol
+            println("ftol: ", ftol)
             break
         elseif fa * fc > 0
             a = c   # Root is in the right half of [a,b].
@@ -157,39 +158,41 @@ mutable struct BroydenMixer
     v::Vector{Vector{Float64}}
     nz::Int                         # component sizes (for un-flatten)
     nc::Int
-    phi_shape::Union{Tuple{Int}, NTuple{2,Int}}   # φ is a 1D (cDOS) or 2D (vDOS) array
+    n_ph::Int                       # length of φ_ph(ω)
+    n_c::Int                        # length of φ_c(ε); 0 in vDOS+μ
     started::Bool
 end
 
-BroydenMixer(m::Int=8) = BroydenMixer(m, Float64[], Float64[], Vector{Float64}[], Vector{Float64}[], 0, 0, (0, 0), false)
+BroydenMixer(m::Int=8) = BroydenMixer(m, Float64[], Float64[], Vector{Float64}[], Vector{Float64}[], 0, 0, 0, 0, false)
 
-# stack (Z, χ, φ) into one real vector: [Re Z; Im Z; Re χ; Im χ; Re vec(φ); Im vec(φ)]
-_broyden_flatten(Z, chi, phi) = vcat(real(Z), imag(Z), real(chi), imag(chi), real(vec(phi)), imag(vec(phi)))
+# stack (Z, χ, φ_ph, φ_c) into one real vector: [Re Z; Im Z; Re χ; Im χ; Re φ_ph; Im φ_ph; Re φ_c; Im φ_c]
+_broyden_flatten(Z, chi, phi_ph, phi_c) = vcat(real(Z), imag(Z), real(chi), imag(chi),
+                                               real(phi_ph), imag(phi_ph), real(phi_c), imag(phi_c))
 
 function _broyden_unflatten(mx::BroydenMixer, x::Vector{Float64})
-    nz, nc = mx.nz, mx.nc
-    np = prod(mx.phi_shape)
+    nz, nc, nph, ncphi = mx.nz, mx.nc, mx.n_ph, mx.n_c
     o = 0
-    Z   = complex.(x[o+1:o+nz], x[o+nz+1:o+2nz]); o += 2nz
-    chi = complex.(x[o+1:o+nc], x[o+nc+1:o+2nc]); o += 2nc
-    phi = reshape(complex.(x[o+1:o+np], x[o+np+1:o+2np]), mx.phi_shape)
-    return Z, chi, phi
+    Z      = complex.(x[o+1:o+nz], x[o+nz+1:o+2nz]);      o += 2nz
+    chi    = complex.(x[o+1:o+nc], x[o+nc+1:o+2nc]);      o += 2nc
+    phi_ph = complex.(x[o+1:o+nph], x[o+nph+1:o+2nph]);   o += 2nph
+    phi_c  = complex.(x[o+1:o+ncphi], x[o+ncphi+1:o+2ncphi])
+    return Z, chi, phi_ph, phi_c
 end
 
 """
-    broyden_mix!(mx, β, Z_prev, chi_prev, phi_prev, Z_out, chi_out, phi_out)
+    broyden_mix!(mx, β, Z_prev, chi_prev, phi_ph_prev, phi_c_prev, Z_out, chi_out, phi_ph_out, phi_c_out)
 
 One Broyden 2nd-method step. `(*_prev)` is the input to realEliashbergEq, `(*_out)` its
-raw output. Returns the mixed `(Z, χ, φ)`. The first call falls back to linear mixing
+raw output. Returns the mixed `(Z, χ, φ_ph, φ_c)`. The first call falls back to linear mixing
 `x + β(F−x)` and seeds the history.
 """
-function broyden_mix!(mx::BroydenMixer, β, Z_prev, chi_prev, phi_prev, Z_out, chi_out, phi_out)
+function broyden_mix!(mx::BroydenMixer, β, Z_prev, chi_prev, phi_ph_prev, phi_c_prev, Z_out, chi_out, phi_ph_out, phi_c_out)
     if !mx.started
-        mx.nz = length(Z_prev); mx.nc = length(chi_prev); mx.phi_shape = size(phi_prev)
+        mx.nz = length(Z_prev); mx.nc = length(chi_prev); mx.n_ph = length(phi_ph_prev); mx.n_c = length(phi_c_prev)
     end
 
-    xin  = _broyden_flatten(Z_prev, chi_prev, phi_prev)
-    xout = _broyden_flatten(Z_out,  chi_out,  phi_out)
+    xin  = _broyden_flatten(Z_prev, chi_prev, phi_ph_prev, phi_c_prev)
+    xout = _broyden_flatten(Z_out,  chi_out,  phi_ph_out,  phi_c_out)
     F    = xout .- xin                       # residual g(x) = F(x) - x
 
     if !mx.started

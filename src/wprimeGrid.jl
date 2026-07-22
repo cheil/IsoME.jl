@@ -295,7 +295,7 @@ end
 
 
 """
-    find_integrand_poles_vDOSW(wp, w_static, w_static_chi, znormip, phi_mat, shiftip,
+    find_integrand_poles_vDOSW(wp, w_static, w_static_chi, znormip, phi_ph, phi_c, shiftip,
                                fermi_level, dos_en, idx_ef, gap0)
 
 Poles of the ε-integrated ω'-integrand for the vDOS+W approximation, evaluated at the
@@ -309,22 +309,22 @@ The poles are the roots of Im(S ± P) (collapsing Lorentzian widths) plus the mi
 |P|² (branch point). Returns a sorted, non-empty vector.
 """
 function find_integrand_poles_vDOSW(wp::Vector{Float64}, w_static, w_static_chi,
-                                    znormip::Vector{ComplexF64}, phi_mat::Matrix{ComplexF64},
+                                    znormip::Vector{ComplexF64}, phi_ph::Vector{ComplexF64}, phi_c::Vector{ComplexF64},
                                     shiftip::Vector{ComplexF64}, fermi_level::Float64,
                                     dos_en::Vector{Float64}, idx_ef::Int, gap0::Float64)
 
     Z_ong = linear_interpolation(w_static, znormip, extrapolation_bc=Flat()).(wp)
     chi_ong = linear_interpolation(w_static_chi, shiftip, extrapolation_bc=Flat()).(wp) .- fermi_level
 
-    # Fermi-level ε-interval and the affine coefficients of φ(ε) there
-    j = clamp(idx_ef, 1, size(phi_mat, 2) - 1)
+    # φ(ω,ε) = φ_ph(ω) + φ_c(ε): at the Fermi-level ε-interval the affine coefficients are
+    # Φ1 = φ_c'(ε) (a scalar, ω-independent) and Φ0(ω) = φ_ph(ω) + φ_c(ε_j) − ε_j·Φ1.
+    phi_ph_ong = linear_interpolation(w_static, phi_ph, extrapolation_bc=Flat()).(wp)
+    j = clamp(idx_ef, 1, length(phi_c) - 1)
     dε = dos_en[j+1] - dos_en[j]
-    phi_j = linear_interpolation(w_static, phi_mat[:, j], extrapolation_bc=Flat()).(wp)
-    phi_jp = linear_interpolation(w_static, phi_mat[:, j+1], extrapolation_bc=Flat()).(wp)
-    Φ1 = dε == 0 ? zero(phi_j) : (phi_jp .- phi_j) ./ dε   # keep ComplexF64 in both branches (else Φ1 is a type-unstable Union)
-    Φ0 = phi_j .- dos_en[j] .* Φ1
+    Φ1 = dε == 0 ? zero(ComplexF64) : (phi_c[j+1] - phi_c[j]) / dε
+    Φ0 = phi_ph_ong .+ phi_c[j] .- dos_en[j] .* Φ1
 
-    scale = 1 .+ Φ1 .^ 2
+    scale = 1 + Φ1^2
     wZ = wp .* Z_ong
     S = (chi_ong .+ Φ0 .* Φ1) ./ scale
     P = sqrt.((wZ .^ 2 .- chi_ong .^ 2 .- Φ0 .^ 2) ./ scale .+ S .^ 2)

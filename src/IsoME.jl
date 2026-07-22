@@ -57,7 +57,7 @@ const kb = 0.08617333262; # meV/K
     minGap::Float64                         = 0.1
     N_it::Int64                             = 5000
     min_it::Int64                           = 10            # min iterations in eliashberg solver   
-    encut::Float64                          = 10000.0      # symmetric outer energy cutoff: window [-encut, encut]
+    encut::Float64                          = 5000.0      # symmetric outer energy cutoff: window [-encut, encut]
     shiftcut::Float64                       = 2000.0      # cutoff shift & Ne
     sparseSamplingTemp::Float64             = 2.0
     typEl::Float64                          = NaN
@@ -112,13 +112,13 @@ const kb = 0.08617333262; # meV/K
 
     # ----------- real axis inputs ----------- #
     # linear ω-grid
-    reOmega_c::Float64          = 4000.0  # ω-grid cutoff
-    domega::Float64             = 1.0   # ω-grid step size / meV
-    dOmega::Float64             = 1.0
+    reOmega_c::Float64          = 4000.0    # ω-grid cutoff
+    domega::Float64             = 1.0       # ω-grid step size / meV
+    dKernel::Float64            = 1.0       # (ω,ω') in Kernels
     # χ linear ω-grid
-    reOmega_c_shift::Float64    = 25000.0 # ω-cutoff χ(ω)
+    reOmega_c_shift::Float64    = 25000.0   # ω-cutoff χ(ω)
     # ω'-chebyshev
-    n_cheb::Int64               = 5000  # number of chebyshev points in ω'-integration
+    n_cheb::Int64               = 5000      # number of chebyshev points around poles in ω'-integration
     # ε-stepsize
     depsilon:: Int64            = 10
 

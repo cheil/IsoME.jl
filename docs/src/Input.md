@@ -71,7 +71,7 @@ The ``\varepsilon``-grid of the real-axis solver is uniform (step `depsilon`) an
 |:--------|:---------------|:------------|:------------|:---------|
 | reOmega_c  | Float64 | 4000.0 | Frequency cutoff of ``Z(\omega)`` and ``\Delta(\omega)`` | In meV; also bounds the ``\omega'``-integration in cDOS calculations |
 | domega | Float64 | 1.0 | Step of the ``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` grids | In meV; also the step of the ``\omega'``-tail |
-| dOmega | Float64 | 1.0 | Step of the tabulated kernel | In meV; sets the resolution of the ``\Omega``-integral over ``\alpha^2F`` |
+| dKernel | Float64 | 1.0 | Step of the tabulated kernel | In meV; sets the resolution of the ``\Omega``-integral over ``\alpha^2F`` |
 | reOmega_c_shift | Float64 | 25000.0 | Frequency cutoff of ``\chi(\omega)`` | In meV; also bounds the ``\omega'``-integration in vDOS calculations |
 | n_cheb | Int64 | 5000 | Chebyshev points per pole in the head region of the ``\omega'``-grid | Resolves the poles of the ``\omega'``-integrand |
 | depsilon | Int64 | 10 | Step of the ``\varepsilon``-grid | In meV; vDOS calculations only |

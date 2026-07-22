@@ -36,7 +36,8 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
 
 
     # ------------- Dos and Weep -------------- #
-    if isfile(inp.dos_file) && (inp.cDOS_flag == 0 || !isnan(inp.mu))
+    if isfile(inp.dos_file) && (inp.cDOS_flag == 0 || (isnan(inp.mu) && isfile(inp.Weep_file)))
+
         # read dos
         dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.ef, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos, outdir=inp.outdir, logFile=log_file)
         inp.ef = ef

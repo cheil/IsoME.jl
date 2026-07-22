@@ -2,26 +2,29 @@
     file containing the real axis eliashberg equations
 """
 
-# --- DEBUG: memory overview per section (remove later) -----------------------
-# @memdbg "label" expr  -> evaluates expr, prints bytes allocated by it and the
-# process peak RSS so far, and returns expr's value so it can be used inline.
-macro memdbg(label, expr)
-    quote
-        local _s = @timed $(esc(expr))
-        @info string("[MEMDBG] ", $(esc(label))) alloc_MiB = round(_s.bytes / 2^20, digits = 1) peak_rss_MiB = round(Sys.maxrss() / 2^20, digits = 1)
-        _s.value
+# --- DEBUG: per-iteration memory report (remove later) -----------------------
+# report_iteration_mem(i_it; name1=var1, name2=var2, ...) prints the process peak
+# RSS so far and, of the passed variables, the single largest live one (name + MiB),
+# so you can see which array dominates the working set at each SCF iteration.
+function report_iteration_mem(i_it; vars...)
+    biggest = :none; nbytes = 0
+    for (name, v) in vars
+        b = Base.summarysize(v)
+        b > nbytes && ((biggest, nbytes) = (name, b))
     end
+    @info "[MEM]" it = i_it peak_rss_MiB = round(Sys.maxrss() / 2^20, digits = 1) biggest biggest_MiB = round(nbytes / 2^20, digits = 1)
+    return nothing
 end
 # ----------------------------------------------------------------------------
 
 
 """
-    realEliashbergEq(beta, znormip, phiphip, shiftip, ws, w_static, w_static_chi, dosef,
+    realEliashbergEq(beta, znormip, phi_ph_ip, phi_c_ip, shiftip, ws, w_static, w_static_chi, dosef,
                      epsilon, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
 
 Real axis Eliashberg equations in the vDOS+W approximation
 """
-function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phiphip::Matrix{ComplexF64}, shiftip::Vector{ComplexF64},
+function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phi_ph_ip::Vector{ComplexF64}, phi_c_ip::Vector{ComplexF64}, shiftip::Vector{ComplexF64},
                           ws::WPrimeWorkspace, w_static::AbstractVector,
                           w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64}, Weep::Matrix{Float64},
                           idx_ef::Int64, fermi_level::Float64, wgCoulomb::Float64, electronic_spec::Tuple)
@@ -38,10 +41,16 @@ function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phiphip::M
 
     Z_ongrid = Z_itp.(w_prime)
     shift_ongrid = shift_itp.(w_prime) .- fermi_level
-    phi_ongrid = @memdbg "phi_ongrid" interpolate_phi_matrix(w_static, phiphip, w_prime)
+    # φ(ω,ε) = φ_ph(ω) + φ_c(ε): only φ_ph needs the ω→ω' interpolation; φ_c lives on the ε-grid.
+    phi_ph_ongrid = linear_interpolation(w_static, phi_ph_ip, extrapolation_bc=Flat()).(w_prime)
 
     # ------------- ε-integration ------------- #
-    integrands, coulomb_spectral = @memdbg "epsilon_helpers_vDOSW" epsilon_helpers_vDOSW(electronic_spec, Weep, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
+    integrands, coulomb_spectral = epsilon_helpers_vDOSW(electronic_spec, Weep, Z_ongrid, phi_ph_ongrid, phi_c_ip, shift_ongrid, w_prime)
+
+    # DEBUG: the ε-integration allocates two M×Nint transients (C0phi/C1phi, freed on return)
+    # plus the returned ndos×M coulomb_spectral; Sys.maxrss() is monotonic so it captures that
+    # peak even though C0phi/C1phi are already gone by iteration-end. (remove later)
+    @info "[MEM] ε-integration" peak_rss_MiB = round(Sys.maxrss() / 2^20, digits = 1) coulomb_spectral_MiB = round(Base.summarysize(coulomb_spectral) / 2^20, digits = 1) C0C1phi_transient_MiB = round(2 * length(w_prime) * length(electronic_spec[5]) * 8 / 2^20, digits = 1)
 
     # Z-integrand must be positive (causality), flip the others accordingly
     # Note: Minus sign because split of -Θ to (ε+χ +- ε_p) (eq. (51))
@@ -52,23 +61,22 @@ function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phiphip::M
 
     # ------------- Ω & ω'-integration ------------- #
     # O(N)-memory linear route: K⁻ g_z and K⁺ g_phi (first ns rows) plus K⁺ g_chi on the master grid.
-    Iz, Iphi = @memdbg "kernels Iz/Iphi" lin_kernel_omega_integral(ws, w_static, g_z, g_phi)
-    Ichi = @memdbg "kernels Ichi" lin_kernel_omega_integral_chi(ws, w_static_chi, g_chi)
+    Iz, Iphi = lin_kernel_omega_integral(ws, w_static, g_z, g_phi)
+    Ichi = lin_kernel_omega_integral_chi(ws, w_static_chi, g_chi)
 
     # Coulomb term: integrate N(ε')W(ε,ε') with the same piecewise-linear spectral
     # quadrature (coulomb_spectral is ndos × M). The dosef prefactor cancels.
     wgt_full = vcat(ws.wgt_head, ws.wgt_tail)
     coulomb_weight = wgt_full .* FLIP .* tanh.(beta .* w_prime ./ 2)
-    phi_c_val = (wgCoulomb / π) .* (coulomb_spectral * coulomb_weight)   # length ndos
+    phi_c_val = (wgCoulomb / π) .* (coulomb_spectral * coulomb_weight)   # φ_c(ε), length ndos
 
     Zval = 1 .+ Iz ./ (w_static .* (π * dosef))
-    phi_ph_val = Iphi ./ (π * dosef)
+    phi_ph_val = Iphi ./ (π * dosef)                                     # φ_ph(ω), length nω
     shift_val = -Ichi ./ (π * dosef)
 
-    phi_val = repeat(phi_ph_val, 1, length(epsilon)) .+ transpose(phi_c_val)
-
-    # Δ is derived from φ and Z in the solver after mixing; hand back φ here.
-    return Zval, shift_val, phi_val
+    # φ(ω,ε) = φ_ph(ω) + φ_c(ε) is kept in separable form; no nω×ndos matrix is built.
+    # Δ is derived from φ and Z in the solver after mixing; hand back the two φ vectors here.
+    return Zval, shift_val, phi_ph_val, phi_c_val
 end
 
 
@@ -192,16 +200,6 @@ function epsilon_helpers(electronic_spec, Z_ongrid, phi_ongrid, shift_ongrid, w_
     return integrands
 end
 
-function interpolate_phi_matrix(w_static, phi::Matrix{ComplexF64}, w_prime::Vector{Float64})
-    phi_ongrid = Matrix{ComplexF64}(undef, length(w_prime), size(phi, 2))
-    @inbounds for iε in axes(phi, 2)
-        phi_itp = linear_interpolation(w_static, phi[:, iε], extrapolation_bc=Flat())
-        phi_ongrid[:, iε] = phi_itp.(w_prime)
-    end
-    return phi_ongrid
-end
-
-
 """
     lorentzian_interval_moments(εl, εr, a, b)
 
@@ -244,7 +242,7 @@ by one order, so it is obtained by calling this with (i1, i2, i3) instead of (i0
 end
 
 """
-    epsilon_helpers_vDOSW(electronic_spec, epsilon, dos, Weep, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
+    epsilon_helpers_vDOSW(electronic_spec, Weep, Z_ongrid, phi_ph_ongrid, phi_c, shift_ongrid, w_prime)
 
 Fused route for the vDOS+W spectral integrals: instead of materialising the
 I⁰..I³ Lorentzian-moment matrices (and S, P, R±, I± as full ω′×ε matrices), 
@@ -253,7 +251,7 @@ into length-M vectors for the Z, φ and χ integrands.
 Only the φ-branch coefficients C0/C1 are stored as matrices, because the Coulomb
 part couples them to M0W/M1W over the *output* ε-grid via a GEMM.
 """
-function epsilon_helpers_vDOSW(electronic_spec, Weep, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
+function epsilon_helpers_vDOSW(electronic_spec, Weep, Z_ongrid, phi_ph_ongrid, phi_c, shift_ongrid, w_prime)
     eps_1, eps_2, dos_1, dos_2, dε, ddos, M0W, M1W = electronic_spec
 
     M = length(w_prime)
@@ -276,11 +274,12 @@ function epsilon_helpers_vDOSW(electronic_spec, Weep, Z_ongrid, phi_ongrid, shif
         m1 = ddos[jε] * invdε
         m0 = dos_1[jε] - xl * m1
 
+        # φ(ω,ε) = φ_ph(ω) + φ_c(ε): the ε-slope Φ1 = φ_c'(ε) is ω-independent
+        Φ1 = (phi_c[jε+1] - phi_c[jε]) * invdε
+        inv_scale = 1 / (1 + Φ1^2)
+
         for iw in 1:M
-            ϕl = phi_ongrid[iw, jε]
-            Φ1 = (phi_ongrid[iw, jε+1] - ϕl) * invdε
-            Φ0 = ϕl - xl * Φ1
-            inv_scale = 1 / (1 + Φ1^2)
+            Φ0 = phi_ph_ongrid[iw] + phi_c[jε] - xl * Φ1
             sh = shift_ongrid[iw]
             wz = wZ[iw]
 
@@ -335,7 +334,7 @@ end
 
 
 """
-    epsilon_causality_vDOSW(electronic_spec, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
+    epsilon_causality_vDOSW(electronic_spec, Z_ongrid, phi_ph_ongrid, phi_c, shift_ongrid, w_prime)
 
 Lean vDOS+W ε-integration for the μ-update. Same moment loop as
 `epsilon_helpers_vDOSW`, but returns only the Z (causality) and χ (charge)
@@ -343,7 +342,7 @@ Lean vDOS+W ε-integration for the μ-update. Same moment loop as
 needed to conserve charge, so they are dropped — this runs on every root-finder
 evaluation of `diff_Ne_realAxis`.
 """
-function epsilon_causality_vDOSW(electronic_spec, Z_ongrid, phi_ongrid, shift_ongrid, w_prime)
+function epsilon_causality_vDOSW(electronic_spec, Z_ongrid, phi_ph_ongrid, phi_c, shift_ongrid, w_prime)
     eps_1, eps_2, dos_1, dos_2, dε, ddos, _, _ = electronic_spec
 
     M = length(w_prime)
@@ -361,11 +360,12 @@ function epsilon_causality_vDOSW(electronic_spec, Z_ongrid, phi_ongrid, shift_on
         m1 = ddos[jε] * invdε
         m0 = dos_1[jε] - xl * m1
 
+        # φ(ω,ε) = φ_ph(ω) + φ_c(ε): the ε-slope Φ1 = φ_c'(ε) is ω-independent
+        Φ1 = (phi_c[jε+1] - phi_c[jε]) * invdε
+        inv_scale = 1 / (1 + Φ1^2)
+
         for iw in 1:M
-            ϕl = phi_ongrid[iw, jε]
-            Φ1 = (phi_ongrid[iw, jε+1] - ϕl) * invdε
-            Φ0 = ϕl - xl * Φ1
-            inv_scale = 1 / (1 + Φ1^2)
+            Φ0 = phi_ph_ongrid[iw] + phi_c[jε] - xl * Φ1
             sh = shift_ongrid[iw]
             wz = wZ[iw]
 

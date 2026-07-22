@@ -42,7 +42,7 @@ where ``G`` is the interpolated ``\alpha^2F`` and ``n`` the Bose function.
 The ``\Omega``-axis is composed of a Chebyshev grid inside a small window around the ``1/\Omega`` singularity, where the integrand varies rapidly and the principal value has to be resolved, and of linear grids outside of it, where the integrand is smooth.
 The integration itself is performed with the trapezoidal rule.
 
-``I_1`` and ``I_2`` are tabulated on a uniform ``x``-grid of step `dOmega` that spans ``\pm 2\,\omega_{\max}``, so that every combination ``\pm\omega\pm\omega'`` reachable from the frequency grids falls inside the table.
+``I_1`` and ``I_2`` are tabulated on a uniform ``x``-grid of step `dKernel` that spans ``\pm 2\,\omega_{\max}``, so that every combination ``\pm\omega\pm\omega'`` reachable from the frequency grids falls inside the table.
 This is the expensive part of the setup, and it is also the reason the kernel cannot be reused across temperatures: both ``I_2`` and the Fermi factors depend on ``\beta``.
 
 ### The linear (difference-grid) representation
@@ -58,8 +58,8 @@ K^{-}(\omega,\omega') = -\mathcal{K}(\omega,\omega') - \mathcal{K}(\omega,-\omeg
 Only the ``\mathcal{O}(N)`` tables ``A`` and ``B`` are stored; the ``\mathcal{O}(N^2)`` kernel matrix is never formed.
 Evaluating the kernel at an arbitrary pair ``(\omega,\omega')`` then amounts to interpolating ``A`` and ``B`` at ``x = \omega'-\omega`` and ``x = -\omega-\omega'``, plus one Fermi factor.
 
-Because the kernel is reconstructed by *interpolating* these tables, `dOmega` controls how well the ``\Omega``-integral — and with it the phonon structure — is resolved.
-A too coarse `dOmega` smears the sharp features of ``\alpha^2F`` and can suppress the gap altogether; see the [FAQ](@ref).
+Because the kernel is reconstructed by *interpolating* these tables, `dKernel` controls how well the ``\Omega``-integral — and with it the phonon structure — is resolved.
+A too coarse `dKernel` smears the sharp features of ``\alpha^2F`` and can suppress the gap altogether; see the [FAQ](@ref).
 
 ## ``\varepsilon``-integration
 In the vDOS approximations the equations contain an integral over the electronic energy ``\varepsilon``, weighted with the density of states ``N(\varepsilon)``.
@@ -136,7 +136,7 @@ vDOS calculations are never started from scratch: the first temperature is seede
 |:----------|:-----|
 | `reOmega_c`, `domega` | Cutoff and step of the ``Z(\omega)``, ``\Delta(\omega)`` grid, and of the ``\omega'``-tail in cDOS calculations |
 | `reOmega_c_shift` | Cutoff of the ``\chi(\omega)`` grid and of the ``\omega'``-tail in vDOS calculations |
-| `dOmega` | Step of the kernel tables ``A(x)``, ``B(x)``; sets the resolution of the ``\Omega``-integral |
+| `dKernel` | Step of the kernel tables ``A(x)``, ``B(x)``; sets the resolution of the ``\Omega``-integral |
 | `n_cheb` | Chebyshev points per pole in the head region of the ``\omega'``-grid |
 | `depsilon` | Step of the ``\varepsilon``-grid (vDOS) |
 | `encut` | Range of the ``\varepsilon``-integration |

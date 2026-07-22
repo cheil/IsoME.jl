@@ -168,7 +168,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             if cDOS_flag == 0
                 ### mu update 
                 if mu_flag == 1 && i_it > 1
-                    fermi_level = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, outdir)
+                    fermi_level = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, fermi_level, outdir)
                 end
 
                 new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb, fermi_level, idxShiftcut)
@@ -214,7 +214,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             if cDOS_flag == 0
                 ### mu update
                 if mu_flag == 1 && i_it > 1
-                    fermi_level = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, outdir)
+                    fermi_level = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, fermi_level, outdir)
                 end
 
                 new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, fermi_level, wgCoulomb, idxShiftcut)
@@ -460,8 +460,9 @@ function findTc(inp, console, matval, ML_Tc, log_file)
                     # find root
                     m2(x) = m(x, par)
                     itemp = floor(find_zero(m2, par[2]))
-   
-                catch                   
+
+                catch ex
+                    ex isa InterruptException && rethrow(ex)
                     # expansion to third order --> analytical formula for root (only one real root)
                     a=p0[1]
                     c=p0[3]
@@ -549,132 +550,93 @@ Main function. User has to pass the input arguments and it returns the Tc.
 """
 function EliashbergSolver(inp::arguments)
 
-    dt = @elapsed begin
+    # placeholders: keep the error handler usable even if the run dies before the
+    # log file exists
+    log_file = IOBuffer()
+    errorLogger = SimpleLogger(log_file, Logging.Error)
+    Tc = [NaN, NaN]
 
-        strIsoME = printIsoME()
+    try
+        dt = @elapsed begin
 
-        ### Create directory
-        inp, log_file, errorLogger = createDirectory(inp, strIsoME)
-        
-        ### Check input
-        try
-            inp = checkInput(inp)
-        catch ex
-            # crash file
-            writeToCrashFile(inp)
+            strIsoME = printIsoME()
 
-            # console / log file
-            printError("in input structure. Stopping now!", ex, log_file, errorLogger)
- 
-            rethrow(ex)
-        end
+            ### Create directory
+            inp, log_file, errorLogger = createDirectory(inp, strIsoME)
 
-        ### read inputs
-        matval = ()
-        ML_Tc = NaN
-        console = Console()
-        try
-            inp, console, matval, ML_Tc = InputParser(inp, log_file)
-        catch ex
-            # crash file
-            writeToCrashFile(inp)
-
-            # console / log file
-            printError("while reading the inputs. Stopping now!", ex, log_file, errorLogger)
- 
-            rethrow(ex)
-        end
-
-        ### Print to console ###
-        printFlagsAsText(inp, log_file)
-
-        ########### start loop over temperatures ##########
-        Tc = [NaN, NaN] 
-        temps = Vector{Float64}()
-        Delta0 = Vector{Float64}()
-        Shift0 = Vector{Float64}()
-        Znorm0 = Vector{Float64}()
-        EfMu = Vector{Float64}()
-        try
-            Tc, temps, Znorm0, Delta0, Shift0, EfMu = findTc(inp, console, matval, ML_Tc, log_file)
-        catch ex
-            # crash file
-            writeToCrashFile(inp)
-
-            # console / log file
-            printError("while solving the Eliashberg equations. Stopping now!", ex, log_file, errorLogger)
-        end
-
-        ### write Tc to console
-        try
-            printSummary(inp, Tc, log_file)
-        catch ex
-            # crash file
-            writeToCrashFile(inp)
-
-            # console / log file
-            printWarning("Error while printing the summary.", log_file, ex=ex)
-        end
-
-        ### Outputs ###
-        if ~inp.testMode # no output in test mode
-            ### save inputs
-            try
-                createInfoFile(inp)
-            catch ex
-                # crash file
-                writeToCrashFile(inp)
-
-                # console / log file
-                printWarning("Error while creating the Info file.", log_file, ex=ex)
+            ### Check input
+            inp = stage("in input structure") do
+                checkInput(inp)
             end
 
-
-            ### create Summary file
-            header = "# T/K   Δ(0)/meV   Z(0)/1   "
-            out_vars = zeros(size(Delta0, 1), 3)
-            out_vars[:, 1] = temps
-            out_vars[:, 2] = Delta0
-            out_vars[:, 3] = Znorm0
-            if inp.cDOS_flag == 0
-                header = header * "χ(0)/meV   ϵ_F-μ/meV   "
-                out_vars = hcat(out_vars, Shift0, EfMu)
-            end
-            try
-                createSummaryFile(inp, Tc, out_vars, header)
-            catch ex
-                # crash file
-                writeToCrashFile(inp)
-
-                # console / log file
-                printWarning("Error while creating the Summary.dat file.", log_file, ex=ex)
+            ### read inputs
+            inp, console, matval, ML_Tc = stage("while reading the inputs") do
+                InputParser(inp, log_file)
             end
 
+            ### Print to console ###
+            printFlagsAsText(inp, log_file)
 
-            ### figures
-            if inp.flag_figure == 1
-                try
-                    createFigures(inp, matval, Delta0, temps, Tc, log_file)
-                catch ex
-                    # crash file
-                    writeToCrashFile(inp)
+            ########### start loop over temperatures ##########
+            Tc, temps, Znorm0, Delta0, Shift0, EfMu = stage("while solving the Eliashberg equations") do
+                findTc(inp, console, matval, ML_Tc, log_file)
+            end
 
-                    # console / log file
-                    printWarning("Error while plotting. Skipping plots.", log_file, ex=ex)
+            ### write Tc to console
+            attempt(inp, log_file, "Error while printing the summary.") do
+                printSummary(inp, Tc, log_file)
+            end
+
+            ### Outputs ###
+            if ~inp.testMode # no output in test mode
+                ### save inputs
+                attempt(inp, log_file, "Error while creating the Info file.") do
+                    createInfoFile(inp)
+                end
+
+
+                ### create Summary file
+                attempt(inp, log_file, "Error while creating the Summary.dat file.") do
+                    header = "# T/K   Δ(0)/meV   Z(0)/1   "
+                    out_vars = zeros(size(Delta0, 1), 3)
+                    out_vars[:, 1] = temps
+                    out_vars[:, 2] = Delta0
+                    out_vars[:, 3] = Znorm0
+                    if inp.cDOS_flag == 0
+                        header = header * "χ(0)/meV   ϵ_F-μ/meV   "
+                        out_vars = hcat(out_vars, Shift0, EfMu)
+                    end
+                    createSummaryFile(inp, Tc, out_vars, header)
+                end
+
+
+                ### figures
+                if inp.flag_figure == 1
+                    attempt(inp, log_file, "Error while plotting. Skipping plots.") do
+                        createFigures(inp, matval, Delta0, temps, Tc, log_file)
+                    end
                 end
             end
         end
-    end
 
 
-    # print time elapsed
-    print("\nTotal Runtime: ", round(dt, digits=2), " seconds\n")
-    # log file
-    print(log_file, "\nTotal Runtime: ", round(dt, digits=2), " seconds\n")
+        # print time elapsed
+        printTee(log_file, "\nTotal Runtime: " * string(round(dt, digits=2)) * " seconds\n")
 
-    # close & save
-    if ~inp.testMode
-        close(log_file)
+    catch ex
+        ### global error handler: the single place a fatal error is reported
+        handleFatalError(ex, catch_backtrace(), inp, log_file, errorLogger)
+
+        # the caller sees the original exception, not the IsoME wrapper
+        throw(ex isa IsoMEError ? ex.cause : ex)
+    finally
+        # close & save - also on the way out of an error. sigint is disabled so
+        # that an impatient second Ctrl+C can not interrupt the cleanup itself
+        if ~inp.testMode
+            Base.disable_sigint() do
+                closeLog(log_file)
+            end
+        end
     end
 
     if inp.returnTc

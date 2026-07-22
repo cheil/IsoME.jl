@@ -355,7 +355,8 @@ function find_cDOS_pole(w_static, deltaip::Vector{ComplexF64}, gap0::Float64)
     for x0 in (gap0, 20.0)
         try
             return find_zero(root_eq, x0)
-        catch
+        catch ex
+            ex isa InterruptException && rethrow(ex)
         end
     end
     #printWarning("Couldn't find the root of x-Δ(x). Shfiting chebyshev grid to BCS gap instead.")

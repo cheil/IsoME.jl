@@ -131,7 +131,7 @@ end
 
 Routine to update chemical potential to fix the number of electrons
 """
-function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, outdir)
+function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, fermi_level, outdir)
 
     # delta as row vector, needed if no weep
     if size(deltaip, 2) == 1
@@ -146,7 +146,7 @@ function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxSh
     # call calc_Ne_Sc with first argument unspecified
     fmu(x) = diff_Ne(x, Ne_nsc, itemp, wsi, dos_en[idxShiftcut[1]:idxShiftcut[2]], dos[idxShiftcut[1]:idxShiftcut[2]], znormip, deltaip, shiftip)  
 
-    mu = root_finding(fmu, outdir)
+    mu = root_finding(fmu, outdir, fermi_level)
     
     return mu
 

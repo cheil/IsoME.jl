@@ -264,6 +264,10 @@ function createDirectory(inp::arguments, strIsoME::String)
         log_file = open(inp.outdir * "log.txt", "w")
         print(log_file, strIsoME)
 
+        # the log file is buffered: make sure what has been written so far reaches
+        # the disk even if the process is ended without unwinding the solver
+        atexit(() -> flushLog(log_file))
+
         # logging to console and log-file (@warn,...)
         errorLogger = SimpleLogger(log_file, Logging.Error)
         file_logger = SimpleLogger(log_file)

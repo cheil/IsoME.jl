@@ -531,6 +531,39 @@ end
 function printTee(log_file, text)
     print(text)
     print(log_file, text)
+    flushLog(log_file)
+end
+
+
+"""
+    flushLog(log_file)
+
+Flush the log stream. The log file is buffered, so a run that is killed from the
+outside (OOM killer, SIGTERM, segfault in a library) would otherwise lose
+everything written so far. Never throws.
+"""
+function flushLog(log_file)
+    try
+        isopen(log_file) && flush(log_file)
+    catch
+        # a failing flush must never mask the reason we are flushing
+    end
+    return nothing
+end
+
+
+"""
+    closeLog(log_file)
+
+Flush and close the log stream if it is still open. Never throws.
+"""
+function closeLog(log_file)
+    flushLog(log_file)
+    try
+        isopen(log_file) && close(log_file)
+    catch
+    end
+    return nothing
 end
 
 """
@@ -545,8 +578,7 @@ function printError(text, ex, log_file, errorLogger)
         @error text exception = ex
     end
     print(log_file, "\nFor further information please refer to the CRASH file\n\n")
-    flush(log_file)
-    close(log_file) 
+    closeLog(log_file)
 
     print("\n")
     rethrow(ex)
@@ -573,19 +605,173 @@ end
 
 
 """
+    IsoMEError(what, cause, bt)
+
+A failure in one of the solver stages, tagged with the message that tells the
+user *where* it happened ("while reading the inputs", ...). It carries the
+original exception and its backtrace up to the global error handler, which is
+the single place that reports it. Marking the stage this way needs no shared
+state, so it stays correct if the solver is ever parallelised.
+"""
+struct IsoMEError <: Exception
+    what::String
+    cause::Any
+    bt::Any
+end
+
+
+"""
+    stage(f, what)
+
+Run a mandatory step of the solver. If it fails, the exception is tagged with
+`what` and passed on to the global error handler, which writes the CRASH file and
+the error message. Does no I/O itself.
+
+    inp = stage("in input structure") do
+        checkInput(inp)
+    end
+"""
+function stage(f::F, what::AbstractString) where {F}
+    try
+        return f()
+    catch ex
+        ex isa InterruptException && rethrow(ex)     # Ctrl+C is not a solver failure
+        ex isa IsoMEError && rethrow(ex)             # keep the innermost, most specific message
+        throw(IsoMEError(what, ex, catch_backtrace()))
+    end
+end
+
+
+"""
+    attempt(f, inp, log_file, what)
+
+Run an optional step of the solver. If it fails, the exception is written to the
+CRASH file and reported as a warning, and the run continues. Reports on the spot
+rather than deferring, because execution must not leave this point.
+
+    attempt(inp, log_file, "Error while plotting. Skipping plots.") do
+        createFigures(inp, matval, Delta0, temps, Tc, log_file)
+    end
+"""
+function attempt(f::F, inp, log_file, what::AbstractString) where {F}
+    try
+        f()
+    catch ex
+        ex isa InterruptException && rethrow(ex)     # Ctrl+C must stop the run, not be skipped
+        writeToCrashFile(inp, ex, catch_backtrace())
+        printWarning(what, log_file, ex = ex)
+    end
+    return nothing
+end
+
+
+"""
+    handleFatalError(ex, bt, inp, log_file, errorLogger)
+
+Global error handler: the single place where a fatal error is written to the
+CRASH file and to the log. Handles both errors tagged by `stage` and errors that
+escaped the stages altogether, e.g. from the solver driver itself. Never throws -
+the caller decides what to rethrow.
+"""
+function handleFatalError(ex, bt, inp, log_file, errorLogger)
+
+    # a deliberate abort is not a crash: no CRASH file, no error report
+    if ex isa InterruptException
+        printTee(log_file, "\nRun aborted by the user (Ctrl+C).\n")
+        return nothing
+    end
+
+    if ex isa IsoMEError
+        text  = ex.what * ". Stopping now!"
+        cause = ex.cause
+        trace = ex.bt                   # where it actually broke, not the unwound view
+    else
+        text  = "Unexpected internal error. Stopping now!"
+        cause = ex
+        trace = bt
+    end
+
+    writeToCrashFile(inp, cause, trace)
+
+    try
+        print(log_file, "\n")
+        with_logger(errorLogger) do
+            # only the exception, not the backtrace - the full trace is in the
+            # CRASH file, and it would flood the log file
+            @error text exception = cause
+        end
+        print(log_file, "\nFor further information please refer to the CRASH file\n\n")
+    catch
+        # the log file itself is broken - the CRASH file written above is what is left
+    end
+    flushLog(log_file)
+
+    print("\n")
+    return nothing
+end
+
+
+"""
+    crashFilePath(inp)
+
+Path of the CRASH file. Falls back to the working directory if `outdir` does not
+exist yet, so that a crash during the setup is not silently lost.
+"""
+function crashFilePath(inp)
+    dir = isempty(inp.outdir) ? pwd() : inp.outdir
+    isdir(dir) || (dir = pwd())
+    return joinpath(dir, "CRASH")
+end
+
+
+"""
+    writeToCrashFile(inp, ex, bt)
+
+Save exception and backtrace in CRASH file. Never throws: if the CRASH file can
+not be written the report goes to stderr instead, so that a failure here can not
+mask the original error.
+"""
+function writeToCrashFile(inp, ex, bt)
+    crashFile = nothing
+    try
+        crashFile = inp.testMode ? IOBuffer() : open(crashFilePath(inp), "a")
+        println(crashFile, "="^80)
+        showerror(crashFile, ex, bt)
+        print(crashFile, "\n\n")
+        flush(crashFile)
+    catch
+        try
+            print(stderr, "\n[IsoME] Could not write the CRASH file. Original error:\n")
+            showerror(stderr, ex, bt)
+            print(stderr, "\n\n")
+        catch
+        end
+    finally
+        crashFile === nothing || close(crashFile)
+    end
+    return nothing
+end
+
+
+"""
     writeToCrashFile(inp)
 
-Save exception in CRASH file
+Save the exception that is currently being handled in CRASH file. Only valid
+inside a catch block. Never throws.
 """
 function writeToCrashFile(inp)
-    if inp.testMode
-        crashFile = IOBuffer()
-    else
-        crashFile = open(inp.outdir * "CRASH", "a")
+    crashFile = nothing
+    try
+        crashFile = inp.testMode ? IOBuffer() : open(crashFilePath(inp), "a")
+        print(crashFile, current_exceptions())
+        print(crashFile, "\n\n")
+        flush(crashFile)
+    catch
+        print(stderr, "\n[IsoME] Could not write the CRASH file.\n")
+    finally
+        crashFile === nothing || close(crashFile)
     end
-    print(crashFile, current_exceptions())
-    print(crashFile, "\n\n")
-    close(crashFile)
+    return nothing
 end
 
 

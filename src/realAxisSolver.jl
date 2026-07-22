@@ -24,145 +24,104 @@ function RealAxisSolver(inp::arguments)
     # do not show plots
     default(show = false) 
 
-    dt = @elapsed begin
+    # placeholders: keep the error handler usable even if the run dies before the
+    # log file exists
+    log_file = IOBuffer()
+    errorLogger = SimpleLogger(log_file, Logging.Error)
+    Tc = [NaN, NaN]
 
-        strIsoME = printIsoME()
+    try
+        dt = @elapsed begin
 
-        ### Create directory
-        inp, log_file, errorLogger = createDirectory(inp, strIsoME)
+            strIsoME = printIsoME()
 
-        ### Check input
-        try
-            inp = checkInput(inp, realSolver=true)
+            ### Create directory
+            inp, log_file, errorLogger = createDirectory(inp, strIsoME)
 
-        catch ex
-            # crash file
-            writeToCrashFile(inp)
+            ### Check input
+            inp = stage("in input structure") do
+                checkInput(inp, realSolver=true)
+            end
 
-            # console / log file
-            printError("in input structure. Stopping now!", ex, log_file, errorLogger)
-
-            rethrow(ex)
-        end
-
-        ### read inputs
-        matval = ()
-        ML_Tc = NaN
-        console = Console()
-        a2F_itp = nothing
-        try
-            """ 
+            ### read inputs
+            """
             ********** ToDo **********
             - adapt messages in printFlagsAsText
             - add names to start message
             """
-            inp, console, matval, ML_Tc = InputParser(inp, log_file, mode=1)
-        catch ex
-            # crash file
-            writeToCrashFile(inp)
-
-            # console / log file
-            printError("while reading the inputs. Stopping now!", ex, log_file, errorLogger)
-
-            rethrow(ex)
-        end
-
-        ### Print to console ###
-        printFlagsAsText(inp, log_file, mode="realFreq")
-
-        ########### start loop over temperatures ##########
-        Tc = [NaN, NaN]
-        temps = Vector{Float64}()
-        Delta0 = Vector{Float64}()
-        Shift0 = Vector{Float64}()
-        Znorm0 = Vector{Float64}()
-
-        try
-            Tc, temps, Znorm0, Delta0, Shift0 = findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
-        catch ex
-            # crash file
-            writeToCrashFile(inp)
-
-            # console / log file
-            printError("while solving the Eliashberg equations. Stopping now!", ex, log_file, errorLogger)
-        end
-
-        ### write Tc to console
-        try
-            printSummary(inp, Tc, log_file)
-        catch ex
-            # crash file
-            writeToCrashFile(inp)
-
-            # console / log file
-            printWarning("Error while printing the summary.", log_file, ex=ex)
-        end
-
-        ### Outputs ###
-        if ~inp.testMode # no output in test mode
-            ### save inputs
-            try
-                createInfoFile(inp)
-            catch ex
-                # crash file
-                writeToCrashFile(inp)
-
-                # console / log file
-                printWarning("Error while creating the Info file.", log_file, ex=ex)
+            inp, console, matval, ML_Tc = stage("while reading the inputs") do
+                InputParser(inp, log_file, mode=1)
             end
 
+            ### Print to console ###
+            printFlagsAsText(inp, log_file, mode="realFreq")
 
-            ### create Summary file
-            header = "# T/K   Re{Δ(0)}/meV   Im{Δ(0)}/meV   Re{Z(0)}/1   Im{Z(0)}/1   "
-            out_vars = Array{Float64}(undef, length(Delta0), 5)
-            out_vars[:, 1] = temps
-            out_vars[:, 2] = real(Delta0)
-            out_vars[:, 3] = imag(Delta0)
-            out_vars[:, 4] = real(Znorm0)
-            out_vars[:, 5] = imag(Znorm0)
-            if inp.cDOS_flag == 0   # for later when vDOS is implemented
-                header = header * "Re{χ(0)}/meV   Im{χ(0)}/meV   ϵ_F-μ/meV   "
-                out_vars = hcat(out_vars, real(Shift0), imag(Shift0))
-            end
-            try
-                createSummaryFile(inp, Tc, out_vars, header)
-            catch ex
-                # crash file
-                writeToCrashFile(inp)
-
-                # console / log file
-                printWarning("Error while creating the Summary.dat file.", log_file, ex=ex)
+            ########### start loop over temperatures ##########
+            Tc, temps, Znorm0, Delta0, Shift0 = stage("while solving the Eliashberg equations") do
+                findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
             end
 
+            ### write Tc to console
+            attempt(inp, log_file, "Error while printing the summary.") do
+                printSummary(inp, Tc, log_file)
+            end
 
-            """
-            ---------------- ToDo -------------
-            plot different figures, e.g. real and imag of Delta 
-            """
-            ### figures
-            if inp.flag_figure == 1
-                try
-                    createFigures(inp, matval, real(Delta0), temps, Tc, log_file)
-                catch ex
-                    # crash file
-                    writeToCrashFile(inp)
+            ### Outputs ###
+            if ~inp.testMode # no output in test mode
+                ### save inputs
+                attempt(inp, log_file, "Error while creating the Info file.") do
+                    createInfoFile(inp)
+                end
 
-                    # console / log file
-                    printWarning("Error while plotting. Skipping plots.", log_file, ex=ex)
+
+                ### create Summary file
+                attempt(inp, log_file, "Error while creating the Summary.dat file.") do
+                    header = "# T/K   Re{Δ(0)}/meV   Im{Δ(0)}/meV   Re{Z(0)}/1   Im{Z(0)}/1   "
+                    out_vars = Array{Float64}(undef, length(Delta0), 5)
+                    out_vars[:, 1] = temps
+                    out_vars[:, 2] = real(Delta0)
+                    out_vars[:, 3] = imag(Delta0)
+                    out_vars[:, 4] = real(Znorm0)
+                    out_vars[:, 5] = imag(Znorm0)
+                    if inp.cDOS_flag == 0   # for later when vDOS is implemented
+                        header = header * "Re{χ(0)}/meV   Im{χ(0)}/meV   ϵ_F-μ/meV   "
+                        out_vars = hcat(out_vars, real(Shift0), imag(Shift0))
+                    end
+                    createSummaryFile(inp, Tc, out_vars, header)
+                end
+
+
+                """
+                ---------------- ToDo -------------
+                plot different figures, e.g. real and imag of Delta
+                """
+                ### figures
+                if inp.flag_figure == 1
+                    attempt(inp, log_file, "Error while plotting. Skipping plots.") do
+                        createFigures(inp, matval, real(Delta0), temps, Tc, log_file)
+                    end
                 end
             end
         end
-    end
 
 
-    # print time elapsed
-    print("\nTotal Runtime: ", round(dt, digits=2), " seconds\n")
-    # log file
-    print(log_file, "\nTotal Runtime: ", round(dt, digits=2), " seconds\n")
+        # print time elapsed
+        printTee(log_file, "\nTotal Runtime: " * string(round(dt, digits=2)) * " seconds\n")
 
-    # close & save
-    if ~inp.testMode
-        close(log_file)
+    catch ex
+        ### global error handler: the single place a fatal error is reported
+        handleFatalError(ex, catch_backtrace(), inp, log_file, errorLogger)
+
+        # the caller sees the original exception, not the IsoME wrapper
+        throw(ex isa IsoMEError ? ex.cause : ex)
+    finally
+        # close & save - also on the way out of an error. sigint is disabled so
+        # that an impatient second Ctrl+C can not interrupt the cleanup itself
+        if ~inp.testMode
+            Base.disable_sigint() do
+                closeLog(log_file)
+            end
+        end
     end
 
     if inp.returnTc
@@ -283,7 +242,8 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
                     m2(x) = m(x, par)
                     itemp = floor(find_zero(m2, par[2]))
 
-                catch
+                catch ex
+                    ex isa InterruptException && rethrow(ex)
                     # expansion to third order --> analytical formula for root (only one real root)
                     a = p0[1]
                     c = p0[3]

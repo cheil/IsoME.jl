@@ -61,7 +61,7 @@ Finally, the calculation can be started via
 julia> EliashbergSolver(inp)
 ```
 The solver writes a log file, a result summary, an overview of the inputs, and, if enabled, figures of the superconducting gap and the ``\alpha^2F`` values.
-Self-energy components are saved only when `flag_writeSelfEnergy = 1`.
+The self-energy components are saved and plotted (`.dat` + `.png`, in `outdir/SelfEnergy/`) only when `flag_writeSelfEnergy = 1`.
 
 Other approximations are selected by providing the DOS or ``W`` file paths and setting the corresponding flags.
 ```julia-repl

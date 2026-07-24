@@ -43,8 +43,7 @@ These inputs are shared by both solvers unless noted otherwise.
 | min_it | Int64 | 10 | Minimum number of iterations before convergence is accepted | - |
 | outdir | String |  pwd() | Path to the output directory | |
 | flag_figure | Int64 |  1 | Plot the gap and ``\alpha^2F`` values | 0: no; 1: yes |
-| flag_writeSelfEnergy | Int64 | 0  | Save self-energy components | 0: no; 1: yes |
-| plot_flag | Bool | false | Plot additional diagnostic quantities | Intended for development and diagnostics |
+| flag_writeSelfEnergy | Int64 | 0  | Save **and** plot the self-energy components (`.dat` + `.png`) | 0: no; 1: yes. Works for both solvers and all modes; files are written to `outdir/SelfEnergy/` |
 | material | String | "Material" | Name of the compound | Used in plots and summaries |
 | returnTc | Bool | false | Return the estimated ``T_c`` interval | Mainly useful for scripts and tests |
 | testMode | Bool | false | Suppress all file output | Used by the test suite |
@@ -60,7 +59,7 @@ These inputs control the imaginary-axis solver `EliashbergSolver()` and its post
 | sparseSamplingTemp | Float64 | 2.0 | Temperature below which sparse sampling is used | In K |
 | itpBounds | Vector{Float64} | [100.0, 500.0] | Bounds of the DOS interpolation regions around the Fermi level | In meV |
 | itpStepSize | Vector{Int64} | [1, 5, 50] | Step sizes used within the interpolation regions | In meV; one entry more than `itpBounds` |
-| flag_acon | Bool | false | Analytically continue the converged solution to real frequencies | Padé approximants |
+| flag_acon | Bool | false | Analytically continue the converged solution to real frequencies and plot it | Padé approximants; imaginary axis only. Independent of `flag_writeSelfEnergy` |
 
 ## Real-axis inputs
 These inputs control the direct real-axis solver `RealAxisSolver()`, which supports cDOS``+\mu``, vDOS``+\mu`` and vDOS``+W``.
@@ -130,6 +129,7 @@ The number of header/footer lines and smearing values should be recognized autom
 | nsmear       | Int64  |    -1     | number of smearings in the a2f-file | Auto-recognition if unset |
 | nheader_a2f  | Int64  |    -1     | number of header lines in a2f_file  | Auto-recognition if unset |
 | nfooter_a2f  | Int64  |    -1     | number of footer lines in a2f_file  | Auto-recognition if unset |
+| a2f_Nef      | Float64|    NaN    | ``N(\varepsilon_F)`` used when ``\alpha^2F`` was computed | Optional. If set, ``\alpha^2F`` is rescaled to the DOS-file ``N(\varepsilon_F)`` (see below) |
 
 !!! details "Detailed description"
     >  **a2f_file** :: STRING
@@ -172,6 +172,26 @@ The number of header/footer lines and smearing values should be recognized autom
     > | Value | Description |
     > | ---   | ----------- |
     > | -1 | Auto-recognition |
+
+    >  **a2f_Nef** :: FLOAT | Default: NaN
+    >
+    > Density of states at the Fermi level, ``N(\varepsilon_F)``, that was used when the
+    > ``\alpha^2F``-file was computed. Optional; leave at `NaN` to disable.
+    >
+    > When set, ``\alpha^2F`` is rescaled by ``a2f\_Nef / N(\varepsilon_F)``, where
+    > ``N(\varepsilon_F)`` is read from the DOS file. This puts ``\alpha^2F`` and the electronic
+    > normalization used in the Eliashberg equations on the same ``N(\varepsilon_F)``, and it is
+    > applied once during read-in so that every downstream quantity (``\mu^*``, the Allen-Dynes
+    > estimate, and the solver) uses the rescaled ``\alpha^2F``. The applied factor is printed to the
+    > console and log.
+    >
+    > A DOS file is required: in vDOS (and Weep+``\mu``) runs the value already read is used; in
+    > cDOS+``\mu`` runs ``N(\varepsilon_F)`` is read from `dos_file` if one is given. If no DOS file is
+    > available the rescaling is skipped with a warning.
+    >
+    > **Unit convention:** `a2f_Nef` must be given in the same convention as the DOS file produces
+    > internally (per meV, both spins by default — see *spinDos*). Check the printed factor: it should
+    > be of order 1.
 
 
 ### ``N(\epsilon)``

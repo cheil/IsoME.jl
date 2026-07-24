@@ -15,7 +15,7 @@ Piecewise interpolation for intervals in itpBounds with steps itpStepSize
 function interpolateInputs(itpDos, dos_en, itpStepSize, itpBounds, encut; itpWeep=nothing, Wen=nothing)
 
     if (length(itpStepSize)-1) != length(itpBounds)
-        error("Number of interpolation steps and interpolation bounds do not match!")
+        error("Number of interpolation steps (itpStepSize) and interpolation bounds (itpBounds) do not match: itpStepSize must have exactly one more entry than itpBounds. See the interpolation-grid section of the Troubleshooting page.")
     end
 
     # set up interval

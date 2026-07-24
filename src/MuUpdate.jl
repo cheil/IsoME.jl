@@ -30,7 +30,19 @@ end
 
 Find the root of f(mu) = Ne_nsc(mu) - Ne_sc = 0.
 """
-function root_finding(fmu, outdir, fermi_level)
+function root_finding(fmu, outdir, fermi_level; shift = nothing, omega_shift = nothing)
+
+    # Optional diagnostic dumped alongside muError when the update fails: the shift
+    # channel χ(ω) over its frequency grid. N_e is obtained from an ω-integral of χ,
+    # so if χ has not decayed to ~0 at the edge of its grid the integral is truncated
+    # and the root find cannot converge (real axis: increase reOmega_c_shift).
+    function plotShift()
+        (isnothing(shift) || isnothing(omega_shift)) && return
+        chi = real.(shift)
+        plot(omega_shift, chi, label="χ(ω)", title="Shift channel used in the μ-update", xlabel="ω / meV", ylabel="χ / meV")
+        savefig(outdir*"muError_shift.png")
+        savePlotData(outdir*"muError_shift.dat", "#  ω / meV       χ(ω) / meV", omega_shift, chi)
+    end
 
     ### starting values for mu
     mu_wndw = 50.0
@@ -52,8 +64,9 @@ function root_finding(fmu, outdir, fermi_level)
         #vline(p, [mu0, mu1], label="mu")
         savefig(outdir*"muError.png")
         savePlotData(outdir*"muError.dat", "#  μ / meV       Ne_nsc - Ne_sc", mu_error, Ne_error)
+        plotShift()
 
-        error("The number of electrons decreases with increasing mu!")
+        error("The number of electrons decreases with increasing mu! See muError.png/muError.dat, muError_shift.png (does χ(ω) decay to 0?) and the μ-update section of the Troubleshooting page.")
     end
 
     ### find minimum interval around ef in which a sign change occurs
@@ -80,10 +93,12 @@ function root_finding(fmu, outdir, fermi_level)
         if iter > 100    # 5 eV
             plot(mu_error, fmu_error, label="Ne_nsc - Ne_sc", title="Ne in normal state minus sc state")
             savefig(outdir*"muError.png")
+            savePlotData(outdir*"muError.dat", "#  μ / meV       Ne_nsc - Ne_sc", mu_error, fmu_error)
+            plotShift()
 
             mu0error = mu_error[1]
             mu1error = mu_error[end]
-            error("Error in mu update - Couldn't find a root in the interval [$mu0error,$mu1error]. Please check your input files, in particular the dos-file.")
+            error("Error in mu update - Couldn't find a root in the interval [$mu0error,$mu1error]. See muError.png/muError.dat, muError_shift.png (does χ(ω) decay to 0?) and the μ-update section of the Troubleshooting page.")
         end
     end
 
@@ -127,11 +142,14 @@ end
 
 
 """
-    update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip)
+    build_fmu_matsubara(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut) -> fmu
 
-Routine to update chemical potential to fix the number of electrons
+Return the charge-neutrality residual `fmu(μ) = Nₑ_nsc - Nₑ_sc(μ)` used by the imaginary-axis
+μ-update, *without* running the root find. This is the exact function whose root
+[`update_mu_own`](@ref) solves; it is factored out so it can be scanned/plotted on its own for
+debugging (see the μ-update testing notebook).
 """
-function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, fermi_level, outdir)
+function build_fmu_matsubara(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut)
 
     # delta as row vector, needed if no weep
     if size(deltaip, 2) == 1
@@ -141,13 +159,26 @@ function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxSh
     end
 
     ### Calculate N_e in the non-SC state
-    Ne_nsc = trapz(dos_en[idxShiftcut[1]:idxShiftcut[2]], 2 .* fermiFcn(dos_en[idxShiftcut[1]:idxShiftcut[2]], 0.0, itemp) .* dos[idxShiftcut[1]:idxShiftcut[2]])   
+    Ne_nsc = trapz(dos_en[idxShiftcut[1]:idxShiftcut[2]], 2 .* fermiFcn(dos_en[idxShiftcut[1]:idxShiftcut[2]], 0.0, itemp) .* dos[idxShiftcut[1]:idxShiftcut[2]])
 
     # call calc_Ne_Sc with first argument unspecified
-    fmu(x) = diff_Ne(x, Ne_nsc, itemp, wsi, dos_en[idxShiftcut[1]:idxShiftcut[2]], dos[idxShiftcut[1]:idxShiftcut[2]], znormip, deltaip, shiftip)  
+    fmu(x) = diff_Ne(x, Ne_nsc, itemp, wsi, dos_en[idxShiftcut[1]:idxShiftcut[2]], dos[idxShiftcut[1]:idxShiftcut[2]], znormip, deltaip, shiftip)
 
-    mu = root_finding(fmu, outdir, fermi_level)
-    
+    return fmu
+end
+
+
+"""
+    update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip)
+
+Routine to update chemical potential to fix the number of electrons
+"""
+function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, fermi_level, outdir)
+
+    fmu = build_fmu_matsubara(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut)
+
+    mu = root_finding(fmu, outdir, fermi_level; shift = shiftip, omega_shift = wsi)
+
     return mu
 
 end
@@ -158,12 +189,15 @@ end
 # ---------------------- Real Axis ----------------------- #
 ############################################################
 """
-    mu_update_real_axis()
+    build_fmu_real_axis(itemp, w_static, w_static_chi, w_prime, electronic_spec, dos_en, dos, znormip, phi_ph, phi_c, shiftip) -> fmu
 
-Update the chemical potential to conserve charge neutrality - real axis implementation.
-φ is passed in separable form: φ_ph(ω) always, φ_c(ε) only in vDOS+W (empty in vDOS+μ).
+Real-axis analogue of [`build_fmu_matsubara`](@ref): return the charge-neutrality residual
+`fmu(μ) = Nₑ_nsc - Nₑ_sc(μ)` without running the root find, so it can be scanned/plotted for
+debugging. The self-energy (`znormip`, `phi_ph`, `phi_c`, `shiftip`) is interpolated onto the
+ω'-integration grid `w_prime`, so varying `w_prime` (or truncating `shiftip`/`w_static_chi`) shows
+directly how the μ-update integral reacts to the ω-grid.
 """
-function mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, electronic_spec, dos_en, dos, znormip, phi_ph, phi_c, shiftip, outdir)
+function build_fmu_real_axis(itemp, w_static, w_static_chi, w_prime, electronic_spec, dos_en, dos, znormip, phi_ph, phi_c, shiftip)
 
     ### Calculate N_e in the non-SC state
     Ne_nsc = 2 .* trapz(dos_en, fermiFcn(dos_en, 0.0, itemp) .* dos)
@@ -185,9 +219,23 @@ function mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime
     # call calc_Ne_Sc with first argument unspecified
     fmu(x)  = diff_Ne_realAxis(x, Ne_nsc, tanhw, w_prime, electronic_spec, dos_int, Z_ongrid, phi_ph_ongrid, phi_c, shift_ongrid)
 
-    mu = root_finding(fmu, outdir, fermi_level)
+    return fmu
+end
+
+
+"""
+    mu_update_real_axis()
+
+Update the chemical potential to conserve charge neutrality - real axis implementation.
+φ is passed in separable form: φ_ph(ω) always, φ_c(ε) only in vDOS+W (empty in vDOS+μ).
+"""
+function mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, electronic_spec, dos_en, dos, znormip, phi_ph, phi_c, shiftip, outdir)
+
+    fmu = build_fmu_real_axis(itemp, w_static, w_static_chi, w_prime, electronic_spec, dos_en, dos, znormip, phi_ph, phi_c, shiftip)
+
+    mu = root_finding(fmu, outdir, fermi_level; shift = shiftip, omega_shift = w_static_chi)
     #@time mu2 = find_zero((fmu, dfmu), fermi_level, Roots.LithBoonkkampIJzerman(3, 1))
-   
+
     return mu
 end
 

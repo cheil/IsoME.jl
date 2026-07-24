@@ -29,10 +29,6 @@ function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phi_ph_ip:
                           w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64}, Weep::Matrix{Float64},
                           idx_ef::Int64, fermi_level::Float64, wgCoulomb::Float64, electronic_spec::Tuple)
 
-    if size(Weep, 1) != length(epsilon) || size(Weep, 2) != length(epsilon)
-        error("The W(ε,ε′) matrix must be defined on the same energy grid as the DOS for real-axis vDOS+W calculations.")
-    end
-
     w_prime = ws.wp_full
 
     # interpolate Z,χ,ϕ onto ω'-integration grid

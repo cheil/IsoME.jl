@@ -659,7 +659,7 @@ function attempt(f::F, inp, log_file, what::AbstractString) where {F}
     catch ex
         ex isa InterruptException && rethrow(ex)     # Ctrl+C must stop the run, not be skipped
         writeToCrashFile(inp, ex, catch_backtrace())
-        printWarning(what, log_file, ex = ex)
+        printWarning(what * " This step is optional and the run continued; the results are still valid. If it keeps failing, please open an issue at https://github.com/cheil/IsoME.jl/issues and attach the CRASH file.", log_file, ex = ex)
     end
     return nothing
 end
@@ -946,7 +946,7 @@ function createFigures(inp, matval, Delta0, temps, Tc, log_file)
                     if xlim_max <= 10
                         xtick_val = 0:1:xlim_max
                     elseif xlim_max > 1e3
-                        error("TcFit unreasonbale")
+                        error("TcFit unreasonable")
                     elseif xlim_max <= 20
                         xtick_val = 0:2:xlim_max
                     else
@@ -987,122 +987,116 @@ end
 
 
 """
-    saveSelfEnergyComponents(inp, iwn, Delta, Z; epsilon=nothing,  chi=nothing, phiph=nothing, phic=nothing)
+    writeSelfEnergy(itemp, inp, components)
 
-Save the self-energy components into separate files
+Write each self-energy component to `outdir/SelfEnergy/` as both a `.dat` file and a `.png` plot.
+Single entry point for both axes and all modes; every component carries its own grid, column header
+and axis labels, so the frequency label (ω vs iωₙ) and the units are always correct.
+
+`components` is a vector of NamedTuples `(name, x, y, xlabel, ylabel, xhead, yhead)`. A complex `y` is
+written as Re/Im columns and plotted as Re (blue) / Im (red); a real `y` (imaginary-axis quantities)
+gets a single column and curve.
 """
-function saveSelfEnergyComponents(itemp, inp, iwn, Delta, Z; epsilon=nothing,  chi=nothing, ws_chi=nothing, phiph=nothing, phic=nothing, mode = "Matsubara")
+function writeSelfEnergy(itemp, inp, components)
 
-    folder = inp.outdir*"SelfEnergy/"
-
+    folder = inp.outdir * "SelfEnergy/"
     if ~isdir(folder)
         mkdir(folder)
     end
 
-    # consistent folder names
-    itemp = Float64(itemp)
+    T = Float64(itemp)                          # consistent file names
 
-    if mode == "Matsubara"
-        # Z
-        open(folder*"Z_"*string(itemp)*"K.dat", "w") do io
-            write(io, "#  iωₙ / meV      Z(iωₙ) / 1 \n")
-            writedlm(io, [iwn Z], '\t')
-        end
+    for c in components
+        base = folder * c.name * "_" * string(T) * "K"
 
-        # Delta 
-        if inp.include_Weep == 1
-            open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
-                write(io, "# ε / meV      iωₙ / meV      Δ(ϵ, iωₙ) / meV \n")
-                writedlm(io, [repeat(epsilon, inner=length(iwn)) repeat(iwn, length(epsilon)) Delta'[:]], '\t')
-            end
-            
-            # w/o epsilon and mat.freqs.
-            #open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
-            #    write(io, "# Δ(ϵ, iωₙ) / meV \n")
-            #    writedlm(io, [Delta], '\t')
-            #end
-        elseif inp.include_Weep == 0
-            open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
-                write(io, "#  iωₙ / meV      Δ(iωₙ) / meV \n")
-                writedlm(io, [iwn Delta], '\t')
+        # ----- data file -----
+        open(base * ".dat", "w") do io
+            if eltype(c.y) <: Complex
+                write(io, "#  " * c.xhead * "\tRe(" * c.yhead * ")\tIm(" * c.yhead * ")\n")
+                writedlm(io, [c.x real.(c.y) imag.(c.y)], '\t')
+            else
+                write(io, "#  " * c.xhead * "\t" * c.yhead * "\n")
+                writedlm(io, [c.x c.y], '\t')
             end
         end
 
-        # Chi
-        if ~isnothing(chi)
-            open(folder*"Chi_"*string(itemp)*"K.dat", "w") do io
-                write(io, "#  iωₙ / meV      Χ(iωₙ) / meV \n")
-                writedlm(io, [iwn chi], '\t')
-            end
+        # ----- plot -----
+        if eltype(c.y) <: Complex
+            plot(c.x, real.(c.y), color = :blue, label = "Real", linewidth = 2, xlabel = c.xlabel, ylabel = c.ylabel)
+            plot!(c.x, imag.(c.y), color = :red, label = "Imag", linewidth = 2)
+        else
+            plot(c.x, c.y, color = :blue, label = "", linewidth = 2, xlabel = c.xlabel, ylabel = c.ylabel)
         end
-
-        # Phiph
-        if ~isnothing(phiph)
-            open(folder*"Phiph_"*string(itemp)*"K.dat", "w") do io
-                write(io, "#  iωₙ / meV      Φp(iωₙ) / meV \n")
-                writedlm(io, [iwn phiph], '\t')
-            end
-        end
-
-        # Phic
-        if ~isnothing(phic)
-            open(folder*"Phic_"*string(itemp)*"K.dat", "w") do io
-                write(io, "#  ϵ / meV      Φc(ϵ) / meV \n")
-                writedlm(io, [epsilon phic], '\t')
-            end
-        end
-    elseif mode == "realAxis"
-         # Z
-        open(folder*"Z_"*string(itemp)*"K.dat", "w") do io
-            write(io, "#  ω / meV      Z(ω) / 1 \n")
-            writedlm(io, [iwn Z], '\t')
-        end
-
-        open(folder*"Delta_"*string(itemp)*"K.dat", "w") do io
-            write(io, "#  ω / meV      Δ(ω) / meV \n")
-            writedlm(io, [iwn Delta], '\t')
-        end
-
-        # Chi
-        if ~isnothing(chi) && ~isnothing(ws_chi)
-            open(folder*"Chi_"*string(itemp)*"K.dat", "w") do io
-                write(io, "#  iωₙ / meV      Χ(iωₙ) / meV \n")
-                writedlm(io, [ws_chi chi], '\t')
-            end
-        end
+        inp.material != "Material" && title!(inp.material)
+        savefig(base * ".png")
     end
+
+    return nothing
 end
 
 
 """
-    plotSelfEnergyAtT(inp, itemp, componentSelfEnergy)
+    saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi; chi, phiph, phic, epsilon, idx_ef)
 
-plot self energy component vs omega on real axis at given temperature
+Assemble the imaginary-axis (Matsubara) self-energy components and hand them to
+[`writeSelfEnergy`](@ref). Covers cDOS/vDOS and the μ / W(ε,ε′) modes: χ, φ_ph, φ_c are written only
+when provided. In vDOS+W, Δ(ε, iωₙ) is a matrix; only the slice at ε_F, Δ(ε_F, iωₙ), is written and
+plotted — the full ε-dependence is recoverable from the φ_ph(iωₙ) and φ_c(ε) files.
 """
-function plotSelfEnergyAtT(inp, itemp, selfEnergy, w_real = nothing; names = ["Gap", "Z", "Shift"], labels = ["Δ(ω) / meV", "Z(ω) / 1", "χ(ω) / meV"])
+function saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi; chi = nothing, phiph = nothing, phic = nothing, epsilon = nothing, idx_ef = -1)
 
-    folder = inp.outdir*"Plots/"
+    comps = NamedTuple[]
 
-    if ~isdir(folder)
-        mkdir(folder)
+    push!(comps, (name = "Z", x = wsi, y = znormi,
+                  xlabel = "iωₙ / meV", ylabel = "Z(iωₙ) / 1", xhead = "iωₙ / meV", yhead = "Z(iωₙ) / 1"))
+
+    if ndims(deltai) == 2
+        # Δ(ε, iωₙ) is redundant with φ_ph(iωₙ) + φ_c(ε); keep only the ε_F slice
+        idx = idx_ef > 0 ? idx_ef : findmin(abs.(epsilon))[2]
+        push!(comps, (name = "Delta", x = wsi, y = deltai[idx, :],
+                      xlabel = "iωₙ / meV", ylabel = "Δ(ε_F, iωₙ) / meV", xhead = "iωₙ / meV", yhead = "Δ(ε_F, iωₙ) / meV"))
+    else
+        push!(comps, (name = "Delta", x = wsi, y = deltai,
+                      xlabel = "iωₙ / meV", ylabel = "Δ(iωₙ) / meV", xhead = "iωₙ / meV", yhead = "Δ(iωₙ) / meV"))
     end
 
-    if isnothing(w_real)
-        w_real = 1e-1:inp.domega:inp.reOmega_c
-    end
+    isnothing(chi)   || push!(comps, (name = "Chi", x = wsi, y = chi,
+                  xlabel = "iωₙ / meV", ylabel = "χ(iωₙ) / meV", xhead = "iωₙ / meV", yhead = "χ(iωₙ) / meV"))
+    isnothing(phiph) || push!(comps, (name = "Phiph", x = wsi, y = phiph,
+                  xlabel = "iωₙ / meV", ylabel = "φ_ph(iωₙ) / meV", xhead = "iωₙ / meV", yhead = "φ_ph(iωₙ) / meV"))
+    isnothing(phic)  || push!(comps, (name = "Phic", x = epsilon, y = phic,
+                  xlabel = "ε / meV", ylabel = "φ_c(ε) / meV", xhead = "ε / meV", yhead = "φ_c(ε) / meV"))
+
+    writeSelfEnergy(itemp, inp, comps)
+    return nothing
+end
 
 
-    for (component, name, label) in zip(selfEnergy, names, labels)
-        plot(w_real, real(component), col="blue", label="Real", linewidth=2, ylabel=label, xlabel = "ω / meV")
-        plot!(w_real, imag(component), col="red", label="Imag", linewidth=2)
-        savefig(folder*name*"_$itemp.png")
-        savePlotData(
-            folder * name * "_$itemp.dat",
-            "#  ω / meV       Re($label)       Im($label)",
-            w_real, real(component), imag(component)
-        )
-    end
+"""
+    saveSelfEnergy_realAxis(itemp, inp, w_static, delta, Z; w_static_chi, chi, phi_ph, phi_c, epsilon)
 
+Assemble the real-axis self-energy components (Δ, Z on `w_static`; χ on `w_static_chi`; φ_ph on
+`w_static`; φ_c(ε) on the ε-grid) and hand them to [`writeSelfEnergy`](@ref). Optional channels are
+written only when provided, so the same call serves cDOS and vDOS (+μ / +W).
+"""
+function saveSelfEnergy_realAxis(itemp, inp, w_static, delta, Z; w_static_chi = nothing, chi = nothing, phi_ph = nothing, phi_c = nothing, epsilon = nothing)
+
+    comps = NamedTuple[]
+
+    push!(comps, (name = "Delta", x = w_static, y = delta,
+                  xlabel = "ω / meV", ylabel = "Δ(ω) / meV", xhead = "ω / meV", yhead = "Δ(ω) / meV"))
+    push!(comps, (name = "Z", x = w_static, y = Z,
+                  xlabel = "ω / meV", ylabel = "Z(ω) / 1", xhead = "ω / meV", yhead = "Z(ω) / 1"))
+
+    (isnothing(chi) || isnothing(w_static_chi)) || push!(comps, (name = "Chi", x = w_static_chi, y = chi,
+                  xlabel = "ω / meV", ylabel = "χ(ω) / meV", xhead = "ω / meV", yhead = "χ(ω) / meV"))
+    isnothing(phi_ph) || push!(comps, (name = "Phiph", x = w_static, y = phi_ph,
+                  xlabel = "ω / meV", ylabel = "φ_ph(ω) / meV", xhead = "ω / meV", yhead = "φ_ph(ω) / meV"))
+    (isnothing(phi_c) || isnothing(epsilon)) || push!(comps, (name = "Phic", x = epsilon, y = phi_c,
+                  xlabel = "ε / meV", ylabel = "φ_c(ε) / meV", xhead = "ε / meV", yhead = "φ_c(ε) / meV"))
+
+    writeSelfEnergy(itemp, inp, comps)
+    return nothing
 end
 
 

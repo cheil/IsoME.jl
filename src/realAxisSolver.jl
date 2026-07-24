@@ -414,7 +414,7 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
             state.delta = delta_new
             state.phi_ph = delta_new .* Z_new
             if !vDOS_initial_guess
-                save_real_axis_cDOS_outputs(itemp, inp, state, log_file)
+                save_real_axis_cDOS_outputs(itemp, inp, state, w_static, log_file)
             end
             return data, state
         end
@@ -457,7 +457,7 @@ Solve the real-axis Eliashberg equations in the vDOS+μ approximation.
 function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, state::RealAxisState, log_file)
     # destruct inputs
     (_, _, dos_en, dos, Weep, dosef, idx_ef, _, _, _) = matval
-    (; muc_ME, mu_flag, N_it, conv_thr, minGap, nItFullCoul, min_it, plot_flag) = inp
+    (; muc_ME, mu_flag, N_it, conv_thr, minGap, nItFullCoul, min_it) = inp
     (w_static, w_static_chi, _) = realAxisParameter
 
 
@@ -581,25 +581,13 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         if abs(convergence / gap0) < conv_thr && i_it > maximum([min_it, nItFullCoul + 1])
             print_real_axis_converged(itemp, console, log_file)
 
-            if plot_flag
-                try
-                    selfEnergy = (delta_new, Z_new)
-                    plotSelfEnergyAtT(inp, itemp, selfEnergy, w_static)
-                    plotSelfEnergyAtT(inp, itemp, (chi_new,), w_static_chi, names=["chi"], labels=["χ(ω) / meV"])
-                catch ex
-                    writeToCrashFile(inp)
-                    printWarning("Error while plotting the self energy components.", log_file, ex=ex)
-                end
-                selfEnergy = (delta_new, Z_new)
-                plotSelfEnergyAtT(inp, itemp, selfEnergy, w_static)
-                plotSelfEnergyAtT(inp, itemp, (chi_new,), w_static_chi, names=["chi"], labels=["χ(ω) / meV"])
-            end
-
             if inp.flag_writeSelfEnergy == 1
                 try
-                    saveSelfEnergyComponents(itemp, inp, collect(w_static), delta_new, Z_new, chi=chi_new, ws_chi=collect(w_static_chi),
-                                             phiph=phi_ph_new, phic=(inp.include_Weep == 1 ? phi_c_new : nothing),
-                                             epsilon=(inp.include_Weep == 1 ? dos_en : nothing), mode="realAxis_vDOS")
+                    saveSelfEnergy_realAxis(itemp, inp, collect(w_static), delta_new, Z_new,
+                                            w_static_chi=collect(w_static_chi), chi=chi_new,
+                                            phi_ph=(inp.include_Weep == 1 ? phi_ph_new : nothing),
+                                            phi_c=(inp.include_Weep == 1 ? phi_c_new : nothing),
+                                            epsilon=(inp.include_Weep == 1 ? dos_en : nothing))
                 catch ex
                     writeToCrashFile(inp)
                     printWarning("Error while saving self energy components.", log_file, ex=ex)
@@ -662,13 +650,10 @@ function mixing_parameter(inp, i_it)
 end
 
 
-function save_real_axis_cDOS_outputs(itemp, inp, state, log_file)
-    plotSelfEnergyAtT(inp, itemp, (state.delta, state.Z))
-
+function save_real_axis_cDOS_outputs(itemp, inp, state, w_static, log_file)
     if inp.flag_writeSelfEnergy == 1
         try
-            w_real = 1e-1:inp.domega:inp.reOmega_c
-            saveSelfEnergyComponents(itemp, inp, w_real, state.delta, state.Z, mode="realAxis")
+            saveSelfEnergy_realAxis(itemp, inp, collect(w_static), state.delta, state.Z)
         catch ex
             writeToCrashFile(inp)
             printWarning("Error while saving self energy components.", log_file, ex=ex)

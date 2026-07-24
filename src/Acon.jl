@@ -20,8 +20,8 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti
         deltai = deltai[idx_ef, :]
     end
 
-    g11i, gauxi = calcGF(wsi, deltai, znormi, shifti)
-    lneva = 0
+    # g11i, gauxi = calcGF(wsi, deltai, znormi, shifti)
+    # lneva = 0
     #=
     if lneva == 1
         ws, g11, gaux = NAC(wsi, real_c, g11i, gauxi)
@@ -74,45 +74,42 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti
         saveACON(itemp, folder, ws_pade, delta_pade, "pade")
     end    
 
-    # make plots
-    flag_figureACON = 1
-    if flag_figureACON == 1
-        plot_font = "Computer Modern"
-        default(
-            fontfamily=plot_font,
-            linewidth=2,
-            framestyle=:box,
-            label=nothing,
-            grid=false
-        )
+    # ----- make plots -----
+    plot_font = "Computer Modern"
+    default(
+        fontfamily=plot_font,
+        linewidth=2,
+        framestyle=:box,
+        label=nothing,
+        grid=false
+    )
 
-        # NAC
+    # NAC
+    #=
+    if lneva == 1
+        plotSpectralFunction(itemp, ws, A11, A12, folder, inp.material)
+
+        plotQDOS(itemp, ws, dos_qp, folder, inp.material)
+
+        plotGap(itemp, ws, delta, folder, inp.material)
+    end
+    =#
+
+    # Pade
+    if lpade == 1
         #=
-        if lneva == 1
-            plotSpectralFunction(itemp, ws, A11, A12, folder, inp.material)
+        ------- direct pade of GF, less stable -------
+        plotSpectralFunction(itemp, ws_pade, A11_pade, A12_pade, folder, inp.material, "pade")
 
-            plotQDOS(itemp, ws, dos_qp, folder, inp.material)
-
-            plotGap(itemp, ws, delta, folder, inp.material)
-        end
+        plotQDOS(itemp, ws_pade, dos_qp_pade, folder, inp.material, "pade")
+        ----------------------------------------------
         =#
 
-        # Pade
-        if lpade == 1
-            #=
-            ------- direct pade of GF, less stable -------
-            plotSpectralFunction(itemp, ws_pade, A11_pade, A12_pade, folder, inp.material, "pade")
-
-            plotQDOS(itemp, ws_pade, dos_qp_pade, folder, inp.material, "pade")
-            ----------------------------------------------
-            =#
-
-            plotGap(itemp, ws_pade, delta_pade, folder, inp.material, "pade")
-            if ~all(shifti .== 0)
-                plotShift(itemp, ws_pade, shift_pade, folder, inp.material, "pade")
-            end
-            plotZ(itemp, ws_pade, Z_pade, folder, inp.material, "pade")
+        plotGap(itemp, ws_pade, delta_pade, folder, inp.material, "pade")
+        if ~all(shifti .== 0)
+            plotShift(itemp, ws_pade, shift_pade, folder, inp.material, "pade")
         end
+        plotZ(itemp, ws_pade, Z_pade, folder, inp.material, "pade")
     end
 
     printTee(log_file, "Analytic Continuation finished\n")
@@ -613,9 +610,9 @@ end
 
 
 """
-    saveSelfEnergyComponents(inp, iwn, Delta, Z; epsilon=nothing,  chi=nothing, phiph=nothing, phic=nothing)
+    saveACON(itemp, folder, ws, delta, A11, A12, mode="neva")
 
-Save the the real frequency quantities
+Save the analytically continued real-frequency quantities (spectral functions + gap)
 """
 function saveACON(itemp, folder, ws, delta, A11, A12, mode="neva")
 
@@ -629,9 +626,9 @@ end
 
 
 """
-    saveSelfEnergyComponents(inp, iwn, Delta, Z; epsilon=nothing,  chi=nothing, phiph=nothing, phic=nothing)
+    saveACON(itemp, folder, ws, delta, mode="neva")
 
-Save the the real frequency gap
+Save the analytically continued real-frequency gap
 """
 function saveACON(itemp, folder, ws, delta, mode="neva")
 

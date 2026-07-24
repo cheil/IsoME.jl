@@ -127,6 +127,9 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
         dosef = dos[idx_ef]
     end
 
+    ### optionally rescale α²F to a better N(ε_F) (once, before any consumer: μ*, AD, matval)
+    a2f = rescale_a2F(a2f, inp, dosef, log_file)
+
     ### calc mu*'s
     phonon_cutoff = 0.0
     if mode == 0
@@ -155,7 +158,8 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
         else
             text = "Unable to calculate μ* from μ without a typical electron energy!"
             text *= "\nConsider setting typEl, ef or efW manually."
-            text *= "\nUsing μ*_AD = 0.12 instead"
+            text *= "\nUsing μ*_AD = 0.12 instead."
+            text *= "\nSee the pseudopotential section of the Input documentation for the μ → μ* relation."
             printWarning(text, log_file)
 
             inp.muc_AD = 0.12
@@ -214,7 +218,7 @@ function initOutputTable(inp::arguments; mode::Int64=0)#
             console.cDOS = TableSpec(["it", "znormi", "deltai", "err_delta"], [8, 14, 14, 14], [0, 4, 4, 5])
 
         else
-            error("Unkwon mode! Check if the cDOS_flag and include_Weep flag are set correctly!")
+            error("Unknown mode! Check if the cDOS_flag and include_Weep flag are set correctly!")
         end
 
     elseif mode == 1
@@ -312,13 +316,60 @@ function checkInput(inp::arguments; realSolver::Bool=false)
 
     if realSolver
         if inp.include_Weep == 1 && inp.cDOS_flag == 1
-            error("Real-axis W calculations require cDOS_flag = 0 for the vDOS+W approximation.\n Check if the cDOS_flag and include_Weep flag are set correctly!\n\n")
+            error("The real-axis solver only supports the vDOS+W approximation (include_Weep = 1 requires cDOS_flag = 0). Set cDOS_flag = 0.\n\n")
+        end
+
+        # The χ grid (reOmega_c_shift) is the master grid for the kernels and must contain the Z/Δ
+        # grid (reOmega_c); if it is smaller the ω'-integral over-indexes the kernel block. Clamp up.
+        if inp.reOmega_c_shift < inp.reOmega_c
+            @warn "reOmega_c_shift = $(inp.reOmega_c_shift) is smaller than reOmega_c = $(inp.reOmega_c). Setting reOmega_c_shift = reOmega_c = $(inp.reOmega_c)."
+            inp.reOmega_c_shift = inp.reOmega_c
         end
     end
 
     return inp
 
 end
+
+"""
+    rescale_a2F(a2f, inp, dosef, log_file) -> a2f
+
+Optionally rescale α²F to a better density of states at the Fermi level.
+
+If `inp.a2f_Nef` is set (not `NaN`), α²F is multiplied by `a2f_Nef / N(ε_F)`, where `a2f_Nef` is the
+N(ε_F) that the α²F calculation used and `N(ε_F)` is taken from the DOS file, so that α²F and the
+electronic normalization used in the Eliashberg equations share the *same* N(ε_F). 
+
+The better N(ε_F) is taken from `dosef` when the read-in already produced it (vDOS / Weep+μ). In
+cDOS+μ, where no DOS is read, it is read from `dos_file` if one is given (a local read for the
+rescale only; the cDOS `matval` sentinels are untouched). Without any DOS file the rescale is
+skipped with a warning. No-op when `a2f_Nef` is `NaN`.
+"""
+function rescale_a2F(a2f, inp, dosef, log_file)
+    isnan(inp.a2f_Nef) && return a2f                        # feature off
+
+    inp.a2f_Nef > 0 || error("a2f_Nef must be positive (got $(inp.a2f_Nef)).")
+
+    # better N(ε_F): use the read-in dosef if available, otherwise read it from the DOS file (cDOS+μ)
+    Nef = dosef
+    if !(Nef > 0) && isfile(inp.dos_file)
+        dos_en_r, dos_r, _, _ = readIn_Dos(inp.dos_file, inp.ef, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos, outdir=inp.outdir, logFile=log_file)
+        dos_r, dos_en_r = discardZeros(dos_r, dos_en_r)
+        Nef = dos_r[findmin(abs.(dos_en_r))[2]]             # N(ε_F): DOS at the energy closest to ε_F
+    end
+
+    if !(Nef > 0)
+        printWarning("a2f_Nef is set but no DOS file is available: α²F cannot be rescaled without a DOS file. Ignoring a2f_Nef.", log_file)
+        return a2f
+    end
+
+    factor = inp.a2f_Nef / Nef
+    printTee(log_file, "\nα²F rescaled to N(ε_F) from the DOS file: a2f_Nef = " * string(round(inp.a2f_Nef, sigdigits=5)) *
+                       ", N_dos(ε_F) = " * string(round(Nef, sigdigits=5)) *
+                       ", factor = " * string(round(factor, sigdigits=5)) * "\n")
+    return a2f .* factor
+end
+
 
 """
     readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsmear=-1)
@@ -359,7 +410,7 @@ function readIn_a2f(a2f_file, indSmear::Int=-1, unit="", nheader::Int=-1, nfoote
     elseif "Ha" == unit     # Hartree
         omega_raw = omega_raw .* Ry2meV * 2
     else
-        error("Invalid Unit! Please check the header of the a2F-file and try again!")
+        error("Could not determine the unit of the a2F-file. Set it manually via a2f_unit or check the file header (supported units: meV, eV, THz, Ry, Ha).")
     end
 
     ### a2f for one smearing ###
@@ -428,7 +479,7 @@ function readIn_Dos(dos_file, ef::Float64=NaN, spin=2, unit="", nheader::Int=-1,
         energies = energies .* Ry2meV * 2
         dos = dos ./ Ry2meV * 2
     else
-        error("Invalid Unit! Either set the unit manually via dos_unit or check the header of the Dos-file and try again!")
+        error("Could not determine the unit of the DOS-file. Set it manually via dos_unit or check the file header (supported units: meV, eV, THz, Ry, Ha).")
     end
 
     ### Shift energies by ef for cDos ###
@@ -497,7 +548,7 @@ function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef::Float64=
         Weep = Weep .* THz2meV
         Wen = Wen .* THz2meV
     else
-        error("Invalid Unit! Consider setting the unit manually (Weep_unit) or check the header of the Weep-file and try again!")
+        error("Could not determine the unit of the Weep-file. Set it manually via Weep_unit or check the file header (supported units: meV, eV, THz, Ry, Ha).")
     end
 
     # shift by ef
@@ -569,7 +620,7 @@ function extractFermiEnergy(header, unit, nameFile=nothing; outdir="./", logFile
         elseif "Ha" == unit     # Hartree
             ef = ef .* Ry2meV * 2
         else
-            error("Invalid Unit! Consider setting the unit manually (" * nameFile * "_unit) or check the header of the " * nameFile * "-file and try again!")
+            error("Could not determine the unit of the " * nameFile * "-file. Set it manually via " * nameFile * "_unit or check the file header (supported units: meV, eV, THz, Ry, Ha).")
         end
 
     catch ex
@@ -638,6 +689,7 @@ function calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
         text = "Couldn't calculate a reasonable μ*_ME from μ*_AD."
         text *= "\nUsing μ*_ME = minimum(3*μ*_AD, 0.8) instead."
         text *= "\nCheck muc_ME.png and consider setting μ* manually or changing the Matsubara cutoff!"
+        text *= "\nSee the μ* conversion section of the Troubleshooting page and the pseudopotential section of the Input documentation."
         printWarning(text, log_file)
 
         wc_plot = range(min(100, floor(phonon_cutoff/2)), max(ceil(2*phonon_cutoff), 1e4), 500)
@@ -680,6 +732,7 @@ function calcMucs(inp, ef, a2f, a2f_omega, phonon_cutoff, log_file)
         text = "Matsubara cutoff would lead to μ*_ME > 4*μ."
         text *= "\nomega_c has been set to a smaller value."
         text *= "\nCheck muc_ME.png and the typical electronic energy typEl!"
+        text *= "\nSee the μ* conversion section of the Troubleshooting page and the pseudopotential section of the Input documentation."
         printWarning(text, log_file)
 
         wc_plot = range(min(100, floor(phonon_cutoff/2)), max(ceil(2*phonon_cutoff), 1e4), 500)

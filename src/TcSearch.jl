@@ -273,20 +273,20 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             println(log_file, replace(table.Hline, "." => " "))
             printstyled(log_file, "\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 
-            # save Z, Delta, chi, phi
+            # save + plot Z, Delta, chi, phi (.dat + .png)
             if inp.flag_writeSelfEnergy == 1
-                try 
+                try
                     if include_Weep == 1
                         if inp.cDOS_flag == 0
-                            saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi, epsilon=dos_en, chi=shifti, phiph=phiphi, phic=phici)
+                            saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi, epsilon=dos_en, chi=shifti, phiph=phiphi, phic=phici, idx_ef=idx_ef)
                         elseif inp.cDOS_flag == 1
-                            saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi, epsilon=dos_en, phiph=phiphi, phic=phici)
+                            saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi, epsilon=dos_en, phiph=phiphi, phic=phici, idx_ef=idx_ef)
                         end
                     elseif inp.include_Weep == 0
                         if inp.cDOS_flag == 0
-                            saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi, chi=shifti)                           
+                            saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi, chi=shifti)
                         elseif inp.cDOS_flag == 1
-                            saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi)                
+                            saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi)
                         end
                     end
                 catch ex

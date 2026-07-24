@@ -61,9 +61,8 @@ const kb = 0.08617333262; # meV/K
     shiftcut::Float64                       = 2000.0      # cutoff shift & Ne
     sparseSamplingTemp::Float64             = 2.0
     typEl::Float64                          = NaN
-    flag_acon::Bool                         = false   
-    plot_flag::Bool                         = false  
-    
+    flag_acon::Bool                         = false
+
     # interpolation
     itpStepSize::Vector{Int64}  = [1, 5, 50]
     itpBounds::Vector{Float64}  = [100.0, 500.0]
@@ -82,6 +81,8 @@ const kb = 0.08617333262; # meV/K
     nheader_a2f::Int64  = -1
     nfooter_a2f::Int64  = -1
     a2f_unit::String    = ""
+    a2f_Nef::Float64    = NaN          # NaN == off; N(ε_F) used when α²F was computed. If set, α²F is
+                                       # rescaled by dosef/a2f_Nef (dosef read from the DOS file)
 
     # dos input file
     dos_file::String    = ""

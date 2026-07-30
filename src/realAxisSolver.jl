@@ -367,7 +367,8 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
     printTee(log_file, "\n")
 
     state = initial_real_axis_state(inp, realAxisParameter, BCS_gap)
-    initValues = [0 real(state.Z[1]) imag(state.Z[1]) real(state.delta[1]) imag(state.delta[1]) nothing]
+    ig0 = gap_edge_index(w_static, BCS_gap)   # same sampling point as the iteration rows
+    initValues = [0 real(state.Z[ig0]) imag(state.Z[ig0]) real(state.delta[ig0]) imag(state.delta[ig0]) nothing]
     printTableHeader(console, initValues, log_file)
 
     β = 1 / (kb * itemp)
@@ -378,16 +379,20 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
     # --- head/tail (vDOS-style) comparison solver ---
     # pole-anchored Chebyshev head + static linear tail; the tail kernels are precomputed
     # once and the head is rebuilt only when the pole of Θ(ω') moves (maybe_refresh_head!).
-    ws_ht = build_cDOS_wprime_workspace(inp, realAxisParameter, real(state.delta[1]))
+    ws_ht = build_cDOS_wprime_workspace(inp, realAxisParameter, BCS_gap)
+
+    # seed for the gap estimate; from here on it is the root of Θ(ω) = ω − ReΔ(ω),
+    # never Δ(w_static[1]) - see spectral_gap in wprimeGrid.jl
+    gap0 = BCS_gap
 
     # Iterate
     for i_it in 1:N_it
         delta_prev = copy(delta_new)
         Z_prev = copy(Z_new)
         broyden_beta = mixing_parameter(inp, i_it)
-        gap0 = real(delta_prev[1])
 
-        pole = find_cDOS_pole(w_static, delta_prev, gap0)
+        gap0 = spectral_gap(w_static, delta_prev, gap0)
+        pole = gap0
         if pole >= ws_ht.wp_max
             ws_ht = build_cDOS_wprime_workspace(inp, realAxisParameter, pole)
         end
@@ -402,12 +407,18 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
         Z_new = (1.0 - abs(broyden_beta)) .* Z_prev .+ abs(broyden_beta) .* Z_new
         delta_new = (1.0 - abs(broyden_beta)) .* delta_prev .+ abs(broyden_beta) .* delta_new
 
-        convergence = sqrt(sum(abs2.(delta_new .- delta_prev))/length(delta_new))
-        data = [Z_new[1], delta_new[1]]
-        outputVec = real_axis_cdOS_output(i_it, Z_new, delta_new, convergence, gap0)
+
+        rel_delta = sum(abs.(delta_new - delta_prev))
+        abs_delta = sum(abs.(delta_new))
+        convergence = rel_delta / abs_delta
+        #convergence = abs(sqrt(sum(abs2.(delta_new .- delta_prev))/length(delta_new))/gap0)  # Alejandros criteria
+        data = [Z_new[1], delta_new[1]]     #
+        idx_gapEdge = gap_edge_index(w_static, gap0)
+        data = [Z_new[1], delta_new[idx_gapEdge]]   # PLOT HERE gap0 
+        outputVec = real_axis_cdOS_output(i_it, w_static, Z_new, delta_new, convergence, gap0, idx_gapEdge)
         print_real_axis_iteration(outputVec, console, log_file)
 
-        if abs(convergence / gap0) < conv_thr && i_it > maximum([min_it, nItFullCoul + 1])
+        if abs(convergence) < conv_thr && i_it > maximum([min_it, nItFullCoul + 1])
             print_real_axis_converged(itemp, console, log_file)
 
             state.Z = Z_new
@@ -456,7 +467,7 @@ Solve the real-axis Eliashberg equations in the vDOS+μ approximation.
 """
 function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, state::RealAxisState, log_file)
     # destruct inputs
-    (_, _, dos_en, dos, Weep, dosef, idx_ef, _, _, _) = matval
+    (_, _, dos_en, dos, Weep, dosef, idx_ef, _, BCS_gap, _) = matval
     (; muc_ME, mu_flag, N_it, conv_thr, minGap, nItFullCoul, min_it) = inp
     (w_static, w_static_chi, _) = realAxisParameter
 
@@ -500,8 +511,9 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
     end
     fermi_level = state.fermi_level
 
-    # print console table
-    initValues = [0 real(state.Z[1]) imag(state.Z[1]) real(state.chi[1]) imag(state.chi[1]) state.fermi_level real(state.delta[1]) imag(state.delta[1]) nothing]
+    # print console table; sampled at the gap edge, like the iteration rows
+    ig0 = gap_edge_index(w_static, spectral_gap(w_static, state.delta, BCS_gap))
+    initValues = [0 real(state.Z[ig0]) imag(state.Z[ig0]) real(state.chi[ig0]) imag(state.chi[ig0]) state.fermi_level real(state.delta[ig0]) imag(state.delta[ig0]) nothing]
     printTableHeader(console, initValues, log_file)
 
     β = 1 / (kb * itemp)
@@ -511,7 +523,11 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
     # head/tail split (vDOS): tail kernels are computed once per temperature,
     # the pole-anchored head grid is rebuilt only when the poles move.
     # wp_max = 2·Δ(0) of the starting state (cDOS solution / previous temperature).
-    gridws = build_wprime_workspace(inp, realAxisParameter, real(state.delta[1]))
+    gridws = build_wprime_workspace(inp, realAxisParameter, spectral_gap(w_static, state.delta, BCS_gap))
+
+    # seed for the gap estimate; from here on it is the root of Θ(ω) = ω − ReΔ(ω),
+    # never Δ(w_static[1]) - see spectral_gap in wprimeGrid.jl
+    gap0 = spectral_gap(w_static, state.delta, BCS_gap)
 
     # optional Broyden mixer (broyden_flag == 1); default is linear mixing
     broyden = inp.broyden_flag == 1 ? BroydenMixer(inp.broyden_mem) : nothing
@@ -523,7 +539,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         phi_ph_prev = copy(phi_ph_new)
         phi_c_prev = copy(phi_c_new)
         broyden_beta = mixing_parameter(inp, i_it)
-        gap0 = real(delta_prev[1])
+        gap0 = spectral_gap(w_static, delta_prev, gap0)
 
         # locate the ω'-integrand poles (vDOS+W: from the modified S/P quantities)
         if inp.include_Weep == 1
@@ -571,7 +587,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
 
         convergence = sqrt(sum(abs2.(delta_new .- delta_prev))/length(delta_new))
         data = [Z_new[1], delta_new[1], chi_new[1]]
-        outputVec = real_axis_vDOS_output(i_it, Z_new, delta_new, chi_new, fermi_level, convergence, gap0)
+        outputVec = real_axis_vDOS_output(i_it, w_static, Z_new, delta_new, chi_new, fermi_level, convergence, gap0)
         print_real_axis_iteration(outputVec, console, log_file)
 
         # DEBUG: peak RSS + largest tracked live variable, once per iteration (remove later)
@@ -739,22 +755,56 @@ function print_real_axis_not_converged(inp, console, log_file)
 end
 
 """
-    real_axis_cdOS_output(i_it, Z_new, delta_new, convergence, gap0)
+    real_axis_cdOS_output(i_it, w_static, Z_new, delta_new, convergence, gap0)
 
-cDOS console output
+cDOS console output. Z and Δ are reported at the gap edge (see `gap_edge_index`), and the
+error column is the same quantity that is tested against `conv_thr` - it used to be divided
+by `gap0`, so the printed value did not match the convergence criterion being applied.
 """
-function real_axis_cdOS_output(i_it, Z_new, delta_new, convergence, gap0)
-    return [i_it, real(Z_new[1]), imag(Z_new[1]), real(delta_new[1]), imag(delta_new[1]), abs(convergence / gap0)]
+function real_axis_cdOS_output(i_it, w_static, Z_new, delta_new, convergence, gap0, ig)
+    return [i_it, real(Z_new[ig]), imag(Z_new[ig]), real(delta_new[ig]), imag(delta_new[ig]), abs(convergence)]
 end
 
 
 """
-    real_axis_vDOS_output(i_it, Z_new, delta_new, chi_new, fermi_level, convergence, gap0)
+    real_axis_vDOS_output(i_it, w_static, Z_new, delta_new, chi_new, fermi_level, convergence, gap0)
 
-vDOS console output
+vDOS console output. Z, χ and Δ are reported at the gap edge (see `gap_edge_index`), and the
+error column is the same quantity that is tested against `conv_thr` - it used to be divided
+by `gap0`, so the printed value did not match the convergence criterion being applied.
 """
-function real_axis_vDOS_output(i_it, Z_new, delta_new, chi_new, fermi_level, convergence, gap0)
-    return [i_it, real(Z_new[1]), imag(Z_new[1]), real(chi_new[1]), imag(chi_new[1]), fermi_level, real(delta_new[1]), imag(delta_new[1]), abs(convergence / gap0)]
+function real_axis_vDOS_output(i_it, w_static, Z_new, delta_new, chi_new, fermi_level, convergence, gap0)
+    ig = gap_edge_index(w_static, gap0)
+    return [i_it, real(Z_new[ig]), imag(Z_new[ig]), real(chi_new[ig]), imag(chi_new[ig]), fermi_level,
+            real(delta_new[ig]), imag(delta_new[ig]), abs(convergence)]
+end
+
+
+"""
+    gap_edge_index(w_static, gap0)
+
+Index of the ω-grid point closest to the gap edge `gap0`, i.e. where the console row is
+sampled. Falls back to the first point if `gap0` is not usable.
+
+The row must not be read off at `w_static[1]`: at finite temperature Z(ω) = 1 − Iz(ω)/ω
+diverges as 1/ω (the thermal quasiparticle scattering rate is nonzero), so Z is huge and
+Δ = φ/Z is crushed at the first grid point - for H3S at 180 K the table showed
+Im Z = 37.8 and Δ = 0.30 meV against a gap of ~66 meV. Both are artefacts of ω₁ = 0.1 meV
+being an arbitrary grid choice, and both vanish at low temperature, which is why this only
+ever looked wrong for high-Tc materials.
+"""
+function gap_edge_index(w_static, gap0::Float64)
+    isfinite(gap0) || return firstindex(w_static)
+    idx = firstindex(w_static)
+    best = Inf
+    @inbounds for i in eachindex(w_static)
+        d = abs(w_static[i] - gap0)
+        if d < best
+            best = d
+            idx = i
+        end
+    end
+    return idx
 end
 
 

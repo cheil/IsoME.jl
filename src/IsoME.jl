@@ -21,18 +21,14 @@ module IsoME
 export EliashbergSolver, arguments, RealAxisSolver
 
 
-using DelimitedFiles        # read in files   
+using DelimitedFiles            # read in files   
 using Interpolations        
 using Plots, LaTeXStrings
-using Trapz                 # integration
-using LinearAlgebra         # 
-using CSV                   # write to csv
-using Printf                # Format console output, removable
-using SparseIR              # Intermediate basis 
-using LsqFit                # Curve fit in Tc search mode, removable
-using Roots                 # Root finding
-using Term                  # styled text terminal, removable
-using Logging, LoggingExtras
+using Trapz                     # integration
+using LinearAlgebra             # 
+using Printf                    # Format console output, also imported by other packages
+using SparseIR                  # Intermediate basis, removable if we use a different approach for sparse sampling (Roman's?)
+using Logging, LoggingExtras    # also imported by other packages
 
 
 ### defining constants ###
@@ -128,6 +124,7 @@ end
 
 
 ### include files ###
+include("CurveFit.jl")
 include("TcSearch.jl")
 include("ReadIn.jl")
 include("Interpolation.jl")

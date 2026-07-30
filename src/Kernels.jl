@@ -35,8 +35,11 @@ function setUpOmegaAxis(inp, matval)
 
 
     # nonzero values of a2F, ensure endpoints are zero
-    idx_left = findfirst(a2f .> 1e-6)   
-    idx_right = findlast(a2f .> 1e-6)
+    idx_left = min(findfirst(a2f .> 1e-2), findfirst(a2f_omega .> 2*inp.domega))   # a2F(w>domega) DISCUSS THIS CUTOFF!!
+    idx_right = findlast(a2f .> 1e-2)
+
+    println(idx_left," ", a2f_omega[idx_left])
+    println(idx_right," ", a2f_omega[idx_right])
 
     W_left = a2f_omega[idx_left]
     W_right = a2f_omega[idx_right]
@@ -53,7 +56,6 @@ function setUpOmegaAxis(inp, matval)
         w_axis = 0:inp.dKernel:(max(inp.reOmega_c, inp.reOmega_c_shift)+inp.dKernel)
     end
     int_axis = make_integration_axis(W_right-W_left, 300, 300, 3)      # Ω-integration axis #
-
 
     return G, W_left, W_right, w_axis, int_axis
 end
@@ -269,13 +271,12 @@ Build the linear-route kernel at a given temperature: the 1-D interpolants A(x),
     Km(ω,ω') =  𝒦(ω,ω') + 𝒦(ω,-ω')
 with K(ω,ω') as given in the paper, supplemental eq. (47). Returns the `LinearKernel`.
 """
-function kernels(β, inp, w_axis, W_left, W_right, int_axis, G, log_file=nothing, line_width=80)
+function kernels(β, w_axis, W_left, W_right, int_axis, G, log_file=nothing, line_width=80)
 
     # Fermi-Dirac and Bose-Einstein distributions
     f = x -> 1 / (exp(β * x) + 1)
     n = x -> x == 0 ? 0.0 : abs(1 / (exp(β * x) - 1))
 
-    # @time begin
     # # Compute real and imaginary parts of kernels
     # Kp_imag, Km_imag = compute_imag_kernels(w_axis, f, n, G, W_left, W_right, log_file, line_width)
     # Kp_real, Km_real = compute_real_kernels(w_axis, length(w_axis), w_axis[end], W_left, W_right, int_axis, f, n, G, log_file, line_width)     # reOmega_c, domega
@@ -283,11 +284,10 @@ function kernels(β, inp, w_axis, W_left, W_right, int_axis, G, log_file=nothing
     # # Combine into complex kernels
     # Kp = Kp_real .+ im .* (Kp_imag)
     # Km = Km_real .+ im .* (Km_imag)
-    # end
 
-    @time begin
+    #@time begin
         I1, I2 = compute_kernel_integrals(w_axis, length(w_axis), w_axis[end], W_left, W_right, int_axis, f, n, G, log_file, line_width)
-    end
+    #end
 
     # Linear route: the kernel as two 1-D interpolants A(x), B(x) on the difference grid.
     # 𝒦(ω,ω') = A(x) + f(ω')·B(x), x = ω'−ω, so the full O(N²) Kp/Km matrices are never built.
@@ -304,10 +304,10 @@ function precompute(β, inp, matval, console, log_file)
     ### Set up axis and parameters ###
     G, W_left, W_right, w_axis, int_axis = setUpOmegaAxis(inp, matval)
 
-    @time lin_kernel = kernels(β, inp, w_axis, W_left, W_right, int_axis, G, log_file, length(console.cDOS.partingLine))
+    lin_kernel = kernels(β, w_axis, W_left, W_right, int_axis, G, log_file, length(console.cDOS.partingLine))
 
-    w_static = 1e-1:inp.domega:inp.reOmega_c        # grid of Z(w), Delta(w), sensitive to start value, do not chose < 1e-1
-    w_static_chi = 1e-1:inp.domega:inp.reOmega_c_shift   # grid of χ(ω); same step as w_static so all channels are k=1
+    w_static = 1:inp.domega:inp.reOmega_c        # grid of Z(w), Delta(w), sensitive to start value, do not chose < 1e-1
+    w_static_chi = 1:inp.domega:inp.reOmega_c_shift   # grid of χ(ω); same step as w_static so all channels are k=1
 
     # assert grid sizes
     @assert first(w_axis) <= first(w_static) && last(w_static) <= last(w_axis)

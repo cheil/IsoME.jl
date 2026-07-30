@@ -92,8 +92,30 @@ cutoff or too coarse a grid can prevent the μ-update from settling. The `muErro
 to check.
 
 Imag Axis: f(mu) oscillates "around" monotonic function -->  epsilon grid too coarse; omega_c vs encut unclear
-Real axis: omega cutoff must be large enough such that the J_w integral approaches 1 for large epsilon. This is only fullfilled when omega > epsilon or in other words: in the limit omega to infinity. If epsilon becomse larger, the limit goes to 0 --> wrong behavior
-It is hard to derive a hard limit for the omega to epsilon ratio where J_w goes from 1 to 0. In any case, omega should be sufficiently larger then epsilon (also add a warning to the code if encute > reOmega_c_shift)
+
+### ``\omega`` must be sufficiently larger than ``\varepsilon`` (real axis, vDOS)
+
+The μ-update and the shift ``\chi(\omega)`` are built from ``\omega'``-integrals over the
+``\varepsilon``-resolved kernels. Their correct limiting behaviour — the ``\omega'``-integral
+``J_\omega`` tending to ``1`` for large ``\varepsilon`` — is only recovered in the limit
+``\omega \to \infty``, i.e. as long as ``\omega`` is *sufficiently larger* than ``\varepsilon``. If
+the ``\varepsilon``-window instead reaches up to (or beyond) the ``\omega``-cutoff, ``J_\omega``
+crosses over towards ``0`` for the outermost energies, and both the electron number entering the
+μ-update and ``\chi`` acquire a systematic error there.
+
+The crossover is gradual, so no sharp ratio ``\omega/\varepsilon`` can be derived at which
+``J_\omega`` goes from ``1`` to ``0``. IsoME therefore enforces a conservative margin: in the vDOS
+case of the real-axis solver *encut* must not exceed half of *reOmega_c_shift*, which bounds the
+``\omega'``-integration. If it does, the run prints
+
+```
+encut = … exceeds reOmega_c_shift/2 = …; the ε-integration has to stay well inside the ω-cutoff.
+Setting encut = …
+```
+
+and continues with the reduced ``\varepsilon``-window. If you need the larger *encut*, do **not**
+work around the warning by shrinking the energy window — raise *reOmega_c_shift* to at least
+``2\cdot`` *encut* instead (a larger shift cutoff is beneficial for the μ-update anyway, see above).
 
 
 <!-- TODO(user): the exact imaginary-axis failure modes (Matsubara cutoff vs ε-grid) still need to

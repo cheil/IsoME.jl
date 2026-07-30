@@ -239,6 +239,7 @@ function lin_kernel_omega_integral(ws::WPrimeWorkspace, w_static, g_z, g_phi)
     Iz = ws.Km_head_lin * gh_z
     Iphi = view(ws.Kp_head_lin, 1:ns, :) * gh_phi
 
+
     # tail: precomputed Toeplitz/Hankel A,B lookups (no matrix), loop only the first ns rows
     lin_tail_accumulate!(Iz, Iphi, ws.A_dif_tail, ws.B_dif_tail, ws.A_sum_tail, ws.B_sum_tail,
                          noff, ns, ws.wgt_tail, ws.fp_tail, ws.fm_tail,
@@ -350,18 +351,60 @@ Pole of the cDOS+μ ω'-integrand: the root of Θ(ω') = ω' − Re Δ(ω') (the
 ω'² = Δ(ω')²). Falls back to gap0 if no root is found.
 """
 function find_cDOS_pole(w_static, deltaip::Vector{ComplexF64}, gap0::Float64)
-    Delta_func = linear_interpolation(w_static, deltaip, extrapolation_bc=Flat())
-    root_eq = x -> x - real(Delta_func(x))
-    for x0 in (gap0, 20.0)
-        try
-            return find_zero(root_eq, x0)
-        catch ex
-            ex isa InterruptException && rethrow(ex)
+    # Θ(ω') = ω' − ReΔ(ω') is piecewise linear on w_static, because ReΔ is taken from a
+    # linear interpolation of deltaip over the same nodes. Its roots can therefore be
+    # located exactly: look for sign changes of Θ between neighbouring nodes and solve
+    # the single linear segment, instead of iterating a general root finder once per
+    # self-consistency step. Of several roots the one closest to gap0 is returned, which
+    # is the root the previous point-based search started from.
+    root = NaN
+    dist = Inf
+
+    # eachindex(w_static, deltaip) instead of 2:length(w_static): it does not assume
+    # 1-based indexing and it throws DimensionMismatch if the two do not share axes,
+    # which the @inbounds loop below would otherwise turn into an out-of-bounds read.
+    idx = eachindex(w_static, deltaip)
+    i1 = first(idx)
+    theta_prev = w_static[i1] - real(deltaip[i1])
+
+    @inbounds for i in (i1+1):last(idx)
+        theta = w_static[i] - real(deltaip[i])
+
+        if theta_prev * theta <= 0
+            denom = theta_prev - theta
+            r = denom == 0 ? w_static[i-1] :
+                w_static[i-1] + theta_prev / denom * (w_static[i] - w_static[i-1])
+            d = abs(r - gap0)
+            if d < dist
+                dist = d
+                root = r
+            end
         end
+
+        theta_prev = theta
     end
+
     #printWarning("Couldn't find the root of x-Δ(x). Shfiting chebyshev grid to BCS gap instead.")
-    return gap0
+    return isnan(root) ? gap0 : root
 end
+
+
+"""
+    spectral_gap(w_static, deltaip, gap_prev)
+
+Gap estimate for the ω'-grid, the pole anchor and the convergence ratio: the root of
+Θ(ω) = ω − ReΔ(ω), i.e. the gap edge, falling back to `gap_prev` if no root exists.
+
+Δ(w_static[1]) must **not** be used for this. At finite temperature the thermal
+quasiparticle scattering rate 2π∫α²F(ν)[n(ν)+f(ν)]dν is nonzero, so Z(ω) = 1 − Iz(ω)/ω
+diverges as 1/ω and Δ = φ/Z is suppressed at the first grid point by a factor that grows
+with temperature (|Z(0.1 meV)| ≈ 70 against 1+λ ≈ 3.3 for H3S at 180 K). Feeding that into
+the grid construction shrinks the head region, misplaces the Chebyshev cluster and inflates
+the convergence ratio - all of which get worse as T → Tc, and all of which are invisible at
+low temperature where the divergence is suppressed by exp(−Δ/kT).
+"""
+spectral_gap(w_static, deltaip::Vector{ComplexF64}, gap_prev::Float64) =
+    find_cDOS_pole(w_static, deltaip, gap_prev)
 
 
 """
@@ -417,7 +460,7 @@ function maybe_refresh_head!(ws::WPrimeWorkspace, poles::Vector{Float64},
         ws.Kp_head_lin = Matrix{ComplexF64}(undef, size(ws.Kp_head_lin, 1), ws.n_head)
     end
 
-    @time w_master = isnothing(w_static_chi) ? w_static : w_static_chi
+    w_master = isnothing(w_static_chi) ? w_static : w_static_chi
     fill_km_lin!(ws.Km_head_lin, w_static, ws.wp_head, ws.lin)   # K⁻ on w_static
     fill_kp_lin!(ws.Kp_head_lin, w_master, ws.wp_head, ws.lin)   # K⁺ on master grid
     ws.poles_prev = copy(poles)

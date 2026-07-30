@@ -325,6 +325,14 @@ function checkInput(inp::arguments; realSolver::Bool=false)
             @warn "reOmega_c_shift = $(inp.reOmega_c_shift) is smaller than reOmega_c = $(inp.reOmega_c). Setting reOmega_c_shift = reOmega_c = $(inp.reOmega_c)."
             inp.reOmega_c_shift = inp.reOmega_c
         end
+
+        # vDOS: the ω-integrals of the μ-update and of χ(ω) only show their correct limiting
+        # behaviour as long as ω is sufficiently larger than ε; the ε-window must therefore stay
+        # well inside the ω-cutoff. Require reOmega_c_shift ≥ 2·encut and clamp encut down.
+        if inp.cDOS_flag == 0 && inp.encut > inp.reOmega_c_shift / 2
+            @warn "encut = $(inp.encut) exceeds reOmega_c_shift/2 = $(inp.reOmega_c_shift / 2); the ε-integration has to stay well inside the ω-cutoff. Setting encut = $(inp.reOmega_c_shift / 2). Increase reOmega_c_shift to keep the larger ε-window. See the μ-update section of the Troubleshooting page."
+            inp.encut = inp.reOmega_c_shift / 2
+        end
     end
 
     return inp

@@ -46,7 +46,7 @@ function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phi_ph_ip:
     # DEBUG: the ε-integration allocates two M×Nint transients (C0phi/C1phi, freed on return)
     # plus the returned ndos×M coulomb_spectral; Sys.maxrss() is monotonic so it captures that
     # peak even though C0phi/C1phi are already gone by iteration-end. (remove later)
-    @info "[MEM] ε-integration" peak_rss_MiB = round(Sys.maxrss() / 2^20, digits = 1) coulomb_spectral_MiB = round(Base.summarysize(coulomb_spectral) / 2^20, digits = 1) C0C1phi_transient_MiB = round(2 * length(w_prime) * length(electronic_spec[5]) * 8 / 2^20, digits = 1)
+    # @info "[MEM] ε-integration" peak_rss_MiB = round(Sys.maxrss() / 2^20, digits = 1) coulomb_spectral_MiB = round(Base.summarysize(coulomb_spectral) / 2^20, digits = 1) C0C1phi_transient_MiB = round(2 * length(w_prime) * length(electronic_spec[5]) * 8 / 2^20, digits = 1)
 
     # Z-integrand must be positive (causality), flip the others accordingly
     # Note: Minus sign because split of -Θ to (ε+χ +- ε_p) (eq. (51))
@@ -147,6 +147,10 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, deltaip::Vector{Compl
 
     # μ* Coulomb term (scalar, same for all ω)
     coulomb = wprime_trapz(ws, g_phi .* tanh.(beta .* w_prime ./ 2))
+
+    plot(w_static, real(Iz))
+    plot!(w_static, imag(Iz))
+    savefig("Iz.png")
 
     Zval = 1 .- Iz ./ w_static
     Delta = (Iphi .- wgCoulomb .* mu_star .* coulomb) ./ Zval

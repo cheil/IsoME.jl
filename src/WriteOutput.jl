@@ -153,7 +153,7 @@ function printADtable(console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log, log_fil
     logText = " "^blanksAD*Hline*"\n"*" "^blanksAD*delimiter*headline*delimiter*"\n"
     println(" "^blanksAD*Hline)
     print(" "^blanksAD*delimiter)
-    print(@bold headline)
+    printstyled(headline; bold=true)
     println(delimiter)
    
     # Hline
@@ -166,7 +166,7 @@ function printADtable(console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log, log_fil
     for k in eachindex(header)
         value = header[k]
         # print
-        print(@bold value)
+        printstyled(value; bold=true)
         print(delimiter)
 
         # save for log file
@@ -246,7 +246,7 @@ function printTextCentered(text, hline; file = "", bold = false, blanks=3, delim
     if consoleFlag
         print(leftText)
         if bold
-            print(@bold text)
+            printstyled(text; bold=true)
         else
             print(text)
         end
@@ -289,7 +289,7 @@ function printTableHeader(table::TableSpec, initValues, log_file)
     for k in eachindex(header)
         value = header[k]
         # print
-        print(@bold value)
+        printstyled(value; bold=true)
         print(delimiter)
 
         # save for log file
@@ -874,7 +874,7 @@ function createFigures(inp, matval, Delta0, temps, Tc, log_file)
     savefig(inp.outdir * "/a2F_sm" * string(inp.ind_smear) * ".pdf")
 
     if all(isnan.(Delta0))
-        print(@blue "Info: ")
+        printstyled("Info: "; color=:blue)
         println("No superconducting gap found - skipping plot\n")
 
         print(log_file,  "Info: No superconducting gap found - skipping plot\n")
@@ -905,11 +905,13 @@ function createFigures(inp, matval, Delta0, temps, Tc, log_file)
         # Define gradient range
         max_gradient_val = 77               # Blue Gradient applies up to this value
         
-        # normalize x 
-        color_values = (temps_plot)/max_gradient_val/2
-        
+        # normalize x: blue at 0 K, white at max_gradient_val, red at 2*max_gradient_val.
+        # If the gap survives beyond 2*max_gradient_val the range is stretched to the
+        # highest temperature instead, so the colour scale never wraps back to blue.
+        color_values = temps_plot ./ max(2 * max_gradient_val, maximum(temps_plot))
+
         # Map colors: Use blue gradient for values <= max_gradient_val, red gradient for rest
-        marker_colors = [v < 1.0 ? my_gradient[v] : my_gradient[v-1] for v in color_values]
+        marker_colors = [my_gradient[clamp(v, 0.0, 1.0)] for v in color_values]
         
         h=scatter(temps_plot, Delta0_plot, color=marker_colors, colorbar=false, markerstrokewidth=1, ms=6, xticks=xtick_val)
         if length(temps_plot) > 1
@@ -922,7 +924,13 @@ function createFigures(inp, matval, Delta0, temps, Tc, log_file)
                 par = fit.param
                 TcFit = exp(par[2])+maximum(temps_plot)
                 Delta0Fit = abs(par[1])     # Delta(T) is symmetric wrt Delta0
-            
+
+                if ~fit.converged
+                    printWarning("The Δ(T) fit did not converge within $(fit.iterations) iterations "*
+                                 "(Tc_fit = $(round(TcFit, digits=2)) K, Δ₀_fit = $(round(Delta0Fit, digits=3)) meV). "*
+                                 "The fitted curve may be unreliable.", log_file)
+                end
+
                 # second derivative
                 A = π*kb*TcFit/Delta0Fit
                 a = par[3]
@@ -936,7 +944,9 @@ function createFigures(inp, matval, Delta0, temps, Tc, log_file)
                 Delta_fit = Delta(temps_fit, par)
                 
                 # plot if negative curvature
-                if all(DeltaSecDer(temps_fit).<0) && (TcFit > Tc[1]) #&& (TcFit < Tc[2] || isnan(Tc[2])) && TcFit < 1e3 # plot only if TcFit is reasonable ??
+                negCurv = all(DeltaSecDer(temps_fit).<0)
+                aboveTc = TcFit > Tc[1]
+                if negCurv && aboveTc #&& (TcFit < Tc[2] || isnan(Tc[2])) && TcFit < 1e3 # plot only if TcFit is reasonable ??
                     plot!(temps_fit, Delta_fit, linestyle=:dash, linewidth=1, color=:gray, z_order=:back)
             
                     # adjust limits
@@ -952,9 +962,23 @@ function createFigures(inp, matval, Delta0, temps, Tc, log_file)
                     else
                         xtick_val = 0:10:xlim_max
                     end
+                else
+                    # fit returned, but the result is not physical enough to show
+                    reason = String[]
+                    negCurv || push!(reason, "the curvature of Δ(T) is not negative over the whole fit range")
+                    aboveTc || push!(reason, "the fitted Tc ($(round(TcFit, digits=2)) K) does not exceed the "*
+                                             "lower bound of the Tc interval ($(round(Tc[1], digits=2)) K)")
+                    printWarning("Not plotting the Δ(T) fit because "*join(reason, " and ")*
+                                 ". The calculated gap values are shown without a fit curve.", log_file)
                 end
             catch  ex
-                #rethrow(ex)
+                ex isa InterruptException && rethrow(ex)
+                # handled here rather than in the enclosing attempt(), so the rest of the
+                # figure is still produced - but keep attempt()'s CRASH file, otherwise the
+                # warning would point at a file that was never written
+                writeToCrashFile(inp, ex, catch_backtrace())
+                printWarning("The Δ(T) fit failed. The calculated gap values are shown without a fit curve.",
+                             log_file, ex=ex)
             end
         end
         plot!(xticks=xtick_val)

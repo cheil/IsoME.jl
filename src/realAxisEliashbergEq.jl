@@ -56,9 +56,9 @@ function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phi_ph_ip:
     g_chi = -(FLIP .* integrands[3])
 
     # ------------- Ω & ω'-integration ------------- #
-    # O(N)-memory linear route: K⁻ g_z and K⁺ g_phi (first ns rows) plus K⁺ g_chi on the master grid.
-    Iz, Iphi = lin_kernel_omega_integral(ws, w_static, g_z, g_phi)
-    Ichi = lin_kernel_omega_integral_chi(ws, w_static_chi, g_chi)
+    # O(N)-memory kernel route: K⁻ g_z and K⁺ g_phi (first ns rows) plus K⁺ g_chi on the master grid.
+    Iz, Iphi = kernel_omega_integral(ws, w_static, g_z, g_phi)
+    Ichi = kernel_omega_integral_chi(ws, w_static_chi, g_chi)
 
     # Coulomb term: integrate N(ε')W(ε,ε') with the same piecewise-linear spectral
     # quadrature (coulomb_spectral is ndos × M). The dosef prefactor cancels.
@@ -108,9 +108,9 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
     g_chi = -(FLIP .* integrands[3])
 
     # ------------- ω'-integration ------------- #
-    # O(N)-memory linear route: K⁻ g_z and K⁺ g_phi (first ns rows) plus K⁺ g_chi on the master grid.
-    Iz, Iphi = lin_kernel_omega_integral(ws, w_static, g_z, g_phi)
-    Ichi = lin_kernel_omega_integral_chi(ws, w_static_chi, g_chi)
+    # O(N)-memory kernel route: K⁻ g_z and K⁺ g_phi (first ns rows) plus K⁺ g_chi on the master grid.
+    Iz, Iphi = kernel_omega_integral(ws, w_static, g_z, g_phi)
+    Ichi = kernel_omega_integral_chi(ws, w_static_chi, g_chi)
 
     # μ* Coulomb term
     coulomb = wprime_trapz(ws, g_phi .* tanh.(beta .* w_prime ./ 2))
@@ -142,15 +142,11 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, deltaip::Vector{Compl
     g_z = @. real(w_prime / sqrt_eval)          # Z   integrand density (∝ quasiparticle DOS)
     g_phi = @. real(Delta_ongrid / sqrt_eval)   # Δ·Z integrand density
 
-    # O(N)-memory linear route: materialized K head (gemv) + Toeplitz/Hankel tail (A + f·B on the fly)
-    Iz, Iphi = lin_kernel_omega_integral(ws, w_static, g_z, g_phi)
+    # O(N)-memory kernel route: materialized K head (gemv) + Toeplitz/Hankel tail (A + f·B on the fly)
+    Iz, Iphi = kernel_omega_integral(ws, w_static, g_z, g_phi)
 
     # μ* Coulomb term (scalar, same for all ω)
     coulomb = wprime_trapz(ws, g_phi .* tanh.(beta .* w_prime ./ 2))
-
-    plot(w_static, real(Iz))
-    plot!(w_static, imag(Iz))
-    savefig("Iz.png")
 
     Zval = 1 .- Iz ./ w_static
     Delta = (Iphi .- wgCoulomb .* mu_star .* coulomb) ./ Zval

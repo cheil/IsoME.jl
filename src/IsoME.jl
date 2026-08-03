@@ -133,11 +133,10 @@ include("AllenDynes.jl")
 include("MuUpdate.jl")
 include("WriteOutput.jl")
 include("EliashbergEq.jl")
-include("LinearKernels.jl")
+include("Kernels.jl")
 include("wprimeGrid.jl")
 include("realAxisSolver.jl")
 include("realAxisEliashbergEq.jl")
-include("Kernels.jl")
 include("Acon.jl")
 
 

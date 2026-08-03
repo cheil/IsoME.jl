@@ -701,6 +701,9 @@ print state of current iteration
 """
 function print_real_axis_iteration(outputVec, console, log_file)
     outputVec, strConsole, format = formatTableRow(outputVec, console.width, console.precision)
+    println(outputVec)
+    println(strConsole)
+    println(format)
     for i in axes(strConsole, 1)
         Printf.format(stdout, Printf.Format(strConsole[i]), format[i, 1], " ", format[i, 2], format[i, 3], outputVec[i], format[i, 4], " ")
     end

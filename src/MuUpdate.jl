@@ -103,7 +103,9 @@ function root_finding(fmu, outdir, fermi_level; shift = nothing, omega_shift = n
     end
 
     ### calc new mu using the RegulaFalsi method
-    mu = RegulaFalsi(fmu, fmu0, fmu1, mu0, mu1, 1e-3, 1e-6)     # Check which ftol is sufficient (1e-4?, 1e-3?)
+    mu = RegulaFalsi(fmu, fmu0, fmu1, mu0, mu1, 1e-3, 1e-6)     
+    # Did some tests: ftol = 1e-4 would probably also be sufficient as mu only changes a few percent
+    #                 This should not affect the Tc
 
     return mu
 end

@@ -122,6 +122,9 @@ work around the warning by shrinking the energy window — raise *reOmega_c_shif
      be pinned down from further testing before this note can be made more prescriptive. -->
 <!-- TODO(user): additional μ-update guidance to be provided — see open question. -->
 
+## ToDo: Add further information derived from the convergence tests
+<!-- For all convergence parameter: domega, dKernel, reOmgega_c, reOmega_c_shift, encut, depsilon give examples when they are diverging.  -->
+
 ## μ\* conversion
 
 IsoME works with three Coulomb parameters: ``\mu``, and the Morel-Anderson pseudopotentials

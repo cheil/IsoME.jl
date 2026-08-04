@@ -3,19 +3,42 @@
 """
 
 # --- DEBUG: per-iteration memory report (remove later) -----------------------
-# report_iteration_mem(i_it; name1=var1, name2=var2, ...) prints the process peak
-# RSS so far and, of the passed variables, the single largest live one (name + MiB),
-# so you can see which array dominates the working set at each SCF iteration.
-function report_iteration_mem(i_it; vars...)
-    biggest = :none; nbytes = 0
-    for (name, v) in vars
-        b = Base.summarysize(v)
-        b > nbytes && ((biggest, nbytes) = (name, b))
+# report_iteration_mem(i_it, gridws) prints the process peak RSS so far and a
+# field-by-field breakdown of the ω'-workspace, which dominates the working set.
+# Only array-valued fields are listed (scalars cannot contribute meaningfully);
+# arrays inside nested struct fields are recursed into and shown dotted, e.g. ker.A.
+function report_iteration_mem(i_it, gridws)
+    entries = Tuple{String,Int,String}[]     # (name, bytes, "dims eltype")
+    collect_array_fields!(entries, gridws, "")
+    sort!(entries, by = e -> -e[2])
+    total = isempty(entries) ? 0 : sum(e -> e[2], entries)
+
+    @printf("[MEM] it %-4d  peak RSS %.1f MiB   gridws arrays %.1f MiB\n",
+            i_it, Sys.maxrss() / 2^20, total / 2^20)
+    for (name, b, dims) in entries
+        @printf("        %-14s %-26s %8.2f MiB  (%4.1f %%)\n",
+                name, dims, b / 2^20, total == 0 ? 0.0 : 100 * b / total)
     end
-    @info "[MEM]" it = i_it peak_rss_MiB = round(Sys.maxrss() / 2^20, digits = 1) biggest biggest_MiB = round(nbytes / 2^20, digits = 1)
     return nothing
 end
-# ----------------------------------------------------------------------------
+
+# Walk `obj`s fields, collecting every AbstractArray; recurse into struct-valued
+# fields so nested arrays (ker.A, ker.B) are reported separately rather than as
+# one opaque lump. Numbers are skipped.
+function collect_array_fields!(entries, obj, prefix)
+    for name in fieldnames(typeof(obj))
+        v = getfield(obj, name)
+        v isa Number && continue
+        label = prefix * string(name)
+        if v isa AbstractArray
+            push!(entries, (label, Base.summarysize(v),
+                            join(size(v), "×") * " " * string(eltype(v))))
+        elseif Base.isstructtype(typeof(v))
+            collect_array_fields!(entries, v, label * ".")
+        end
+    end
+    return entries
+end
 
 
 """

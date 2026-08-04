@@ -416,6 +416,7 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
         idx_gapEdge = gap_edge_index(w_static, gap0)
         data = [Z_new[1], delta_new[idx_gapEdge]]   # PLOT HERE gap0 
         outputVec = real_axis_cdOS_output(i_it, w_static, Z_new, delta_new, convergence, gap0, idx_gapEdge)
+        nan_state = any(isnan, outputVec)
         print_real_axis_iteration(outputVec, console, log_file)
 
         if abs(convergence) < conv_thr && i_it > maximum([min_it, nItFullCoul + 1])
@@ -444,12 +445,18 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
             return data, state
         end
 
-        if i_it == N_it
-            print_real_axis_not_converged(inp, console, log_file)
+        # A NaN anywhere in the console row abandons this temperature. Every self-energy
+        # component is built from sums over the whole ω'-grid, so a single NaN entry
+        # contaminates all of them within one iteration and iterating on is pointless.
+        # Handled like the N_it case (Δ = NaN), so the Tc search continues at lower T.
+        if i_it == N_it || nan_state
+            nan_state ? print_real_axis_nan(itemp, console, log_file) :
+                        print_real_axis_not_converged(inp, console, log_file)
             data[2] = NaN
 
-            # initial guess vDOS
-            if  vDOS_initial_guess
+            # initial guess vDOS; a NaN state must not be handed on - the vDOS solver
+            # would never recover from it, so leave the last finite guess in place.
+            if vDOS_initial_guess && !nan_state
                 state.Z = Z_new
                 state.delta = delta_new
                 state.phi_ph = delta_new .* Z_new
@@ -588,11 +595,12 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         convergence = sqrt(sum(abs2.(delta_new .- delta_prev))/length(delta_new))
         data = [Z_new[1], delta_new[1], chi_new[1]]
         outputVec = real_axis_vDOS_output(i_it, w_static, Z_new, delta_new, chi_new, fermi_level, convergence, gap0)
+        nan_state = any(isnan, outputVec)
         print_real_axis_iteration(outputVec, console, log_file)
 
-        # DEBUG: peak RSS + largest tracked live variable, once per iteration (remove later)
-        report_iteration_mem(i_it; Weep, electronic_spec, gridws, realAxisParameter,
-                             Z_new, chi_new, phi_ph_new, phi_c_new)
+
+        # DEBUG: peak RSS + gridws field breakdown, once per iteration (remove later)
+        report_iteration_mem(i_it, gridws)
 
         if abs(convergence / gap0) < conv_thr && i_it > maximum([min_it, nItFullCoul + 1])
             print_real_axis_converged(itemp, console, log_file)
@@ -626,8 +634,12 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
             return data, state
         end
 
-        if i_it == N_it
-            print_real_axis_not_converged(inp, console, log_file)
+        # A NaN anywhere in the console row abandons this temperature - see the cDOS loop.
+        # `state` is deliberately left untouched, so the next temperature restarts from the
+        # last converged self-energy rather than from the NaN one.
+        if i_it == N_it || nan_state
+            nan_state ? print_real_axis_nan(itemp, console, log_file) :
+                        print_real_axis_not_converged(inp, console, log_file)
             data[2] = NaN
             return data, state
         end
@@ -701,16 +713,9 @@ print state of current iteration
 """
 function print_real_axis_iteration(outputVec, console, log_file)
     outputVec, strConsole, format = formatTableRow(outputVec, console.width, console.precision)
-    println(outputVec)
-    println(strConsole)
-    println(format)
-    for i in axes(strConsole, 1)
-        Printf.format(stdout, Printf.Format(strConsole[i]), format[i, 1], " ", format[i, 2], format[i, 3], outputVec[i], format[i, 4], " ")
-    end
 
-    for i in axes(strConsole, 1)
-        Printf.format(log_file, Printf.Format(strConsole[i]), format[i, 1], " ", format[i, 2], format[i, 3], outputVec[i], format[i, 4], " ")
-    end
+    printTableRow(stdout, outputVec, strConsole, format)
+    printTableRow(log_file, outputVec, strConsole, format)
 end
 
 
@@ -739,6 +744,20 @@ function print_real_axis_gap_too_small(itemp, minGap, console, log_file)
 
     println(log_file, replace(console.Hline, "." => " "))
     printstyled(log_file, "\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than " * string(round(minGap, digits=2)) * " meV!\n\n"; bold=false)
+end
+
+
+"""
+    print_real_axis_nan(itemp, console, log_file)
+
+self energy turned NaN, temperature abandoned
+"""
+function print_real_axis_nan(itemp, console, log_file)
+    println(replace(console.Hline, "." => " "))
+    printstyled("\nSelf energy became NaN at T = " * string(itemp) * " K!\n\n"; bold=true)
+
+    println(log_file, replace(console.Hline, "." => " "))
+    printstyled(log_file, "\nSelf energy became NaN at T = " * string(itemp) * " K!\n\n"; bold=true)
 end
 
 

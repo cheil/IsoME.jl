@@ -253,15 +253,12 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
 
 
         ##### Print to console #####
+        nan_state = any(isnan, outputVec)    # checked before formatTableRow overwrites outputVec
         outputVec, strConsole, format = formatTableRow(outputVec, table.width, table.precision)
-        for i in axes(strConsole, 1)
-            Printf.format(stdout, Printf.Format(strConsole[i]), format[i, 1], " ", format[i, 2], format[i, 3], outputVec[i], format[i, 4], " ")
-        end
+        printTableRow(stdout, outputVec, strConsole, format)
 
         ### print to log file ###
-        for i in axes(strConsole, 1)
-           Printf.format(log_file, Printf.Format(strConsole[i]), format[i, 1], " ", format[i, 2], format[i, 3], outputVec[i], format[i, 4], " ")
-        end
+        printTableRow(log_file, outputVec, strConsole, format)
 
 
         ##### check convergence & termination criterion #####
@@ -341,17 +338,24 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             break
         end
 
-        # max number iterations reached
-        if i_it == inp.N_it
+        # max number iterations reached, or the self energy turned NaN. Every component is
+        # built from sums over the whole Matsubara grid, so a single NaN entry contaminates
+        # all of them within one iteration and iterating on is pointless. Both cases return
+        # Δ = NaN, which makes the Tc search continue at a lower temperature.
+        if i_it == inp.N_it || nan_state
+            msg = nan_state ?
+                  "\nSelf energy became NaN at T = " * string(itemp) * " K, skipping this temperature!\n" :
+                  "\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"
+
             println(replace(table.Hline, "." => " "))
-            printstyled("\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"; bold=true)
+            printstyled(msg; bold=true)
             println("\n")
 
             # log file
             println(log_file, replace(table.Hline, "." => " "))
-            printstyled(log_file, "\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"; bold=true)
+            printstyled(log_file, msg; bold=true)
             println(log_file, "\n")
-    
+
 
             data[2] = NaN
             return data

@@ -302,25 +302,11 @@ function printTableHeader(table::TableSpec, initValues, log_file)
 
     ### Initial values ###
     initValues, strFormat, format = formatTableRow(initValues, width, 2)
-    for i in axes(strFormat, 1)
-        # print
-        if isnothing(initValues[i])
-            print(strFormat[i])
-        else
-            Printf.format(stdout, Printf.Format(strFormat[i]), format[i, 1], " ", format[i, 2], format[i, 3], initValues[i], format[i, 4], " ")
-        end
-    end
+    printTableRow(stdout, initValues, strFormat, format)
 
     # write everything to log_file
     print(log_file, tableHeader * "\n")
-    for i in axes(strFormat, 1)
-        # print
-        if isnothing(initValues[i])
-            print(log_file, strFormat[i])
-        else
-            Printf.format(log_file, Printf.Format(strFormat[i]), format[i, 1], " ", format[i, 2], format[i, 3], initValues[i], format[i, 4], " ")
-        end
-    end
+    printTableRow(log_file, initValues, strFormat, format)
 
     table.Hline = tableHline
 
@@ -409,7 +395,8 @@ function formatTableRow(vec, widthCol, prec=5, logConsole=true)
         value = vec[k]
         width = widthCol[k]
 
-        if isnothing(value) || isnan(value)
+        if isnothing(value) || !isfinite(value)
+            # NaN/Inf get a "-" placeholder; numDigits() cannot parse them either
             numDig = [0,0]
             spacing = (width - (sum(numDig) + 1)) / 2
             format[k, :] = [Int(floor(spacing)), Int(numDig[1]), Int(numDig[2]), Int(ceil(spacing))]
@@ -445,6 +432,29 @@ function formatTableRow(vec, widthCol, prec=5, logConsole=true)
 
     return vec, out, format        
 
+end
+
+
+"""
+    printTableRow(io, vec, strFormat, format)
+
+Write one formatted table row (the output of [`formatTableRow`](@ref)) to `io`.
+
+Entries that are `nothing` or non-finite are rendered by `formatTableRow` as a plain "-"
+placeholder, i.e. a string *without* any format specifier. Those must be printed verbatim -
+handing them to `Printf.format` together with the seven width/precision arguments throws
+`ArgumentError: Number of format specifiers and number of provided args differ: 0 != 7`.
+"""
+function printTableRow(io::IO, vec, strFormat, format)
+    for i in axes(strFormat, 1)
+        value = vec[i]
+        if isnothing(value) || !isfinite(value)
+            print(io, strFormat[i])
+        else
+            Printf.format(io, Printf.Format(strFormat[i]), format[i, 1], " ", format[i, 2], format[i, 3], value, format[i, 4], " ")
+        end
+    end
+    return nothing
 end
 
 

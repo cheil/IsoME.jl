@@ -109,14 +109,10 @@ const kb = 0.08617333262; # meV/K
 
     # ----------- real axis inputs ----------- #
     # linear ω-grid
-    # One cutoff for every real-axis channel: Z, Δ/φ and χ are all solved on
-    # ω1:domega:reOmega_c, and the ω'-integration runs over the same range. There is
-    # deliberately no separate χ cutoff - a wider χ grid only bought a tail in which Z
-    # and φ had to be extrapolated, and the extrapolated stretch dominated the ω'-integral.
-    reOmega_c::Float64          = 4000.0    # ω-grid cutoff (all channels)
+    reOmega_c::Float64          = 7000.0    # ω-grid cutoff (all channels)
     domega::Float64             = 1.0       # ω-grid step size / meV; also the kernel table step
     # ω'-chebyshev
-    n_cheb::Int64               = 2000      # number of chebyshev points around poles in ω'-integration
+    n_cheb::Int64               = 1000      # number of chebyshev points around poles in ω'-integration
     # ε-stepsize
     depsilon:: Int64            = 10
 

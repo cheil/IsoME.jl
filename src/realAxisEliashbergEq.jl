@@ -2,71 +2,6 @@
     file containing the real axis eliashberg equations
 """
 
-# --- DEBUG: per-iteration memory report (remove later) -----------------------
-# report_iteration_mem(i_it, gridws; name1 = var1, ...) prints, once per iteration:
-#   * the process peak RSS so far,
-#   * the tracked variables ranked by live size, biggest first - the one that
-#     dominates the working set is named in the header,
-#   * a field-by-field breakdown of the ω'-workspace, which is usually that biggest
-#     one. Only array-valued fields are listed (scalars cannot contribute
-#     meaningfully); arrays inside nested struct fields are recursed into and shown
-#     dotted, e.g. ker.A.
-#
-# The per-variable figures are separate Base.summarysize calls, so structure SHARED
-# between two tracked variables is counted in both - realAxisParameter and gridws
-# both reference the same PhononKernel, and that kernel shows up in full under each.
-# `tracked` in the header is one summarysize over all of them at once and therefore
-# does not double count; it is the figure to compare against peak RSS.
-function report_iteration_mem(i_it, gridws; vars...)
-    # top-level tracked variables, ranked by size (gridws is always tracked)
-    tracked = Tuple{String,Int}[("gridws", Base.summarysize(gridws))]
-    objs = Any[gridws]
-    for (name, v) in vars
-        push!(tracked, (string(name), Base.summarysize(v)))
-        push!(objs, v)
-    end
-    sort!(tracked, by = t -> -t[2])
-    unique_bytes = Base.summarysize(objs)
-
-    # ω'-workspace field breakdown
-    entries = Tuple{String,Int,String}[]     # (name, bytes, "dims eltype")
-    collect_array_fields!(entries, gridws, "")
-    sort!(entries, by = e -> -e[2])
-    total = isempty(entries) ? 0 : sum(e -> e[2], entries)
-
-    @printf("[MEM] it %-4d  peak RSS %.1f MiB   tracked %.1f MiB   biggest %s %.2f MiB\n",
-            i_it, Sys.maxrss() / 2^20, unique_bytes / 2^20,
-            tracked[1][1], tracked[1][2] / 2^20)
-    for (name, b) in tracked
-        @printf("      var %-22s %8.2f MiB\n", name, b / 2^20)
-    end
-    @printf("      gridws arrays %.2f MiB\n", total / 2^20)
-    for (name, b, dims) in entries
-        @printf("        %-14s %-26s %8.2f MiB  (%4.1f %%)\n",
-                name, dims, b / 2^20, total == 0 ? 0.0 : 100 * b / total)
-    end
-    return nothing
-end
-
-# Walk `obj`s fields, collecting every AbstractArray; recurse into struct-valued
-# fields so nested arrays (ker.A, ker.B) are reported separately rather than as
-# one opaque lump. Numbers are skipped.
-function collect_array_fields!(entries, obj, prefix)
-    for name in fieldnames(typeof(obj))
-        v = getfield(obj, name)
-        v isa Number && continue
-        label = prefix * string(name)
-        if v isa AbstractArray
-            push!(entries, (label, Base.summarysize(v),
-                            join(size(v), "×") * " " * string(eltype(v))))
-        elseif Base.isstructtype(typeof(v))
-            collect_array_fields!(entries, v, label * ".")
-        end
-    end
-    return entries
-end
-
-
 """
     realEliashbergEq(beta, znormip, phi_ph_ip, phi_c_ip, shiftip, ws, w_static, dosef,
                      epsilon, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
@@ -91,11 +26,6 @@ function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phi_ph_ip:
 
     # ------------- ε-integration ------------- #
     integrands, coulomb_spectral = epsilon_helpers_vDOSW(electronic_spec, Weep, Z_ongrid, phi_ph_ongrid, phi_c_ip, shift_ongrid, w_prime)
-
-    # DEBUG: the ε-integration allocates two M×Nint transients (C0phi/C1phi, freed on return)
-    # plus the returned ndos×M coulomb_spectral; Sys.maxrss() is monotonic so it captures that
-    # peak even though C0phi/C1phi are already gone by iteration-end. (remove later)
-    # @info "[MEM] ε-integration" peak_rss_MiB = round(Sys.maxrss() / 2^20, digits = 1) coulomb_spectral_MiB = round(Base.summarysize(coulomb_spectral) / 2^20, digits = 1) C0C1phi_transient_MiB = round(2 * length(w_prime) * length(electronic_spec[5]) * 8 / 2^20, digits = 1)
 
     # Z-integrand must be positive (causality), flip the others accordingly
     # Note: Minus sign because split of -Θ to (ε+χ +- ε_p) (eq. (51))

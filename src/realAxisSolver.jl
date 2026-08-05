@@ -598,12 +598,6 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         nan_state = any(isnan, outputVec)
         print_real_axis_iteration(outputVec, console, log_file)
 
-
-        # DEBUG: peak RSS + largest tracked live variable + gridws field breakdown,
-        # once per iteration (remove later)
-        report_iteration_mem(i_it, gridws; Weep, electronic_spec, realAxisParameter, broyden,
-                             Z_new, chi_new, phi_ph_new, phi_c_new)
-
         if abs(convergence / gap0) < conv_thr && i_it > maximum([min_it, nItFullCoul + 1])
             print_real_axis_converged(itemp, console, log_file)
 

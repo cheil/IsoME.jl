@@ -3,18 +3,44 @@
 """
 
 # --- DEBUG: per-iteration memory report (remove later) -----------------------
-# report_iteration_mem(i_it, gridws) prints the process peak RSS so far and a
-# field-by-field breakdown of the ω'-workspace, which dominates the working set.
-# Only array-valued fields are listed (scalars cannot contribute meaningfully);
-# arrays inside nested struct fields are recursed into and shown dotted, e.g. ker.A.
-function report_iteration_mem(i_it, gridws)
+# report_iteration_mem(i_it, gridws; name1 = var1, ...) prints, once per iteration:
+#   * the process peak RSS so far,
+#   * the tracked variables ranked by live size, biggest first - the one that
+#     dominates the working set is named in the header,
+#   * a field-by-field breakdown of the ω'-workspace, which is usually that biggest
+#     one. Only array-valued fields are listed (scalars cannot contribute
+#     meaningfully); arrays inside nested struct fields are recursed into and shown
+#     dotted, e.g. ker.A.
+#
+# The per-variable figures are separate Base.summarysize calls, so structure SHARED
+# between two tracked variables is counted in both - realAxisParameter and gridws
+# both reference the same PhononKernel, and that kernel shows up in full under each.
+# `tracked` in the header is one summarysize over all of them at once and therefore
+# does not double count; it is the figure to compare against peak RSS.
+function report_iteration_mem(i_it, gridws; vars...)
+    # top-level tracked variables, ranked by size (gridws is always tracked)
+    tracked = Tuple{String,Int}[("gridws", Base.summarysize(gridws))]
+    objs = Any[gridws]
+    for (name, v) in vars
+        push!(tracked, (string(name), Base.summarysize(v)))
+        push!(objs, v)
+    end
+    sort!(tracked, by = t -> -t[2])
+    unique_bytes = Base.summarysize(objs)
+
+    # ω'-workspace field breakdown
     entries = Tuple{String,Int,String}[]     # (name, bytes, "dims eltype")
     collect_array_fields!(entries, gridws, "")
     sort!(entries, by = e -> -e[2])
     total = isempty(entries) ? 0 : sum(e -> e[2], entries)
 
-    @printf("[MEM] it %-4d  peak RSS %.1f MiB   gridws arrays %.1f MiB\n",
-            i_it, Sys.maxrss() / 2^20, total / 2^20)
+    @printf("[MEM] it %-4d  peak RSS %.1f MiB   tracked %.1f MiB   biggest %s %.2f MiB\n",
+            i_it, Sys.maxrss() / 2^20, unique_bytes / 2^20,
+            tracked[1][1], tracked[1][2] / 2^20)
+    for (name, b) in tracked
+        @printf("      var %-22s %8.2f MiB\n", name, b / 2^20)
+    end
+    @printf("      gridws arrays %.2f MiB\n", total / 2^20)
     for (name, b, dims) in entries
         @printf("        %-14s %-26s %8.2f MiB  (%4.1f %%)\n",
                 name, dims, b / 2^20, total == 0 ? 0.0 : 100 * b / total)
@@ -42,21 +68,21 @@ end
 
 
 """
-    realEliashbergEq(beta, znormip, phi_ph_ip, phi_c_ip, shiftip, ws, w_static, w_static_chi, dosef,
+    realEliashbergEq(beta, znormip, phi_ph_ip, phi_c_ip, shiftip, ws, w_static, dosef,
                      epsilon, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
 
 Real axis Eliashberg equations in the vDOS+W approximation
 """
 function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phi_ph_ip::Vector{ComplexF64}, phi_c_ip::Vector{ComplexF64}, shiftip::Vector{ComplexF64},
                           ws::WPrimeWorkspace, w_static::AbstractVector,
-                          w_static_chi, dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64}, Weep::Matrix{Float64},
+                          dosef::Float64, epsilon::Vector{Float64}, dos::Vector{Float64}, Weep::Matrix{Float64},
                           idx_ef::Int64, fermi_level::Float64, wgCoulomb::Float64, electronic_spec::Tuple)
 
     w_prime = ws.wp_full
 
     # interpolate Z,χ,ϕ onto ω'-integration grid
     Z_itp = linear_interpolation(w_static, znormip, extrapolation_bc=Flat())
-    shift_itp = linear_interpolation(w_static_chi, shiftip, extrapolation_bc=Flat())
+    shift_itp = linear_interpolation(w_static, shiftip, extrapolation_bc=Flat())
 
     Z_ongrid = Z_itp.(w_prime)
     shift_ongrid = shift_itp.(w_prime) .- fermi_level
@@ -79,9 +105,8 @@ function realEliashbergEq(beta::Float64, znormip::Vector{ComplexF64}, phi_ph_ip:
     g_chi = -(FLIP .* integrands[3])
 
     # ------------- Ω & ω'-integration ------------- #
-    # O(N)-memory kernel route: K⁻ g_z and K⁺ g_phi (first ns rows) plus K⁺ g_chi on the master grid.
-    Iz, Iphi = kernel_omega_integral(ws, w_static, g_z, g_phi)
-    Ichi = kernel_omega_integral_chi(ws, w_static_chi, g_chi)
+    # O(N)-memory kernel route, one pass: K⁻ g_z plus K⁺ g_phi and K⁺ g_chi, all on w_static.
+    Iz, Iphi, Ichi = kernel_omega_integral(ws, w_static, g_z, g_phi, g_chi)
 
     # Coulomb term: integrate N(ε')W(ε,ε') with the same piecewise-linear spectral
     # quadrature (coulomb_spectral is ndos × M). The dosef prefactor cancels.
@@ -100,13 +125,13 @@ end
 
 
 """
-    realEliashbergEq(mu_star, beta, znormip, phiip, shiftip, ws, w_static, w_static_chi, dosef, epsilon, dos, fermi_level)
+    realEliashbergEq(mu_star, beta, znormip, phiip, shiftip, ws, w_static, dosef, epsilon, dos, fermi_level)
 
 Real axis Eliashberg equations in the vDOS+μ approximation. 
 """
 function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{ComplexF64}, phiip::Vector{ComplexF64},
                           shiftip::Vector{ComplexF64}, ws::WPrimeWorkspace, w_static::AbstractVector,
-                          w_static_chi, dosef::Float64, wgCoulomb::Float64,
+                          dosef::Float64, wgCoulomb::Float64,
                           fermi_level::Float64, electronic_spec::Tuple)
 
     w_prime = ws.wp_full
@@ -114,7 +139,7 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
     # interpolate Z,χ,ϕ onto ω'-integration grid (φ is handed in directly)
     Z_itp = linear_interpolation(w_static, znormip, extrapolation_bc=Flat())
     phi_itp = linear_interpolation(w_static, phiip, extrapolation_bc=Flat())
-    shift_itp = linear_interpolation(w_static_chi, shiftip, extrapolation_bc=Flat())
+    shift_itp = linear_interpolation(w_static, shiftip, extrapolation_bc=Flat())
 
     Z_ongrid = Z_itp.(w_prime)
     phi_ongrid = phi_itp.(w_prime)
@@ -131,9 +156,8 @@ function realEliashbergEq(mu_star::Float64, beta::Float64, znormip::Vector{Compl
     g_chi = -(FLIP .* integrands[3])
 
     # ------------- ω'-integration ------------- #
-    # O(N)-memory kernel route: K⁻ g_z and K⁺ g_phi (first ns rows) plus K⁺ g_chi on the master grid.
-    Iz, Iphi = kernel_omega_integral(ws, w_static, g_z, g_phi)
-    Ichi = kernel_omega_integral_chi(ws, w_static_chi, g_chi)
+    # O(N)-memory kernel route, one pass: K⁻ g_z plus K⁺ g_phi and K⁺ g_chi, all on w_static.
+    Iz, Iphi, Ichi = kernel_omega_integral(ws, w_static, g_z, g_phi, g_chi)
 
     # μ* Coulomb term
     coulomb = wprime_trapz(ws, g_phi .* tanh.(beta .* w_prime ./ 2))

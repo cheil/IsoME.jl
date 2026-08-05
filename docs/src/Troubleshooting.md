@@ -62,19 +62,24 @@ Both write two diagnostics to the output directory:
   grid. ``N_e`` is obtained from an ``\omega``-integral of ``\chi``, so if ``\chi`` has **not decayed
   to ``\approx 0`` at the edge of its grid** the integral is truncated and the update cannot
   converge. This is the direct symptom of a too-small cutoff (real axis: increase
-  *reOmega_c_shift*, see below).
+  *reOmega_c*, see below).
 
 On the **real axis**, the electron number is obtained from an ``\omega``-integral of the shift
 channel, and the accuracy of the μ-update is governed by two convergence parameters:
 
-- **The μ-update diverges — increase *reOmega_c_shift*.**
-  The shift ``\chi(\omega)`` decays much more slowly than ``\Delta(\omega)`` or ``Z(\omega)``, which
-  is why it has its own, much larger cutoff (*reOmega_c_shift*, default 25000 meV) instead of
-  sharing *reOmega_c*. If it is too small, the tail of the integral is truncated, the electron
-  number is systematically wrong, and the root finder walks ``\mu`` away from the Fermi level. The
-  *ef-mu* column in the console then grows from iteration to iteration instead of settling.
-  **Fix:** increase *reOmega_c_shift* until ``\mu`` settles; it generally has to be much larger than
-  *reOmega_c*.
+- **The μ-update diverges — increase *reOmega_c*.**
+  The shift ``\chi(\omega)`` decays more slowly than ``\Delta(\omega)`` or ``Z(\omega)``, so it is
+  usually ``\chi`` that dictates how large the cutoff has to be. If *reOmega_c* is too small, the
+  tail of the integral is truncated, the electron number is systematically wrong, and the root
+  finder walks ``\mu`` away from the Fermi level. The *ef-mu* column in the console then grows from
+  iteration to iteration instead of settling.
+  **Fix:** increase *reOmega_c* until ``\mu`` settles, and check `muError_shift.png` to confirm that
+  ``\chi`` has decayed to ``\approx 0`` at the edge of the grid.
+
+  Earlier versions gave ``\chi`` its own, much larger cutoff (*reOmega_c_shift*). That parameter no
+  longer exists: a wider ``\chi`` grid only bought a tail in which ``Z`` and ``\varphi`` had to be
+  extrapolated, and that extrapolated stretch dominated the ``\omega'``-integral. All channels now
+  share *reOmega_c*.
 
 - **``\mu \to 0`` — decrease *depsilon*.**
   The ``\varepsilon``-integrals are evaluated analytically on a piecewise-linear DOS on a uniform
@@ -104,26 +109,31 @@ crosses over towards ``0`` for the outermost energies, and both the electron num
 μ-update and ``\chi`` acquire a systematic error there.
 
 The crossover is gradual, so no sharp ratio ``\omega/\varepsilon`` can be derived at which
-``J_\omega`` goes from ``1`` to ``0``. IsoME therefore enforces a conservative margin: in the vDOS
-case of the real-axis solver *encut* must not exceed half of *reOmega_c_shift*, which bounds the
-``\omega'``-integration. If it does, the run prints
+``J_\omega`` goes from ``1`` to ``0``. IsoME therefore requires that the ``\varepsilon``-window stay
+inside the ``\omega``-cutoff: in the vDOS case of the real-axis solver *encut* must not exceed
+*reOmega_c*, which bounds the ``\omega'``-integration. If it does, the run prints
 
 ```
-encut = … exceeds reOmega_c_shift/2 = …; the ε-integration has to stay well inside the ω-cutoff.
+encut = … exceeds reOmega_c = …; the ε-integration has to stay inside the ω-cutoff.
 Setting encut = …
 ```
 
 and continues with the reduced ``\varepsilon``-window. If you need the larger *encut*, do **not**
-work around the warning by shrinking the energy window — raise *reOmega_c_shift* to at least
-``2\cdot`` *encut* instead (a larger shift cutoff is beneficial for the μ-update anyway, see above).
+work around the warning by shrinking the energy window — raise *reOmega_c* instead (a larger cutoff
+is beneficial for the μ-update anyway, see above). Note that ``J_\omega`` is only fully recovered
+for ``\omega \gg \varepsilon``, so *encut* close to *reOmega_c* still leaves a systematic error at
+the outermost energies; treat *encut* as a convergence parameter rather than pushing it to the
+limit.
 
 
 <!-- TODO(user): the exact imaginary-axis failure modes (Matsubara cutoff vs ε-grid) still need to
      be pinned down from further testing before this note can be made more prescriptive. -->
 <!-- TODO(user): additional μ-update guidance to be provided — see open question. -->
+<!-- encut only sensible up to moderate values (2 eV?: Too much energy dependence is neglected in the equations. E.g. a2F is assumed to be constant wrt epsilon. If chi gets huge, most certainly the encut is too large.  -->
+<!-- Give LaBH8 as example where larger encut makes results worse -> because of a2F =/= a2F(epsilon) -->
 
 ## ToDo: Add further information derived from the convergence tests
-<!-- For all convergence parameter: domega, dKernel, reOmgega_c, reOmega_c_shift, encut, depsilon give examples when they are diverging.  -->
+<!-- For all convergence parameter: domega, dKernel, reOmgega_c, encut, depsilon give examples when they are diverging.  -->
 
 ## μ\* conversion
 

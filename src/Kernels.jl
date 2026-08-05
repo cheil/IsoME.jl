@@ -17,21 +17,6 @@
         B(x) = -I1(x) - I1(-x)         + iπ[ G(x) - G(-x) ]
 
     Only the O(N) tables A, B are kept; the ω'-integral evaluates A + f·B on the fly.
-
-    SET UP SIDE (once per temperature, entry point `precompute`)
-
-        precompute -> setUpOmegaAxis          α²F -> G, w_axis, int_axis
-                   -> kernels                 -> compute_kernel_integrals
-                                                 -> precompute_integrals
-                                                    -> kernel_integral_helper   I1, I2
-                                              -> build_kernel -> assemble_AB    A, B
-                                                 => PhononKernel
-
-    CONSUMER SIDE (every Eliashberg iteration, driven by wprimeGrid.jl)
-
-        WPrimeWorkspace  -> fermi_pm, precompute_tail_AB       tail samples, once per grid
-                         -> fill_kp!, fill_km!                 materialized head blocks
-        ω'-integral      -> tail_accumulate!, tail_accumulate_chi!
 """
 
 
@@ -40,6 +25,32 @@
 ###########################################
 # Runs once per temperature (entry point `precompute`) and ends in a `PhononKernel`,
 # the A(x), B(x) tables the consumer side below evaluates.
+
+
+"""
+    OMEGA_MIN
+
+Lower bound for the first point of the ω-grid. Z(ω) = 1 − Iz(ω)/ω diverges as 1/ω at finite
+temperature, so the grid must not start arbitrarily close to zero.
+"""
+const OMEGA_MIN = 0.1
+
+"""
+    omega_grid_start(domega)
+
+First point of the ω-grid: the smallest multiple of `domega` that is at least `OMEGA_MIN`.
+
+Being an *integer multiple* of the grid step is what makes the kernel lattice work out. The
+kernel tables are stored on x = x_min + (p−1)·domega with x_min/domega ∈ ℤ, so both folded
+arguments of a grid point,
+
+    x_dif = ω' − ω_i,    x_sum = −ω' − ω_i,
+
+land on that same lattice for every row i, and the head lattice of `HeadLattice` is simply
+domega·ℤ. With the old hard-coded start of 1.0 this held only for domega ∈ {2, 1, 0.5, 0.4,
+0.25, …}; it now holds for every domega. Equals 1.0 at the default domega = 1.0.
+"""
+omega_grid_start(domega::Real) = ceil(OMEGA_MIN / domega) * domega
 
 
 """
@@ -164,13 +175,12 @@ function setUpOmegaAxis(inp, matval)
     G = scale(interpolate(a2f[idx_left:idx_right], BSpline(Linear())), a2f_omega[idx_left:idx_right])
 
     # Frequency and integration grids
-    # w_axis must be larger than max(w_static, w_static_chi)
-    if inp.cDOS_flag == 1
-        w_axis = 0:inp.dKernel:(inp.reOmega_c+inp.dKernel)   # w-axis at which K(ω,ω') is calculated
-    else
-        # ω linear grid to store K(ω,ω'), has to span max(reOmega_c, reOmega_c_shift).
-        w_axis = 0:inp.dKernel:(max(inp.reOmega_c, inp.reOmega_c_shift)+inp.dKernel)
-    end
+    # w_axis must be larger than w_static. Its step is `domega`, the same step the ω- and
+    # ω'-grids use: the kernel tables are only ever *sampled* at multiples of domega (the
+    # tail is a domega grid, the head lattice below is domega·ℤ), so tabulating them more
+    # finely refines a table that is then subsampled at stride domega.
+    # All channels (Z, φ, χ) share reOmega_c, so cDOS and vDOS size w_axis identically.
+    w_axis = 0:inp.domega:(inp.reOmega_c+inp.domega)   # w-axis at which K(ω,ω') is calculated
     # Ω-integration axis: 300 Chebyshev points inside ±3 meV (the 1/Ω pole), 300 linear
     # points out to ±(W_right-W_left), the width over which G is nonzero.
     int_axis = make_integration_axis(W_right-W_left, 300, 300, 3)
@@ -351,18 +361,15 @@ function precompute(β, inp, matval, console, log_file)
 
     kernel = kernels(β, w_axis, W_left, W_right, int_axis, G, log_file, length(console.cDOS.partingLine))
 
-    w_static = 1:inp.domega:inp.reOmega_c        # grid of Z(w), Delta(w), sensitive to start value, do not chose < 1e-1
-    w_static_chi = 1:inp.domega:inp.reOmega_c_shift   # grid of χ(ω); same step as w_static so all channels are k=1
+    ω1 = omega_grid_start(inp.domega)
+    # One ω-grid for every channel: Z(ω), Δ(ω)/φ(ω) and χ(ω) are all solved here.
+    # Sensitive to the start value, do not choose < 1e-1.
+    w_static = ω1:inp.domega:inp.reOmega_c
 
-    # The kernel tables are only defined on w_axis: both output grids must fit inside it.
-    # w_static_chi exists in every vDOS mode (χ is solved there), not just vDOS+W, and
-    # setUpOmegaAxis sizes w_axis accordingly.
+    # The kernel tables are only defined on w_axis: the output grid must fit inside it.
     @assert first(w_axis) <= first(w_static) && last(w_static) <= last(w_axis)
-    if inp.cDOS_flag == 0
-        @assert first(w_axis) <= first(w_static_chi) && last(w_static_chi) <= last(w_axis)
-    end
 
-    return (w_static, w_static_chi, kernel)
+    return (w_static, kernel)
 
 end
 
@@ -400,26 +407,6 @@ grid. Sharing t between the two tables halves the index arithmetic.
         a = A[k]; b = B[k]
         return (a + fr * (A[k+1] - a), b + fr * (B[k+1] - b))
     end
-end
-
-
-"""
-    kernel_eval(ker, w, wp)
-
-K⁺(ω,ω') and K⁻(ω,ω') straight from the A, B tables (single-point convenience/debug).
-"""
-@inline function kernel_eval(ker::PhononKernel, w::Float64, wp::Float64)
-    invdx = 1 / ker.dx
-    A_dif, B_dif = _lerpAB(ker.A, ker.B, (wp - w - ker.x_min) * invdx + 1, ker.n_x)   # x = ω'-ω
-    A_sum, B_sum = _lerpAB(ker.A, ker.B, (-wp - w - ker.x_min) * invdx + 1, ker.n_x)  # x = -ω-ω'
-
-    fp = 1 / (exp(ker.β * wp) + 1)        # f(ω')
-    fm = 1 - fp                          # f(-ω')
-
-    K_dif = A_dif + fp * B_dif           # 𝒦(ω, ω')
-    K_sum = A_sum + fm * B_sum           # 𝒦(ω,-ω')
-
-    return (K_dif - K_sum, -K_dif - K_sum)   # (K⁺, K⁻)
 end
 
 
@@ -467,64 +454,260 @@ function precompute_tail_AB(ker::PhononKernel, w_static, wp_tail::AbstractVector
 end
 
 
-"""
-    fill_kp!(Kp, w, wp, ker)   /   fill_km!(Km, w, wp, ker)
 
-Fill only the K⁺ (resp. K⁻) block on the grid (w, wp) from the A,B tables. K⁺ is built on the
-master grid (χ for vDOS), K⁻ only on w_static.
+###########################################
+# ------------- Head lattice ------------ #
+###########################################
+# The head grid is a Chebyshev cluster placed on the *integrand's* pole, with spacings down
+# to ~1e-5 meV. The kernel it samples there is piecewise linear on the domega lattice, so
+# ~10^5 head nodes read the same linear segment: evaluating K at each of them, for every
+# output row, would rebuild the same segment over and over.
+#
+# Contracting over the ω'-nodes first removes that redundancy. With Λ_m the hat functions of
+# the head lattice ν_m = (m-1)·domega, the interpolant obeys the identity
+#
+#     A_h(±ω' − ω_i) = Σ_m Λ_m(ω')·A_h(±ν_m − ω_i),
+#
+# whose coefficients Λ_m(ω') do not depend on ω_i, and whose values A_h(±ν_m − ω_i) are bare
+# table entries (no interpolation) because ±ν_m − ω_i is an exact multiple of domega. Putting
+# that into Σ_j w_j g_j 𝒦(ω_i,ω'_j) and exchanging the two finite sums gives
+#
+#     Σ_j w_j g_j 𝒦(ω_i,ω'_j) = Σ_m Â_{p(m,i)}·G⁰_m + Σ_m B̂_{p(m,i)}·G¹_m,
+#     G⁰_m = Σ_j w_j g_j Λ_m(ω'_j),   G¹_m = Σ_j w_j g_j f(ω'_j) Λ_m(ω'_j).
+#
+# No approximation is involved: the only quadrature is the trapezoidal sum the dense route
+# already performs, and the rest is an exchange of finite sums. The Fermi factor is kept in
+# its own vector G¹ rather than folded into the hats, so f is never interpolated.
+#
+# Consequences: no O(n_out × n_head) block is ever formed, the sum runs over
+# M ≈ ω'_max/domega instead of n_head, and a moving pole changes only G⁰/G¹ - the kernel is
+# untouched, so `maybe_refresh_head!` does no kernel work at all.
+
 """
-function fill_kp!(Kp::Matrix{ComplexF64}, w, wp::Vector{Float64}, ker::PhononKernel)
-    size(Kp) == (length(w), length(wp)) || throw(DimensionMismatch("Kp block does not match the grids"))
-    @inbounds for i in eachindex(wp)
-        b = wp[i]
-        for j in eachindex(w)
-            kp, _ = kernel_eval(ker, float(w[j]), b)
-            Kp[j, i] = kp
-        end
-    end
-    return Kp
+    HeadLattice
+
+Head-lattice bookkeeping for the factorised route: the hat lattice ν_m = (m−1)·domega,
+m = 1…`M`, covering [0, ω'_max], together with per-head-node data.
+
+  * `p0`, `q0` - the affine table index maps, `p(m,i) = p0 + m − i` (difference channel,
+    Toeplitz) and `q(m,i) = q0 − m − i` (sum channel, Hankel). Both are exact integer
+    indices into the A/B tables, so the accumulation never interpolates.
+  * `cell`, `frac` - the lattice cell m_j and fractional position fr_j of each head node,
+    i.e. the same two numbers `_lerpAB` computes, used here to *scatter* into the lattice
+    instead of gathering from it.
+  * `fp` - f(ω') on the head nodes, evaluated exactly (never interpolated).
+
+Rebuilt whenever the head grid is, which is O(n_head) and involves no kernel data.
+"""
+struct HeadLattice
+    M::Int
+    p0::Int
+    q0::Int
+    cell::Vector{Int}
+    frac::Vector{Float64}
+    fp::Vector{Float64}
 end
 
-function fill_km!(Km::Matrix{ComplexF64}, w, wp::Vector{Float64}, ker::PhononKernel)
-    size(Km) == (length(w), length(wp)) || throw(DimensionMismatch("Km block does not match the grids"))
-    @inbounds for i in eachindex(wp)
-        b = wp[i]
-        for j in eachindex(w)
-            _, km = kernel_eval(ker, float(w[j]), b)
-            Km[j, i] = km
-        end
+
+"""
+    HeadLattice(ker, w_static, wp_head, n_out_max)
+
+Build the lattice for the head grid `wp_head`. `n_out_max` is the largest number of output
+rows any channel will ask for (the master-grid length), used to bound-check the table
+indices once here so the hot loops can index bare.
+"""
+function HeadLattice(ker::PhononKernel, w_static, wp_head::Vector{Float64}, n_out_max::Int)
+    length(w_static) >= 2 || error("HeadLattice: w_static needs at least two points")
+    ω1 = float(w_static[1])
+    d = float(w_static[2]) - ω1
+
+    abs(d - ker.dx) <= 1e-9 * max(1.0, d) ||
+        error("HeadLattice: ω-grid step $d and kernel table step $(ker.dx) must agree")
+
+    # ν_m = (m−1)·d covering [0, ω'_max]; the +2 leaves room for the upper hat of a node
+    # sitting exactly on the last lattice point.
+    wp_max = wp_head[end]
+    M = floor(Int, wp_max / d) + 2
+
+    # p(m,i) = p0 + m − i and q(m,i) = q0 − m − i follow from the table index of x = ν_1 − ω_1,
+    #     t0 = (ν_1 − ω1 − x_min)/dx + 1 = (−ω1 − x_min)/dx + 1,
+    # which serves both channels because −ν_1 = ν_1 = 0. That t0 comes out integral IS the
+    # lattice condition: it needs ω1/dx ∈ ℤ (guaranteed by `omega_grid_start`) together with
+    # x_min/dx ∈ ℤ (guaranteed by `build_kernel`). The check below is therefore the single
+    # place where a grid that cannot support the factorisation is caught.
+    t0 = (-ω1 - ker.x_min) / ker.dx + 1
+    p0 = round(Int, t0)
+    abs(t0 - p0) <= 1e-6 || error(
+        "HeadLattice: the ω-grid is not commensurate with the kernel table (t0 = $t0). " *
+        "The grid start must be an integer multiple of the step - see omega_grid_start.")
+    q0 = p0 + 2
+
+    # index ranges the accumulation will touch; checked once so the loops can skip clamping
+    pmin, pmax = p0 + 1 - n_out_max, p0 + M - 1
+    qmin, qmax = q0 - M - n_out_max, q0 - 2
+    (1 <= pmin && pmax <= ker.n_x && 1 <= qmin && qmax <= ker.n_x) || error(
+        "HeadLattice: kernel table index out of range (p ∈ [$pmin, $pmax], " *
+        "q ∈ [$qmin, $qmax], table has $(ker.n_x) entries)")
+
+    nh = length(wp_head)
+    cell = Vector{Int}(undef, nh)
+    frac = Vector{Float64}(undef, nh)
+    @inbounds for j in 1:nh
+        u = wp_head[j] / d
+        c = floor(Int, u)
+        cell[j] = c + 1
+        frac[j] = u - c
     end
-    return Km
+
+    fp = [1 / (exp(ker.β * w) + 1) for w in wp_head]
+
+    return HeadLattice(M, p0, q0, cell, frac, fp)
 end
 
 
 """
-    tail_accumulate_chi!(Ichi, A_dif, B_dif, A_sum, B_sum, noff, nout, wgt, fp, fm, g_chi)
+    head_scatter!(G0, G1, lat, wgt, g)
 
-K⁺-only tail accumulation for the χ channel (Ichi += ∫K⁺ g_chi over the tail). `noff` is the
-difference-index offset of the shared tail arrays (their build length = master-grid length),
-`nout` the number of output ω-points (here nout = noff = nchi).
+Build the two lattice weight vectors from one integrand density:
+
+    G⁰_m = Σ_j w_j g_j Λ_m(ω'_j),    G¹_m = Σ_j w_j g_j f(ω'_j) Λ_m(ω'_j).
+
+The adjoint of linear interpolation: each head node deposits into exactly two lattice cells,
+with the weights (1−fr, fr) that `_lerpAB` would have used to read out of them. O(n_head),
+independent of the number of output rows.
 """
-function tail_accumulate_chi!(Ichi::Vector{ComplexF64},
-                                  A_dif::Vector{ComplexF64}, B_dif::Vector{ComplexF64},
-                                  A_sum::Vector{ComplexF64}, B_sum::Vector{ComplexF64},
-                                  noff::Int, nout::Int,
-                                  wgt::AbstractVector{Float64},
-                                  fp::AbstractVector{Float64}, fm::AbstractVector{Float64},
-                                  g_chi::AbstractVector{Float64})
+function head_scatter!(G0::Vector{Float64}, G1::Vector{Float64}, lat::HeadLattice,
+                       wgt::AbstractVector{Float64}, g::AbstractVector{Float64})
+    fill!(G0, 0.0)
+    fill!(G1, 0.0)
+    @inbounds for j in eachindex(wgt)
+        h = wgt[j] * g[j]
+        m = lat.cell[j]
+        fr = lat.frac[j]
+        w_lo = h * (1 - fr)
+        w_hi = h * fr
+        f = lat.fp[j]
+        G0[m]   += w_lo
+        G0[m+1] += w_hi
+        G1[m]   += w_lo * f
+        G1[m+1] += w_hi * f
+    end
+    return
+end
+
+
+"""
+    head_accumulate!(Iz, Iphi, ker, lat, G0z, G1z, G0p, G1p, nout)
+
+Head contribution to the K⁻ (Iz) and K⁺ (Iphi) channels, *overwriting* the first `nout`
+entries. With
+𝒦_dif = Â_p + f·B̂_p and 𝒦_sum = Â_q + (1−f)·B̂_q, so that K⁻ = −𝒦_dif − 𝒦_sum and
+K⁺ = 𝒦_dif − 𝒦_sum, the (1−f) of the sum channel is what splits B̂_q across both weight
+vectors, with opposite relative signs in the two channels.
+"""
+function head_accumulate!(Iz::Vector{ComplexF64}, Iphi::Vector{ComplexF64},
+                          ker::PhononKernel, lat::HeadLattice,
+                          G0z::Vector{Float64}, G1z::Vector{Float64},
+                          G0p::Vector{Float64}, G1p::Vector{Float64}, nout::Int)
+    A = ker.A
+    B = ker.B
+    M = lat.M
+    @inbounds for i in 1:nout
+        accz = zero(ComplexF64)
+        accp = zero(ComplexF64)
+        p = lat.p0 + 1 - i          # p(1,i), then +1 per lattice cell
+        q = lat.q0 - 1 - i          # q(1,i), then -1 per lattice cell
+        for m in 1:M
+            Ap = A[p]; Bp = B[p]
+            Aq = A[q]; Bq = B[q]
+            accz += (Ap + Aq + Bq) * G0z[m] + (Bp - Bq) * G1z[m]
+            accp += (Ap - Aq - Bq) * G0p[m] + (Bp + Bq) * G1p[m]
+            p += 1
+            q -= 1
+        end
+        Iz[i] = -accz
+        Iphi[i] = accp
+    end
+    return
+end
+
+
+"""
+    head_accumulate3!(Iz, Iphi, Ichi, ker, lat, G0z, G1z, G0p, G1p, G0c, G1c, nout)
+
+Three-channel head contribution, *overwriting* the first `nout` entries of all three.
+
+χ uses the same K⁺ combination as φ, so it rides along on the A/B lookups that Iz and Iphi
+already perform: one pass over the kernel tables instead of the two it used to take when χ
+lived on its own (wider) grid.
+"""
+function head_accumulate3!(Iz::Vector{ComplexF64}, Iphi::Vector{ComplexF64}, Ichi::Vector{ComplexF64},
+                           ker::PhononKernel, lat::HeadLattice,
+                           G0z::Vector{Float64}, G1z::Vector{Float64},
+                           G0p::Vector{Float64}, G1p::Vector{Float64},
+                           G0c::Vector{Float64}, G1c::Vector{Float64}, nout::Int)
+    A = ker.A
+    B = ker.B
+    M = lat.M
+    @inbounds for i in 1:nout
+        accz = zero(ComplexF64)
+        accp = zero(ComplexF64)
+        accc = zero(ComplexF64)
+        p = lat.p0 + 1 - i          # p(1,i), then +1 per lattice cell
+        q = lat.q0 - 1 - i          # q(1,i), then -1 per lattice cell
+        for m in 1:M
+            Ap = A[p]; Bp = B[p]
+            Aq = A[q]; Bq = B[q]
+            Kp0 = Ap - Aq - Bq      # K⁺ weight of G0, shared by the φ and χ channels
+            Kp1 = Bp + Bq           # K⁺ weight of G1
+            accz += (Ap + Aq + Bq) * G0z[m] + (Bp - Bq) * G1z[m]
+            accp += Kp0 * G0p[m] + Kp1 * G1p[m]
+            accc += Kp0 * G0c[m] + Kp1 * G1c[m]
+            p += 1
+            q -= 1
+        end
+        Iz[i] = -accz
+        Iphi[i] = accp
+        Ichi[i] = accc
+    end
+    return
+end
+
+
+"""
+    tail_accumulate3!(Iz, Iphi, Ichi, A_dif, B_dif, A_sum, B_sum, noff, nout, wgt, fp, fm,
+                      g_z, g_phi, g_chi)
+
+Three-channel tail accumulation. Same indexing as `tail_accumulate!`; χ reuses the K⁺
+already formed for φ, so the A/B lookups are done once for all three channels.
+"""
+function tail_accumulate3!(Iz::Vector{ComplexF64}, Iphi::Vector{ComplexF64}, Ichi::Vector{ComplexF64},
+                           A_dif::Vector{ComplexF64}, B_dif::Vector{ComplexF64},
+                           A_sum::Vector{ComplexF64}, B_sum::Vector{ComplexF64},
+                           noff::Int, nout::Int,
+                           wgt::AbstractVector{Float64},
+                           fp::AbstractVector{Float64}, fm::AbstractVector{Float64},
+                           g_z::AbstractVector{Float64}, g_phi::AbstractVector{Float64},
+                           g_chi::AbstractVector{Float64})
     nt = length(wgt)
     @inbounds for j in 1:nt
         fpj = fp[j]; fmj = fm[j]
+        hz = wgt[j] * g_z[j]
+        hp = wgt[j] * g_phi[j]
         hc = wgt[j] * g_chi[j]
-        base_dif = j + noff
-        base_sum = j
+        base_dif = j + noff      # p = base_dif - i
+        base_sum = j             # q = base_sum + i - 1
 
         for i in 1:nout
             p = base_dif - i
             q = base_sum + i - 1
-            K_dif = A_dif[p] + fpj * B_dif[p]
-            K_sum = A_sum[q] + fmj * B_sum[q]
-            Ichi[i] += (K_dif - K_sum) * hc      # K⁺
+            K_dif = A_dif[p] + fpj * B_dif[p]     # 𝒦(ω, ω')
+            K_sum = A_sum[q] + fmj * B_sum[q]     # 𝒦(ω,-ω')
+            Kplus = K_dif - K_sum                 # K⁺, shared by the φ and χ channels
+
+            Iz[i]   += (-K_dif - K_sum) * hz      # K⁻
+            Iphi[i] += Kplus * hp
+            Ichi[i] += Kplus * hc
         end
     end
     return

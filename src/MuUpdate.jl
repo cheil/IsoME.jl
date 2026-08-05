@@ -35,7 +35,7 @@ function root_finding(fmu, outdir, fermi_level; shift = nothing, omega_shift = n
     # Optional diagnostic dumped alongside muError when the update fails: the shift
     # channel χ(ω) over its frequency grid. N_e is obtained from an ω-integral of χ,
     # so if χ has not decayed to ~0 at the edge of its grid the integral is truncated
-    # and the root find cannot converge (real axis: increase reOmega_c_shift).
+    # and the root find cannot converge (real axis: increase reOmega_c).
     function plotShift()
         (isnothing(shift) || isnothing(omega_shift)) && return
         chi = real.(shift)
@@ -191,22 +191,22 @@ end
 # ---------------------- Real Axis ----------------------- #
 ############################################################
 """
-    build_fmu_real_axis(itemp, w_static, w_static_chi, w_prime, electronic_spec, dos_en, dos, znormip, phi_ph, phi_c, shiftip) -> fmu
+    build_fmu_real_axis(itemp, w_static, w_prime, electronic_spec, dos_en, dos, znormip, phi_ph, phi_c, shiftip) -> fmu
 
 Real-axis analogue of [`build_fmu_matsubara`](@ref): return the charge-neutrality residual
 `fmu(μ) = Nₑ_nsc - Nₑ_sc(μ)` without running the root find, so it can be scanned/plotted for
 debugging. The self-energy (`znormip`, `phi_ph`, `phi_c`, `shiftip`) is interpolated onto the
-ω'-integration grid `w_prime`, so varying `w_prime` (or truncating `shiftip`/`w_static_chi`) shows
+ω'-integration grid `w_prime`, so varying `w_prime` (or truncating `shiftip`/`w_static`) shows
 directly how the μ-update integral reacts to the ω-grid.
 """
-function build_fmu_real_axis(itemp, w_static, w_static_chi, w_prime, electronic_spec, dos_en, dos, znormip, phi_ph, phi_c, shiftip)
+function build_fmu_real_axis(itemp, w_static, w_prime, electronic_spec, dos_en, dos, znormip, phi_ph, phi_c, shiftip)
 
     ### Calculate N_e in the non-SC state
     Ne_nsc = 2 .* trapz(dos_en, fermiFcn(dos_en, 0.0, itemp) .* dos)
 
     # interpolate Z, χ, φ_ph onto the ω'-grid (φ_c lives on the ε-grid, no ω-interp)
     Z_itp = linear_interpolation(w_static, znormip, extrapolation_bc=Flat())
-    shift_itp = linear_interpolation(w_static_chi, shiftip, extrapolation_bc=Flat())
+    shift_itp = linear_interpolation(w_static, shiftip, extrapolation_bc=Flat())
 
     Z_ongrid = Z_itp.(w_prime)
     phi_ph_ongrid = linear_interpolation(w_static, phi_ph, extrapolation_bc=Flat()).(w_prime)
@@ -231,11 +231,11 @@ end
 Update the chemical potential to conserve charge neutrality - real axis implementation.
 φ is passed in separable form: φ_ph(ω) always, φ_c(ε) only in vDOS+W (empty in vDOS+μ).
 """
-function mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, electronic_spec, dos_en, dos, znormip, phi_ph, phi_c, shiftip, outdir)
+function mu_update_real_axis(itemp, fermi_level, w_static, w_prime, electronic_spec, dos_en, dos, znormip, phi_ph, phi_c, shiftip, outdir)
 
-    fmu = build_fmu_real_axis(itemp, w_static, w_static_chi, w_prime, electronic_spec, dos_en, dos, znormip, phi_ph, phi_c, shiftip)
+    fmu = build_fmu_real_axis(itemp, w_static, w_prime, electronic_spec, dos_en, dos, znormip, phi_ph, phi_c, shiftip)
 
-    mu = root_finding(fmu, outdir, fermi_level; shift = shiftip, omega_shift = w_static_chi)
+    mu = root_finding(fmu, outdir, fermi_level; shift = shiftip, omega_shift = w_static)
     #@time mu2 = find_zero((fmu, dfmu), fermi_level, Roots.LithBoonkkampIJzerman(3, 1))
 
     return mu

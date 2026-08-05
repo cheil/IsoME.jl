@@ -53,7 +53,7 @@ const kb = 0.08617333262; # meV/K
     minGap::Float64                         = 0.1
     N_it::Int64                             = 5000
     min_it::Int64                           = 10            # min iterations in eliashberg solver   
-    encut::Float64                          = 5000.0      # symmetric outer energy cutoff: window [-encut, encut]
+    encut::Float64                          = 2000.0      # symmetric outer energy cutoff: window [-encut, encut]
     shiftcut::Float64                       = 2000.0      # cutoff shift & Ne
     sparseSamplingTemp::Float64             = 2.0
     typEl::Float64                          = NaN
@@ -109,16 +109,16 @@ const kb = 0.08617333262; # meV/K
 
     # ----------- real axis inputs ----------- #
     # linear ω-grid
-    reOmega_c::Float64          = 4000.0    # ω-grid cutoff
-    domega::Float64             = 1.0       # ω-grid step size / meV
-    dKernel::Float64            = 1.0       # (ω,ω') in Kernels
-    # χ linear ω-grid
-    reOmega_c_shift::Float64    = 25000.0   # ω-cutoff χ(ω)
+    # One cutoff for every real-axis channel: Z, Δ/φ and χ are all solved on
+    # ω1:domega:reOmega_c, and the ω'-integration runs over the same range. There is
+    # deliberately no separate χ cutoff - a wider χ grid only bought a tail in which Z
+    # and φ had to be extrapolated, and the extrapolated stretch dominated the ω'-integral.
+    reOmega_c::Float64          = 4000.0    # ω-grid cutoff (all channels)
+    domega::Float64             = 1.0       # ω-grid step size / meV; also the kernel table step
     # ω'-chebyshev
-    n_cheb::Int64               = 5000      # number of chebyshev points around poles in ω'-integration
+    n_cheb::Int64               = 2000      # number of chebyshev points around poles in ω'-integration
     # ε-stepsize
     depsilon:: Int64            = 10
-
 
 end
 

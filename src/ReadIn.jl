@@ -319,19 +319,12 @@ function checkInput(inp::arguments; realSolver::Bool=false)
             error("The real-axis solver only supports the vDOS+W approximation (include_Weep = 1 requires cDOS_flag = 0). Set cDOS_flag = 0.\n\n")
         end
 
-        # The χ grid (reOmega_c_shift) is the master grid for the kernels and must contain the Z/Δ
-        # grid (reOmega_c); if it is smaller the ω'-integral over-indexes the kernel block. Clamp up.
-        if inp.reOmega_c_shift < inp.reOmega_c
-            @warn "reOmega_c_shift = $(inp.reOmega_c_shift) is smaller than reOmega_c = $(inp.reOmega_c). Setting reOmega_c_shift = reOmega_c = $(inp.reOmega_c)."
-            inp.reOmega_c_shift = inp.reOmega_c
-        end
-
         # vDOS: the ω-integrals of the μ-update and of χ(ω) only show their correct limiting
-        # behaviour as long as ω is sufficiently larger than ε; the ε-window must therefore stay
-        # well inside the ω-cutoff. Require reOmega_c_shift ≥ 2·encut and clamp encut down.
-        if inp.cDOS_flag == 0 && inp.encut > inp.reOmega_c_shift / 2
-            @warn "encut = $(inp.encut) exceeds reOmega_c_shift/2 = $(inp.reOmega_c_shift / 2); the ε-integration has to stay well inside the ω-cutoff. Setting encut = $(inp.reOmega_c_shift / 2). Increase reOmega_c_shift to keep the larger ε-window. See the μ-update section of the Troubleshooting page."
-            inp.encut = inp.reOmega_c_shift / 2
+        # behaviour as long as ω reaches at least as far as ε, so the ε-window must stay inside
+        # the ω-cutoff. Require encut ≤ reOmega_c and clamp encut down.
+        if inp.cDOS_flag == 0 && inp.encut > inp.reOmega_c
+            @warn "encut = $(inp.encut) exceeds reOmega_c = $(inp.reOmega_c); the ε-integration has to stay inside the ω-cutoff. Setting encut = $(inp.reOmega_c). Increase reOmega_c to keep the larger ε-window. See the μ-update section of the Troubleshooting page."
+            inp.encut = inp.reOmega_c
         end
     end
 

@@ -347,7 +347,7 @@ with zero χ so it can seed the vDOS solver.
 """
 function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log_file; vDOS_initial_guess::Bool=false)
     (; reOmega_c, N_it, conv_thr, minGap, nItFullCoul, min_it) = inp
-    (w_static, _, _) = realAxisParameter
+    (w_static, _) = realAxisParameter
     (_, _, _, _, Weep, dosef, idx_ef, _, BCS_gap, _) = matval
     # When used as vDOS+W initializer, muc_ME is unset (nothing). Derive it from W(εF,εF)·N(εF)
     # using the Morel-Anderson formula, consistent with calcMucs() in ReadIn.jl.
@@ -396,7 +396,7 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
         if pole >= ws_ht.wp_max
             ws_ht = build_cDOS_wprime_workspace(inp, realAxisParameter, pole)
         end
-        maybe_refresh_head!(ws_ht, [pole], w_static, nothing, inp.n_cheb)
+        maybe_refresh_head!(ws_ht, [pole], w_static, inp.n_cheb)
 
         # weight coulomb interaction
         wgCoulomb = minimum([1, i_it / nItFullCoul])
@@ -476,7 +476,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
     # destruct inputs
     (_, _, dos_en, dos, Weep, dosef, idx_ef, _, BCS_gap, _) = matval
     (; muc_ME, mu_flag, N_it, conv_thr, minGap, nItFullCoul, min_it) = inp
-    (w_static, w_static_chi, _) = realAxisParameter
+    (w_static, _) = realAxisParameter
 
 
     printTextCentered("T = " * string(itemp) * " K ", console.partingLine, file=log_file, bold=true)
@@ -550,15 +550,15 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
 
         # locate the ω'-integrand poles (vDOS+W: from the modified S/P quantities)
         if inp.include_Weep == 1
-            poles = find_integrand_poles_vDOSW(gridws.wp_full, w_static, w_static_chi, Z_prev, phi_ph_prev, phi_c_prev, chi_prev, fermi_level, dos_en, idx_ef, gap0)
+            poles = find_integrand_poles_vDOSW(gridws.wp_full, w_static, Z_prev, phi_ph_prev, phi_c_prev, chi_prev, fermi_level, dos_en, idx_ef, gap0)
         else
-            poles = find_integrand_poles(gridws.wp_full, w_static, w_static_chi, Z_prev, delta_prev, chi_prev, fermi_level, gap0)
+            poles = find_integrand_poles(gridws.wp_full, w_static, Z_prev, delta_prev, chi_prev, fermi_level, gap0)
         end
         if maximum(poles) >= gridws.wp_max
             # a pole moved past the fixed tail: rebuild with a larger head region
             gridws = build_wprime_workspace(inp, realAxisParameter, maximum(poles))
         end
-        maybe_refresh_head!(gridws, poles, w_static, w_static_chi, inp.n_cheb)
+        maybe_refresh_head!(gridws, poles, w_static, inp.n_cheb)
         w_prime = gridws.wp_full
 
         # weight coulomb interaction
@@ -567,13 +567,13 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
 
         # Add mu thermalization: start mu-update only after a few iterations
         if mu_flag == 1 # && i_it > maximum([min_it, nItFullCoul + 1]) -1
-            fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_static_chi, w_prime, electronic_spec, dos_en, dos, Z_prev, phi_ph_prev, phi_c_prev, chi_prev, inp.outdir)
+            fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_prime, electronic_spec, dos_en, dos, Z_prev, phi_ph_prev, phi_c_prev, chi_prev, inp.outdir)
         end
 
         if inp.include_Weep == 1
-            Z_new, chi_new, phi_ph_new, phi_c_new = realEliashbergEq(β, Z_prev, phi_ph_prev, phi_c_prev, chi_prev, gridws, w_static, w_static_chi, dosef, dos_en, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
+            Z_new, chi_new, phi_ph_new, phi_c_new = realEliashbergEq(β, Z_prev, phi_ph_prev, phi_c_prev, chi_prev, gridws, w_static, dosef, dos_en, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
         else
-            Z_new, chi_new, phi_ph_new = realEliashbergEq(muc_ME, β, Z_prev, phi_ph_prev, chi_prev, gridws, w_static, w_static_chi, dosef, wgCoulomb, fermi_level, electronic_spec)
+            Z_new, chi_new, phi_ph_new = realEliashbergEq(muc_ME, β, Z_prev, phi_ph_prev, chi_prev, gridws, w_static, dosef, wgCoulomb, fermi_level, electronic_spec)
             phi_c_new = ComplexF64[]
         end
 
@@ -599,8 +599,10 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         print_real_axis_iteration(outputVec, console, log_file)
 
 
-        # DEBUG: peak RSS + gridws field breakdown, once per iteration (remove later)
-        report_iteration_mem(i_it, gridws)
+        # DEBUG: peak RSS + largest tracked live variable + gridws field breakdown,
+        # once per iteration (remove later)
+        report_iteration_mem(i_it, gridws; Weep, electronic_spec, realAxisParameter, broyden,
+                             Z_new, chi_new, phi_ph_new, phi_c_new)
 
         if abs(convergence / gap0) < conv_thr && i_it > maximum([min_it, nItFullCoul + 1])
             print_real_axis_converged(itemp, console, log_file)
@@ -608,7 +610,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
             if inp.flag_writeSelfEnergy == 1
                 try
                     saveSelfEnergy_realAxis(itemp, inp, collect(w_static), delta_new, Z_new,
-                                            w_static_chi=collect(w_static_chi), chi=chi_new,
+                                            chi=chi_new,
                                             phi_ph=(inp.include_Weep == 1 ? phi_ph_new : nothing),
                                             phi_c=(inp.include_Weep == 1 ? phi_c_new : nothing),
                                             epsilon=(inp.include_Weep == 1 ? dos_en : nothing))
@@ -651,13 +653,13 @@ end
 # -------------------- Helper functions -------------------- #
 ##############################################################
 function initial_real_axis_state(inp, realAxisParameter, BCS_gap)
-    (w_static, w_static_chi, _) = realAxisParameter
+    (w_static, _) = realAxisParameter
     nw = length(w_static)
 
     return RealAxisState(
         ones(ComplexF64, nw),                        # Z
         ones(ComplexF64, nw) .* (BCS_gap + im * 1e-4),   # Delta
-        -zeros(ComplexF64, length(w_static_chi)),           # Chi
+        -zeros(ComplexF64, length(w_static)),               # Chi
         0.0,                                                # fermi-level
         ComplexF64[],                                       # φ_ph(ω)
         ComplexF64[],                                       # φ_c(ε), vDOS+W only

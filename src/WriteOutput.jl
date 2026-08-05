@@ -1107,13 +1107,13 @@ end
 
 
 """
-    saveSelfEnergy_realAxis(itemp, inp, w_static, delta, Z; w_static_chi, chi, phi_ph, phi_c, epsilon)
+    saveSelfEnergy_realAxis(itemp, inp, w_static, delta, Z; chi, phi_ph, phi_c, epsilon)
 
-Assemble the real-axis self-energy components (Δ, Z on `w_static`; χ on `w_static_chi`; φ_ph on
-`w_static`; φ_c(ε) on the ε-grid) and hand them to [`writeSelfEnergy`](@ref). Optional channels are
-written only when provided, so the same call serves cDOS and vDOS (+μ / +W).
+Assemble the real-axis self-energy components (Δ, Z, χ and φ_ph all on `w_static`; φ_c(ε) on the
+ε-grid) and hand them to [`writeSelfEnergy`](@ref). Optional channels are written only when
+provided, so the same call serves cDOS and vDOS (+μ / +W).
 """
-function saveSelfEnergy_realAxis(itemp, inp, w_static, delta, Z; w_static_chi = nothing, chi = nothing, phi_ph = nothing, phi_c = nothing, epsilon = nothing)
+function saveSelfEnergy_realAxis(itemp, inp, w_static, delta, Z; chi = nothing, phi_ph = nothing, phi_c = nothing, epsilon = nothing)
 
     comps = NamedTuple[]
 
@@ -1122,7 +1122,7 @@ function saveSelfEnergy_realAxis(itemp, inp, w_static, delta, Z; w_static_chi = 
     push!(comps, (name = "Z", x = w_static, y = Z,
                   xlabel = "ω / meV", ylabel = "Z(ω) / 1", xhead = "ω / meV", yhead = "Z(ω) / 1"))
 
-    (isnothing(chi) || isnothing(w_static_chi)) || push!(comps, (name = "Chi", x = w_static_chi, y = chi,
+    isnothing(chi) || push!(comps, (name = "Chi", x = w_static, y = chi,
                   xlabel = "ω / meV", ylabel = "χ(ω) / meV", xhead = "ω / meV", yhead = "χ(ω) / meV"))
     isnothing(phi_ph) || push!(comps, (name = "Phiph", x = w_static, y = phi_ph,
                   xlabel = "ω / meV", ylabel = "φ_ph(ω) / meV", xhead = "ω / meV", yhead = "φ_ph(ω) / meV"))

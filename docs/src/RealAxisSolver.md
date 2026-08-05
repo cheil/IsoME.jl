@@ -21,8 +21,8 @@ Throughout the loop the primary variables are ``Z``, ``\chi`` and the order para
 This matters in the vDOS``+W`` case, where ``\phi(\omega,\varepsilon)`` is energy dependent and ``\Delta(\omega)`` is defined through ``\phi(\omega,\varepsilon_F)/Z(\omega)``.
 
 The frequency grids on which the self-energy is stored are uniform and fixed for the whole run.
-``Z(\omega)`` and ``\Delta(\omega)`` live on `1e-1 : domega : reOmega_c`, whereas ``\chi(\omega)`` uses the same step but the much larger cutoff `reOmega_c_shift`.
-Both grids deliberately start at ``0.1`` meV rather than at ``0``: several integrands behave like ``1/\omega``, which makes the result sensitive to the first grid point.
+``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` all live on the same grid `1e-1 : domega : reOmega_c`, and the ``\omega'``-integration covers the same range.
+The grid deliberately starts at ``0.1`` meV rather than at ``0``: several integrands behave like ``1/\omega``, which makes the result sensitive to the first grid point.
 
 ## Kernel
 The electron-phonon interaction enters the equations through the kernels ``K^{\pm}(\omega,\omega')`` (supplemental eq. (47) of the reference).
@@ -106,7 +106,7 @@ Their positions move from iteration to iteration as the self-energy changes, so 
 The ``\omega'``-grid is therefore split at ``\omega'_{\max} = 2\Delta(0)`` of the starting state (clamped to a sensible range) into a **head** and a **tail**:
 
 - **Head** — ``(0, \omega'_{\max}]``, the region in which the poles live. Every pole receives a Chebyshev cluster of `n_cheb` points, dense towards the pole from both sides, and the clusters tile the whole interval up to the midpoints between neighbouring poles. In the cDOS case there is a single pole, namely the root of ``\omega' - \mathrm{Re}\,\Delta(\omega')``.
-- **Tail** — ``[\omega'_{\max}, \omega_c]``, where the integrand is smooth. A uniform grid of step `domega` up to `reOmega_c` (cDOS) resp. `reOmega_c_shift` (vDOS).
+- **Tail** — ``[\omega'_{\max}, \omega_c]``, where the integrand is smooth. A uniform grid of step `domega` up to `reOmega_c`, in both cDOS and vDOS.
 
 Both parts are integrated with trapezoidal weights, and the junction point belongs to both grids, so the split is exact.
 
@@ -134,8 +134,7 @@ vDOS calculations are never started from scratch: the first temperature is seede
 ## Relevant input parameters
 | Parameter | Role |
 |:----------|:-----|
-| `reOmega_c`, `domega` | Cutoff and step of the ``Z(\omega)``, ``\Delta(\omega)`` grid, and of the ``\omega'``-tail in cDOS calculations |
-| `reOmega_c_shift` | Cutoff of the ``\chi(\omega)`` grid and of the ``\omega'``-tail in vDOS calculations |
+| `reOmega_c`, `domega` | Cutoff and step of the ``Z(\omega)``, ``\Delta(\omega)``, ``\chi(\omega)`` grid, and of the ``\omega'``-tail |
 | `dKernel` | Step of the kernel tables ``A(x)``, ``B(x)``; sets the resolution of the ``\Omega``-integral |
 | `n_cheb` | Chebyshev points per pole in the head region of the ``\omega'``-grid |
 | `depsilon` | Step of the ``\varepsilon``-grid (vDOS) |

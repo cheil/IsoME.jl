@@ -76,7 +76,8 @@ function RealAxisSolver(inp::arguments)
 
                 ### create Summary file
                 attempt(inp, log_file, "Error while creating the Summary.dat file.") do
-                    header = "# T/K   Re{Δ(0)}/meV   Im{Δ(0)}/meV   Re{Z(0)}/1   Im{Z(0)}/1   "
+                    # sampled at the gap edge ω_g, not at ω = 0 - see `gap_edge_index`
+                    header = "# T/K   Re{Δ(ω_g)}/meV   Im{Δ(ω_g)}/meV   Re{Z(ω_g)}/1   Im{Z(ω_g)}/1   "
                     out_vars = Array{Float64}(undef, length(Delta0), 5)
                     out_vars[:, 1] = temps
                     out_vars[:, 2] = real(Delta0)
@@ -84,7 +85,7 @@ function RealAxisSolver(inp::arguments)
                     out_vars[:, 4] = real(Znorm0)
                     out_vars[:, 5] = imag(Znorm0)
                     if inp.cDOS_flag == 0   # for later when vDOS is implemented
-                        header = header * "Re{χ(0)}/meV   Im{χ(0)}/meV   ϵ_F-μ/meV   "
+                        header = header * "Re{χ(ω_g)}/meV   Im{χ(ω_g)}/meV   ϵ_F-μ/meV   "
                         out_vars = hcat(out_vars, real(Shift0), imag(Shift0))
                     end
                     createSummaryFile(inp, Tc, out_vars, header)
@@ -374,7 +375,7 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
     β = 1 / (kb * itemp)
     Z_new = state.Z
     delta_new = state.delta
-    data = [Z_new[1], delta_new[1]]
+    data = [Z_new[ig0], delta_new[ig0]]
 
     # --- head/tail (vDOS-style) comparison solver ---
     # pole-anchored Chebyshev head + static linear tail; the tail kernels are precomputed
@@ -412,10 +413,10 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
         abs_delta = sum(abs.(delta_new))
         convergence = rel_delta / abs_delta
         #convergence = abs(sqrt(sum(abs2.(delta_new .- delta_prev))/length(delta_new))/gap0)  # Alejandros criteria
-        data = [Z_new[1], delta_new[1]]     #
+        # Z and Δ are taken at the gap edge, not at w_static[1] - see `gap_edge_index`
         idx_gapEdge = gap_edge_index(w_static, gap0)
-        data = [Z_new[1], delta_new[idx_gapEdge]]   # PLOT HERE gap0 
-        outputVec = real_axis_cdOS_output(i_it, w_static, Z_new, delta_new, convergence, gap0, idx_gapEdge)
+        data = [Z_new[idx_gapEdge], delta_new[idx_gapEdge]]
+        outputVec = real_axis_cdOS_output(i_it, Z_new, delta_new, convergence, idx_gapEdge)
         nan_state = any(isnan, outputVec)
         print_real_axis_iteration(outputVec, console, log_file)
 
@@ -524,7 +525,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
     printTableHeader(console, initValues, log_file)
 
     β = 1 / (kb * itemp)
-    data = [state.Z[1], state.delta[1], state.chi[1]]
+    data = [state.Z[ig0], state.delta[ig0], state.chi[ig0]]
 
     # ------ integration grid and kernels ----- #
     # head/tail split (vDOS): tail kernels are computed once per temperature,
@@ -593,12 +594,14 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         delta_new = phi_ef ./ Z_new
 
         convergence = sqrt(sum(abs2.(delta_new .- delta_prev))/length(delta_new))
-        data = [Z_new[1], delta_new[1], chi_new[1]]
-        outputVec = real_axis_vDOS_output(i_it, w_static, Z_new, delta_new, chi_new, fermi_level, convergence, gap0)
+        # Z, Δ and χ are taken at the gap edge, not at w_static[1] - see `gap_edge_index`
+        idx_gapEdge = gap_edge_index(w_static, gap0)
+        data = [Z_new[idx_gapEdge], delta_new[idx_gapEdge], chi_new[idx_gapEdge]]
+        outputVec = real_axis_vDOS_output(i_it, Z_new, delta_new, chi_new, fermi_level, convergence, idx_gapEdge)
         nan_state = any(isnan, outputVec)
         print_real_axis_iteration(outputVec, console, log_file)
 
-        if abs(convergence / gap0) < conv_thr && i_it > maximum([min_it, nItFullCoul + 1])
+        if abs(convergence) < conv_thr && i_it > maximum([min_it, nItFullCoul + 1])
             print_real_axis_converged(itemp, console, log_file)
 
             if inp.flag_writeSelfEnergy == 1
@@ -615,12 +618,12 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
             end
 
             # next guess
-            state.Z = Z_new
-            state.chi = chi_new
-            state.delta = delta_new
-            state.phi_ph = phi_ph_new
-            state.phi_c = phi_c_new
-            state.fermi_level = fermi_level
+            # state.Z = Z_new
+            # state.chi = chi_new
+            # state.delta = delta_new
+            # state.phi_ph = phi_ph_new
+            # state.phi_c = phi_c_new
+            # state.fermi_level = fermi_level
             return data, state
         end
 
@@ -773,26 +776,25 @@ function print_real_axis_not_converged(inp, console, log_file)
 end
 
 """
-    real_axis_cdOS_output(i_it, w_static, Z_new, delta_new, convergence, gap0)
+    real_axis_cdOS_output(i_it, Z_new, delta_new, convergence, ig)
 
-cDOS console output. Z and Δ are reported at the gap edge (see `gap_edge_index`), and the
-error column is the same quantity that is tested against `conv_thr` - it used to be divided
-by `gap0`, so the printed value did not match the convergence criterion being applied.
+cDOS console output. Z and Δ are reported at the gap-edge index `ig` (see `gap_edge_index`),
+the same point the solver uses for its own gap check, and the error column is the quantity
+that is tested against `conv_thr`.
 """
-function real_axis_cdOS_output(i_it, w_static, Z_new, delta_new, convergence, gap0, ig)
+function real_axis_cdOS_output(i_it, Z_new, delta_new, convergence, ig)
     return [i_it, real(Z_new[ig]), imag(Z_new[ig]), real(delta_new[ig]), imag(delta_new[ig]), abs(convergence)]
 end
 
 
 """
-    real_axis_vDOS_output(i_it, w_static, Z_new, delta_new, chi_new, fermi_level, convergence, gap0)
+    real_axis_vDOS_output(i_it, Z_new, delta_new, chi_new, fermi_level, convergence, ig)
 
-vDOS console output. Z, χ and Δ are reported at the gap edge (see `gap_edge_index`), and the
-error column is the same quantity that is tested against `conv_thr` - it used to be divided
-by `gap0`, so the printed value did not match the convergence criterion being applied.
+vDOS console output. Z, χ and Δ are reported at the gap-edge index `ig` (see `gap_edge_index`),
+the same point the solver uses for its own gap check, and the error column is the quantity
+that is tested against `conv_thr`.
 """
-function real_axis_vDOS_output(i_it, w_static, Z_new, delta_new, chi_new, fermi_level, convergence, gap0)
-    ig = gap_edge_index(w_static, gap0)
+function real_axis_vDOS_output(i_it, Z_new, delta_new, chi_new, fermi_level, convergence, ig)
     return [i_it, real(Z_new[ig]), imag(Z_new[ig]), real(chi_new[ig]), imag(chi_new[ig]), fermi_level,
             real(delta_new[ig]), imag(delta_new[ig]), abs(convergence)]
 end

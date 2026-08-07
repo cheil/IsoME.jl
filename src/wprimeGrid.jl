@@ -141,6 +141,8 @@ function find_integrand_poles(wp::Vector{Float64}, w_static,
     ε_p = sqrt.(wp .^ 2 .* Z_ongrid .^ 2 .- phi_ongrid .^ 2)
 
     poles = Float64[]
+    # println("Pole plus: ", grid_sign_roots(wp, imag.(shift_ongrid .+ ε_p)))
+    # println("Pole minus: ", grid_sign_roots(wp, imag.(shift_ongrid .- ε_p)))
     #append!(poles, grid_sign_roots(wp, imag.(shift_ongrid .+ ε_p)))
     #append!(poles, grid_sign_roots(wp, imag.(shift_ongrid .- ε_p)))
     push!(poles, wp[argmin(abs2.(ε_p))])

@@ -167,50 +167,85 @@ function epsilon_helpers(electronic_spec, Z_ongrid, phi_ongrid, shift_ongrid, w_
             continue
         end
         
-        integrands[idx] = eval_spectral_integrals(g, lorentzian_moments_p, lorentzian_moments_m, ε_p, Rplus, Rminus, Iplus, Iminus, idx == 3)
+        integrands[idx] = eval_spectral_integrals(g, lorentzian_moments_p, lorentzian_moments_m, ε_p, idx == 3)
     end
 
     return integrands
 end
 
+
 """
-    lorentzian_interval_moments(εl, εr, a, b)
+    spectral_interval_moments(εl, εr, A, B)
 
-Scalar Lorentzian moments ∫ εᵏ/((ε+a)²+b²) dε over [εl, εr] for k = 0..3.
-for a single (ω′, ε-interval) pair.
+The six combinations of the Lorentzian moments Jⁿ = ∫ εⁿ/((ε+A)²+B²) dε over [εl, εr]
+that the spectral coefficients actually need, for one (ω′, ε-interval) pair:
+
+    Tₙ = Jⁿ + A·Jⁿ⁻¹   (n = 1,2,3)      Uₙ = B·Jⁿ   (n = 0,1,2)
+
+Jⁿ is never returned on its own, and that is the whole point. Splitting the partial
+fraction into an odd and an even part about ε = -A,
+
+    Im[ (g/2ε_p) / (ε+χ±ε_p) ] = I_g·(ε+R±)/D  -  I±·R_g/D ,
+
+shows that the arctangent enters only through those two groups: the odd part contributes
+T = Jⁿ + A·Jⁿ⁻¹, in which the arctangent cancels identically (T₁ = H/2, pure log), and the
+even part contributes U = B·Jⁿ, in which the explicit damping factor cancels the 1/B of the
+collapsing Lorentzian. So the assembled integrand is smooth as B → 0 even when the pole
+ε = -A sits inside the interval - the Sokhotski-Plemelj limit, whose δ-function pickup is
+finite.
+
+Forming J⁰ ~ π/B first and multiplying by B afterwards, as the code used to, throws that
+away: the intermediate overflows the mantissa long before B reaches zero, and at B = 0 the
+product is 0·∞ = NaN. Here the bounded primitive
+
+    W = B·J⁰ = atan2(B·Δε, B² + P),   P = (A+εr)(A+εl),   |W| ≤ π
+
+is built directly, via atan(u) - atan(v) = atan2(u-v, 1+uv) rescaled by B² > 0 (quadrant
+preserving, so an identity). No division by B occurs anywhere. The same regrouping fixes a
+second, far more common failure: for the vast majority of intervals the pole lies outside
+(P > 0) and Jⁿ is perfectly finite, but the old endpoint subtraction cancelled two O(1/B)
+numbers to produce it and lost every digit. See
+`testing/NaN_SelfEnergy/lorentzian_moments.tex` and `lorentzian_moment_blowup.ipynb`.
 """
-@inline function lorentzian_interval_moments(εl, εr, a, b)
-    b2 = b^2
-    a2 = a^2
+@inline function spectral_interval_moments(εl, εr, A, B)
+    A2 = A^2
+    B2 = B^2
 
-    i0l = atan((a + εl) / b) / b
-    i0r = atan((a + εr) / b) / b
+    Δε = εr - εl
+    xl = A + εl
+    xr = A + εr
+    # < 0 exactly when the pole ε = -A lies inside [εl, εr]
+    P = xr * xl
 
-    h_l = log((a + εl)^2 + b2)
-    h_r = log((a + εr)^2 + b2)
+    W = atan(B * Δε, B2 + P)                    # B·J⁰, bounded by π, exact at B = 0
+    H = log((xr^2 + B2) / (xl^2 + B2))          # one log of the ratio, not a difference
 
-    i1l = 0.5 * h_l - a * i0l
-    i1r = 0.5 * h_r - a * i0r
+    T1 = 0.5 * H                                # J¹ + A·J⁰ - the arctangent drops out
+    T2 = Δε - 0.5 * A * H - B * W               # J² + A·J¹
+    T3 = 2 * A * B * W + 0.5 * (A2 - B2) * H + 0.5 * Δε * (εr + εl - 2 * A)
 
-    i2l = -a * h_l + (a2 - b2) * i0l + εl
-    i2r = -a * h_r + (a2 - b2) * i0r + εr
+    U0 = W                                      # B·J⁰
+    U1 = 0.5 * B * H - A * W                    # B·J¹
+    U2 = B * Δε - A * B * H + (A2 - B2) * W     # B·J²
 
-    i3l = i0l * (3 * a * b2 - a * a2) + 0.5 * (3 * a2 - b2) * h_l + 0.5 * εl * (εl - 4 * a)
-    i3r = i0r * (3 * a * b2 - a * a2) + 0.5 * (3 * a2 - b2) * h_r + 0.5 * εr * (εr - 4 * a)
-
-    return i0r - i0l, i1r - i1l, i2r - i2l, i3r - i3l
+    return T1, T2, T3, U0, U1, U2
 end
 
 """
-    spectral_C0C1(Rg, Ig, Rp, Rm, Ip, Im_, i0pp, i1pp, i2pp, i0mm, i1mm, i2mm)
+    spectral_C0C1(Rg, Ig, Ta_p, Tb_p, Ua_p, Ub_p, Ta_m, Tb_m, Ua_m, Ub_m)
 
-Scalar version of `eval_spectral_integral_coefficients` for one (ω′, ε-interval) pair.
-The slope (g_slope) contribution has the same functional form with the moments shifted
-by one order, so it is obtained by calling this with (i1, i2, i3) instead of (i0, i1, i2).
+Scalar version of `eval_spectral_integral_coefficients` for one (ω′, ε-interval) pair,
+in terms of the grouped moments of `spectral_interval_moments`:
+
+    C0 = I_g·(Tₐ⁺ - Tₐ⁻) - R_g·(Uₐ⁺ - Uₐ⁻),    C1 = I_g·(T_b⁺ - T_b⁻) - R_g·(U_b⁺ - U_b⁻)
+
+The slope (g_slope) contribution has the same functional form with the moments shifted by
+one order, so it is obtained by passing (T2, T3, U1, U2) instead of (T1, T2, U0, U1).
+R±/I± no longer appear here - they are already folded into T and U.
 """
-@inline function spectral_C0C1(Rg, Ig, Rp, Rm, Ip, Im_, i0pp, i1pp, i2pp, i0mm, i1mm, i2mm)
-    C0 = Ig * (i1pp - i1mm) + Ig * (Rp * i0pp - Rm * i0mm) + Rg * (-Ip * i0pp + Im_ * i0mm)
-    C1 = Ig * (i2pp - i2mm) + Ig * (Rp * i1pp - Rm * i1mm) + Rg * (-Ip * i1pp + Im_ * i1mm)
+@inline function spectral_C0C1(Rg, Ig, Ta_p, Tb_p, Ua_p, Ub_p, Ta_m, Tb_m, Ua_m, Ub_m)
+    C0 = Ig * (Ta_p - Ta_m) - Rg * (Ua_p - Ua_m)
+    C1 = Ig * (Tb_p - Tb_m) - Rg * (Ub_p - Ub_m)
     return C0, C1
 end
 
@@ -264,24 +299,24 @@ function epsilon_helpers_vDOSW(electronic_spec, Weep, Z_ongrid, phi_ph_ongrid, p
             Rp = real(Sp); Ip = imag(Sp)
             Rm = real(Sm); Im_ = imag(Sm)
 
-            i0pp, i1pp, i2pp, i3pp = lorentzian_interval_moments(xl, xr, Rp, Ip)
-            i0mm, i1mm, i2mm, i3mm = lorentzian_interval_moments(xl, xr, Rm, Im_)
+            T1p, T2p, T3p, U0p, U1p, U2p = spectral_interval_moments(xl, xr, Rp, Ip)
+            T1m, T2m, T3m, U0m, U1m, U2m = spectral_interval_moments(xl, xr, Rm, Im_)
 
             c = inv_scale / (2 * P)
 
             # Z branch: g = ωZ/scale, no slope
             gz = wz * c
-            C0, C1 = spectral_C0C1(real(gz), imag(gz), Rp, Rm, Ip, Im_,
-                                   i0pp, i1pp, i2pp, i0mm, i1mm, i2mm)
+            C0, C1 = spectral_C0C1(real(gz), imag(gz),
+                                   T1p, T2p, U0p, U1p, T1m, T2m, U0m, U1m)
             z_int[iw] += m0 * C0 + m1 * C1
 
             # φ branch: g = Φ0/scale, slope = Φ1/scale
             gphi = Φ0 * c
             gs = Φ1 * c
-            C0, C1 = spectral_C0C1(real(gphi), imag(gphi), Rp, Rm, Ip, Im_,
-                                   i0pp, i1pp, i2pp, i0mm, i1mm, i2mm)
-            D0, D1 = spectral_C0C1(real(gs), imag(gs), Rp, Rm, Ip, Im_,
-                                   i1pp, i2pp, i3pp, i1mm, i2mm, i3mm)
+            C0, C1 = spectral_C0C1(real(gphi), imag(gphi),
+                                   T1p, T2p, U0p, U1p, T1m, T2m, U0m, U1m)
+            D0, D1 = spectral_C0C1(real(gs), imag(gs),
+                                   T2p, T3p, U1p, U2p, T2m, T3m, U1m, U2m)
             C0 += D0
             C1 += D1
             C0phi[iw, jε] = C0
@@ -290,10 +325,10 @@ function epsilon_helpers_vDOSW(electronic_spec, Weep, Z_ongrid, phi_ph_ongrid, p
 
             # χ branch: g = χ/scale, slope = 1/scale
             gchi = sh * c
-            C0, C1 = spectral_C0C1(real(gchi), imag(gchi), Rp, Rm, Ip, Im_,
-                                   i0pp, i1pp, i2pp, i0mm, i1mm, i2mm)
-            D0, D1 = spectral_C0C1(real(c), imag(c), Rp, Rm, Ip, Im_,
-                                   i1pp, i2pp, i3pp, i1mm, i2mm, i3mm)
+            C0, C1 = spectral_C0C1(real(gchi), imag(gchi),
+                                   T1p, T2p, U0p, U1p, T1m, T2m, U0m, U1m)
+            D0, D1 = spectral_C0C1(real(c), imag(c),
+                                   T2p, T3p, U1p, U2p, T2m, T3m, U1m, U2m)
             chi_int[iw] += m0 * (C0 + D0) + m1 * (C1 + D1)
         end
     end
@@ -350,23 +385,23 @@ function epsilon_causality_vDOSW(electronic_spec, Z_ongrid, phi_ph_ongrid, phi_c
             Rp = real(Sp); Ip = imag(Sp)
             Rm = real(Sm); Im_ = imag(Sm)
 
-            i0pp, i1pp, i2pp, i3pp = lorentzian_interval_moments(xl, xr, Rp, Ip)
-            i0mm, i1mm, i2mm, i3mm = lorentzian_interval_moments(xl, xr, Rm, Im_)
+            T1p, T2p, T3p, U0p, U1p, U2p = spectral_interval_moments(xl, xr, Rp, Ip)
+            T1m, T2m, T3m, U0m, U1m, U2m = spectral_interval_moments(xl, xr, Rm, Im_)
 
             c = inv_scale / (2 * P)
 
             # Z branch: g = ωZ/scale, no slope
             gz = wz * c
-            C0, C1 = spectral_C0C1(real(gz), imag(gz), Rp, Rm, Ip, Im_,
-                                   i0pp, i1pp, i2pp, i0mm, i1mm, i2mm)
+            C0, C1 = spectral_C0C1(real(gz), imag(gz),
+                                   T1p, T2p, U0p, U1p, T1m, T2m, U0m, U1m)
             z_int[iw] += m0 * C0 + m1 * C1
 
             # χ branch: g = χ/scale, slope = 1/scale
             gchi = sh * c
-            C0, C1 = spectral_C0C1(real(gchi), imag(gchi), Rp, Rm, Ip, Im_,
-                                   i0pp, i1pp, i2pp, i0mm, i1mm, i2mm)
-            D0, D1 = spectral_C0C1(real(c), imag(c), Rp, Rm, Ip, Im_,
-                                   i1pp, i2pp, i3pp, i1mm, i2mm, i3mm)
+            C0, C1 = spectral_C0C1(real(gchi), imag(gchi),
+                                   T1p, T2p, U0p, U1p, T1m, T2m, U0m, U1m)
+            D0, D1 = spectral_C0C1(real(c), imag(c),
+                                   T2p, T3p, U1p, U2p, T2m, T3m, U1m, U2m)
             chi_int[iw] += m0 * (C0 + D0) + m1 * (C1 + D1)
         end
     end
@@ -378,82 +413,92 @@ end
 """
     lorentzian_moments_weighted(x0, x1, A, B, M0, M1)
 
-Evaluate lorentzian integrals together with weighting factors M0/M1
-Allows to sum directly over epsilon
-Returns M0_J^(k) in my notation
-A, B are R+/I+ or R-/I-
+Evaluate the grouped Lorentzian moments of `spectral_interval_moments` together with the
+weighting factors M0/M1, summing directly over ε.
+A, B are R+/I+ or R-/I-. Returns the M0- and M1-weighted ε-sums of (T1, T2, T3, U0, U1, U2);
+B is ω′-dependent only, so it factors out of the ε-sum and the grouping survives it.
 """
 function lorentzian_moments_weighted(x0, x1, A::AbstractVector, B::AbstractVector, M0, M1)
     xl = vec(x0); xr = vec(x1); m0 = vec(M0); m1 = vec(M1)
     Nε = length(xl)
     M  = length(A)
-    M0_I0 = zeros(M); M0_I1 = zeros(M); M0_I2 = zeros(M); M0_I3 = zeros(M)
-    M1_I0 = zeros(M); M1_I1 = zeros(M); M1_I2 = zeros(M); M1_I3 = zeros(M)
+    M0_T1 = zeros(M); M0_T2 = zeros(M); M0_T3 = zeros(M)
+    M0_U0 = zeros(M); M0_U1 = zeros(M); M0_U2 = zeros(M)
+    M1_T1 = zeros(M); M1_T2 = zeros(M); M1_T3 = zeros(M)
+    M1_U0 = zeros(M); M1_U1 = zeros(M); M1_U2 = zeros(M)
     @inbounds for jε in 1:Nε
         l = xl[jε]; r = xr[jε]; w0 = m0[jε]; w1 = m1[jε]
+        Δε = r - l
         @simd for iw in 1:M
             a = A[iw]; b = B[iw]
             b2 = b^2; a2 = a^2
-            i0l = atan((a + l) / b) / b;  i0r = atan((a + r) / b) / b
-            hl  = log((a + l)^2 + b2);    hr  = log((a + r)^2 + b2)
-            i1l = 0.5 * hl - a * i0l;     i1r = 0.5 * hr - a * i0r
-            i2l = -a * hl + (a2 - b2) * i0l + l;  i2r = -a * hr + (a2 - b2) * i0r + r
-            i3l = i0l * (3 * a * b2 - a * a2) + 0.5 * (3 * a2 - b2) * hl + 0.5 * l * (l - 4 * a)
-            i3r = i0r * (3 * a * b2 - a * a2) + 0.5 * (3 * a2 - b2) * hr + 0.5 * r * (r - 4 * a)
-            d0 = i0r - i0l; d1 = i1r - i1l; d2 = i2r - i2l; d3 = i3r - i3l
-            M0_I0[iw] += w0 * d0; M0_I1[iw] += w0 * d1; M0_I2[iw] += w0 * d2; M0_I3[iw] += w0 * d3
-            M1_I0[iw] += w1 * d0; M1_I1[iw] += w1 * d1; M1_I2[iw] += w1 * d2; M1_I3[iw] += w1 * d3
+            # grouped endpoint differences - see spectral_interval_moments
+            pl = a + l; pr = a + r
+            W = atan(b * Δε, b2 + pr * pl)
+            H = log((pr^2 + b2) / (pl^2 + b2))
+
+            T1 = 0.5 * H
+            T2 = Δε - 0.5 * a * H - b * W
+            T3 = 2 * a * b * W + 0.5 * (a2 - b2) * H + 0.5 * Δε * (r + l - 2 * a)
+            U0 = W
+            U1 = 0.5 * b * H - a * W
+            U2 = b * Δε - a * b * H + (a2 - b2) * W
+
+            M0_T1[iw] += w0 * T1; M0_T2[iw] += w0 * T2; M0_T3[iw] += w0 * T3
+            M0_U0[iw] += w0 * U0; M0_U1[iw] += w0 * U1; M0_U2[iw] += w0 * U2
+            M1_T1[iw] += w1 * T1; M1_T2[iw] += w1 * T2; M1_T3[iw] += w1 * T3
+            M1_U0[iw] += w1 * U0; M1_U1[iw] += w1 * U1; M1_U2[iw] += w1 * U2
         end
     end
 
-    return (M0_I0, M0_I1, M0_I2, M0_I3, M1_I0, M1_I1, M1_I2, M1_I3)
+    return (M0_T1, M0_T2, M0_T3, M0_U0, M0_U1, M0_U2,
+            M1_T1, M1_T2, M1_T3, M1_U0, M1_U1, M1_U2)
 end
 
 
 """
-    eval_spectral_integrals(g, M0, M1, ε_p, Rplus, Rminus, Iplus, Iminus, eps_1, eps_2, shift_int; g_slope)
+    eval_spectral_integrals(g, lorentzian_moments_p, lorentzian_moments_m, ε_p, shift_int; g_slope)
 
 Evaluate spectral integrals for wZ, delta, chi based on the precomputed lorentzian integrals
 The lorentzian moments are already weighted by M0/M1 and the ε-sumamtion is done
 """
-function eval_spectral_integrals(g, lorentzian_moments_p, lorentzian_moments_m, ε_p, Rplus, Rminus, Iplus, Iminus, shift_int::Bool=false; g_slope=nothing)
+function eval_spectral_integrals(g, lorentzian_moments_p, lorentzian_moments_m, ε_p, shift_int::Bool=false; g_slope=nothing)
     slope = (shift_int && isnothing(g_slope)) ? one.(ε_p) : g_slope
 
-    M0_I0_pp, M0_I1_pp, M0_I2_pp, M0_I3_pp, M1_I0_pp, M1_I1_pp, M1_I2_pp, M1_I3_pp = lorentzian_moments_p
-    M0_I0_mm, M0_I1_mm, M0_I2_mm, M0_I3_mm, M1_I0_mm, M1_I1_mm, M1_I2_mm, M1_I3_mm = lorentzian_moments_m
+    M0_T1_p, M0_T2_p, M0_T3_p, M0_U0_p, M0_U1_p, M0_U2_p,
+    M1_T1_p, M1_T2_p, M1_T3_p, M1_U0_p, M1_U1_p, M1_U2_p = lorentzian_moments_p
+    M0_T1_m, M0_T2_m, M0_T3_m, M0_U0_m, M0_U1_m, M0_U2_m,
+    M1_T1_m, M1_T2_m, M1_T3_m, M1_U0_m, M1_U1_m, M1_U2_m = lorentzian_moments_m
 
-    # spectral coefficients Rg, Ig, R+-,I+-
-    C0s, _ = eval_spectral_integral_coefficients(g, ε_p, Rplus, Rminus, Iplus, Iminus,
-                                                 M0_I0_pp, M0_I0_mm, M0_I1_pp, M0_I1_mm, M0_I2_pp, M0_I2_mm, M0_I3_pp, M0_I3_mm; g_slope=slope)
-    _, C1s = eval_spectral_integral_coefficients(g, ε_p, Rplus, Rminus, Iplus, Iminus,
-                                                 M1_I0_pp, M1_I0_mm, M1_I1_pp, M1_I1_mm, M1_I2_pp, M1_I2_mm, M1_I3_pp, M1_I3_mm; g_slope=slope)
+    # spectral coefficients Rg, Ig against the grouped moments T/U
+    C0s, _ = eval_spectral_integral_coefficients(g, ε_p,
+                                                 M0_T1_p, M0_T2_p, M0_T3_p, M0_U0_p, M0_U1_p, M0_U2_p,
+                                                 M0_T1_m, M0_T2_m, M0_T3_m, M0_U0_m, M0_U1_m, M0_U2_m; g_slope=slope)
+    _, C1s = eval_spectral_integral_coefficients(g, ε_p,
+                                                 M1_T1_p, M1_T2_p, M1_T3_p, M1_U0_p, M1_U1_p, M1_U2_p,
+                                                 M1_T1_m, M1_T2_m, M1_T3_m, M1_U0_m, M1_U1_m, M1_U2_m; g_slope=slope)
     return C0s .+ C1s
 end
 
 
-function eval_spectral_integral_coefficients(g, ε_p, Rplus, Rminus, Iplus, Iminus, I0_pp, I0_mm, I1_pp, I1_mm, I2_pp, I2_mm, I3_pp, I3_mm; g_slope=nothing)
+function eval_spectral_integral_coefficients(g, ε_p,
+                                             T1_p, T2_p, T3_p, U0_p, U1_p, U2_p,
+                                             T1_m, T2_m, T3_m, U0_m, U1_m, U2_m; g_slope=nothing)
     Rg = real(g./ (2*ε_p))
     Ig = imag(g./ (2*ε_p))
 
-    C0 = @. Ig * (I1_pp - I1_mm)
-    C1 = @. Ig * (I2_pp - I2_mm)
-    @. C0 += Ig * (Rplus * I0_pp - Rminus * I0_mm)
-    @. C1 += Ig * (Rplus * I1_pp - Rminus * I1_mm)
-    @. C0 += Rg * (-Iplus * I0_pp + Iminus * I0_mm)
-    @. C1 += Rg * (-Iplus * I1_pp + Iminus * I1_mm)
+    C0 = @. Ig * (T1_p - T1_m) - Rg * (U0_p - U0_m)
+    C1 = @. Ig * (T2_p - T2_m) - Rg * (U1_p - U1_m)
 
     if !isnothing(g_slope)
         # Add the ε-dependent part of an affine numerator g(ε)=g+g_slope*ε.
+        # Same form with the moments shifted by one order.
         # The vDOS+μ χ integral corresponds to g_slope=1.
         Rg = real(g_slope ./ (2 * ε_p))
         Ig = imag(g_slope ./ (2 * ε_p))
 
-        @. C0 += Ig * (I2_pp - I2_mm)
-        @. C1 += Ig * (I3_pp - I3_mm)
-        @. C0 += Ig * (Rplus * I1_pp - Rminus * I1_mm)
-        @. C1 += Ig * (Rplus * I2_pp - Rminus * I2_mm)
-        @. C0 += -Rg * (Iplus * I1_pp - Iminus * I1_mm)
-        @. C1 += -Rg * (Iplus * I2_pp - Iminus * I2_mm)
+        @. C0 += Ig * (T2_p - T2_m) - Rg * (U1_p - U1_m)
+        @. C1 += Ig * (T3_p - T3_m) - Rg * (U2_p - U2_m)
     end
 
     return C0, C1

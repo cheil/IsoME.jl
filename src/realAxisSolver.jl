@@ -572,7 +572,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         end
 
         if inp.include_Weep == 1
-            Z_new, chi_new, phi_ph_new, phi_c_new = realEliashbergEq(β, Z_prev, phi_ph_prev, phi_c_prev, chi_prev, gridws, w_static, dosef, dos_en, dos, Weep, idx_ef, fermi_level, wgCoulomb, electronic_spec)
+            Z_new, chi_new, phi_ph_new, phi_c_new = realEliashbergEq(β, Z_prev, phi_ph_prev, phi_c_prev, chi_prev, gridws, w_static, dosef, fermi_level, wgCoulomb, electronic_spec)
         else
             Z_new, chi_new, phi_ph_new = realEliashbergEq(muc_ME, β, Z_prev, phi_ph_prev, chi_prev, gridws, w_static, dosef, wgCoulomb, fermi_level, electronic_spec)
             phi_c_new = ComplexF64[]

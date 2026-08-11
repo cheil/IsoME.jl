@@ -1160,3 +1160,21 @@ function Base.getproperty(a::arguments, v::Symbol)
         return getfield(a, v)
     end
 end
+
+
+"""
+     Base.setproperty!(a::arguments, v::Symbol, x)
+
+set a field of the input structure, reporting unknown field names and wrong data types
+in the same way as the `arguments` constructor
+"""
+function Base.setproperty!(a::arguments, v::Symbol, @nospecialize(x))
+    hasfield(arguments, v) || _throw_unknown(arguments, [v])
+    Ft = fieldtype(arguments, v)
+    x isa Ft && return setfield!(a, v, x)
+    try
+        return setfield!(a, v, convert(Ft, x))
+    catch
+        _throw_invalid(arguments, Symbol[], Pair{Symbol,Any}[v => x])
+    end
+end

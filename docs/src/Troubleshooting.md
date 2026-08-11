@@ -21,6 +21,41 @@ Some checks also drop diagnostic artifacts into the output directory: `muError.p
 for a failed [μ-update](@ref "The μ-update"), and `muc_ME.png` for the
 [μ\* conversion](@ref "μ* conversion").
 
+### The output directory contains only a log.txt
+
+No `CRASH` file and no `Summary.dat` — this looks like a silent failure, but it is not: it is what
+the output directory looks like whenever a run *ends without reaching its last step*. The three
+files are written at different times, which is what makes the state readable:
+
+| File | Written |
+|------|---------|
+| `log.txt` | opened when the run starts, appended to throughout |
+| `CRASH` | only when a **fatal error** was caught — never for anything else |
+| `Info.txt`, `Summary.dat`, figures | only after the equations are solved, at the very end of a successful run |
+
+So a lone `log.txt` means the run neither finished nor hit a handled error. The log itself cannot
+tell you which: a run that is still working and a run that was stopped leave the same partially
+written file, both ending in the middle of a temperature step. **Check whether the calculation is
+still running** — `ps`/`htop` for a local run, `condor_q` or the equivalent for a batch job:
+
+- **It is still running.** Nothing is wrong. `Info.txt`, `Summary.dat` and the figures are written
+  in one go after the equations are solved, so their absence says nothing about progress while the
+  temperature loop is still printing. This is the normal state of every output folder of a batch
+  that has not drained yet.
+- **It is no longer running.** The run was stopped before it reached its last step. There are two
+  common reasons, neither of which produces a `CRASH` file:
+  - **Interrupted by the user (`Ctrl+C`).** An interrupt is not treated by IsoME's error handling —
+    it is an abort, not a failure, so no crash is reported and nothing is written. Simply start the
+    run again; there is nothing to fix in the input.
+  - **Killed from the outside.** The OOM killer, a batch system evicting or holding the job, an
+    explicit `kill`, or the machine going down. Julia never gets to run any handler in that case
+    either. Check the scheduler's own files (for HTCondor the `.log` / `.err` of the job) for the
+    reason, and resubmit — with more memory if the job was killed for its size.
+
+The same reasoning applies to a partially written output directory (`Info.txt` present,
+`Summary.dat` missing): everything up to the point of the interruption was written, everything
+after it was not.
+
 ## Input and file-reading errors
 
 These are raised `while reading the inputs`. They almost always mean a path, a flag, or a file

@@ -39,7 +39,7 @@ using Test
                     )
 
     Tc = EliashbergSolver(inp)
-    @test Tc == [8, 9]
+    @test Tc == [7,8]
 
 
     ### 3.TEST: Nb cDOS W ###

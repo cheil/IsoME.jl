@@ -618,12 +618,12 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
             end
 
             # next guess
-            # state.Z = Z_new
-            # state.chi = chi_new
-            # state.delta = delta_new
-            # state.phi_ph = phi_ph_new
-            # state.phi_c = phi_c_new
-            # state.fermi_level = fermi_level
+            state.Z = Z_new
+            state.chi = chi_new
+            state.delta = delta_new
+            state.phi_ph = phi_ph_new
+            state.phi_c = phi_c_new
+            state.fermi_level = fermi_level
             return data, state
         end
 

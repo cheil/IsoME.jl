@@ -26,7 +26,14 @@ Per default, a certain structure of the input files is assumed:
 Only required if the Weep file does not contain the energy grid points
 - 1st column: energies (change via *Wen_col*)
 
-## Q5: Which role do the cutoffs and grids play in the real-axis solver?
+## Q5: My output directory only contains a `log.txt` — did the run fail?
+It did not *crash*: a crash always leaves a `CRASH` file behind. A lone `log.txt` means the run
+never reached its last step, either because it is still running — `Summary.dat` is only written at
+the very end — or because it was stopped, by `Ctrl+C` or by something killing the process. The log
+looks the same in all of these cases, so check whether the calculation is still running. See
+[The output directory contains only a log.txt](@ref) on the [Troubleshooting](@ref) page.
+
+## Q6: Which role do the cutoffs and grids play in the real-axis solver?
 The real-axis solver is far more sensitive to its grids than the imaginary-axis solver: its integrands are complex, sharply peaked and their poles move during the iteration.
 Most of the failures reported so far can be traced back to *reOmega_c*, *depsilon* or *dKernel*.
 Each of these is discussed, together with the symptoms it produces, in the [Real-axis grids and the kernel](@ref) and [The μ-update](@ref) sections of the [Troubleshooting](@ref) page.

@@ -36,9 +36,12 @@ const Ry2meV = 13605.662285137
 const THz2meV = 4.13566553853599;
 const kb = 0.08617333262; # meV/K
 
+### input validation (defines @checked_kwdef, used by the struct below) ###
+include("InputValidation.jl")
+
 ### Define input struct ###
 # inputs Eliashberg Solver
-@kwdef mutable struct arguments
+@checked_kwdef mutable struct arguments
     # Parameters
     temps::Vector{Float64}                  = [-1.0]        # concrete: Vector{Float64} is type-stable; Int entries auto-convert
     muc_AD::Float64                         = NaN           # NaN == "not assigned" (isnan check); NaN never a valid μ*
@@ -134,6 +137,15 @@ include("wprimeGrid.jl")
 include("realAxisSolver.jl")
 include("realAxisEliashbergEq.jl")
 include("Acon.jl")
+
+
+### precompile workload ###
+# build a dummy input structure, so that the (single, non-specialising) code path of the
+# checked keyword constructor and of setproperty! ends up in the precompile cache
+let
+    inp = arguments(a2f_file = "")
+    inp.temps = [1.0]
+end
 
 
 end

@@ -27,7 +27,7 @@ using Plots, LaTeXStrings
 using Trapz                     # integration
 using LinearAlgebra             # 
 using Printf                    # Format console output, also imported by other packages
-using SparseIR                  # Intermediate basis, removable if we use a different approach for sparse sampling (Roman's?)
+using SparseIR                  # Intermediate basis, removable if we use a different approach for sparse sampling (Romans?)
 using Logging, LoggingExtras    # also imported by other packages
 
 
@@ -70,8 +70,6 @@ include("InputValidation.jl")
     cDOS_flag::Int64    = 1
     include_Weep::Int64 = 0
     mu_flag::Int64      = 1
-    broyden_flag::Int64 = 0     # self-consistency mixing: 0 = linear, 1 = Broyden (2nd method)
-    broyden_mem::Int64  = 4     # Broyden history depth (number of stored iterations)
 
     # a2f input file
     a2f_file::String

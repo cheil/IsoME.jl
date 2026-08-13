@@ -386,7 +386,7 @@ function formatTableRow(vec, widthCol, prec=5, logConsole=true)
 
 
     if length(prec) == 1
-        prec = repeat([prec], length(vec))
+        prec = fill(prec[1], length(vec))
     end
 
     out = Array{String}(undef, length(vec))
@@ -637,8 +637,8 @@ Run a mandatory step of the solver. If it fails, the exception is tagged with
 `what` and passed on to the global error handler, which writes the CRASH file and
 the error message. Does no I/O itself.
 
-    inp = stage("in input structure") do
-        checkInput(inp)
+    stage("in input structure") do
+        checkInput!(inp)
     end
 """
 function stage(f::F, what::AbstractString) where {F}
@@ -685,9 +685,10 @@ the caller decides what to rethrow.
 """
 function handleFatalError(ex, bt, inp, log_file, errorLogger)
 
-    # a deliberate abort is not a crash: no CRASH file, no error report
+    # a deliberate abort is not a crash: only a note, no error report
     if ex isa InterruptException
-        printTee(log_file, "\nRun aborted by the user (Ctrl+C).\n")
+        writeNoteToCrashFile(inp, "User interruption")
+        printTee(log_file, "\nUser interruption\n")
         return nothing
     end
 
@@ -774,6 +775,29 @@ function writeToCrashFile(inp)
     try
         crashFile = inp.testMode ? IOBuffer() : open(crashFilePath(inp), "a")
         print(crashFile, current_exceptions())
+        print(crashFile, "\n\n")
+        flush(crashFile)
+    catch
+        print(stderr, "\n[IsoME] Could not write the CRASH file.\n")
+    finally
+        crashFile === nothing || close(crashFile)
+    end
+    return nothing
+end
+
+
+"""
+    writeNoteToCrashFile(inp, text)
+
+Save a plain note in the CRASH file, for the cases that end the run without being
+an exception to report - a Ctrl+C in particular. Never throws.
+"""
+function writeNoteToCrashFile(inp, text)
+    crashFile = nothing
+    try
+        crashFile = inp.testMode ? IOBuffer() : open(crashFilePath(inp), "a")
+        println(crashFile, "="^80)
+        println(crashFile, text)
         print(crashFile, "\n\n")
         flush(crashFile)
     catch
@@ -889,12 +913,13 @@ function createFigures(inp, matval, Delta0, temps, Tc, log_file)
 
         print(log_file,  "Info: No superconducting gap found - skipping plot\n")
     else
-        # print gap vs. temperature
-        Delta0_plot = Delta0[.~isnan.(Delta0)]
-        temps_plot = temps[.~isnan.(Delta0)]
-        order = sortperm(temps_plot)
-        temps_plot = temps_plot[order]
-        Delta0_plot = Delta0_plot[order]
+        # print gap vs. temperature. Each of these is assigned exactly once: `temps_plot` is
+        # captured by the fit model below, and reassigning a captured variable boxes it,
+        # which would leave the whole fit and every axis limit untyped
+        keep = .~isnan.(Delta0)
+        order = sortperm(temps[keep])
+        temps_plot = temps[keep][order]
+        Delta0_plot = Delta0[keep][order]
 
         if maximum(temps_plot) < 10
             xlim_max = round(maximum(temps_plot) * 1.1, RoundUp)
@@ -1040,29 +1065,11 @@ function writeSelfEnergy(itemp, inp, components)
 
     T = Float64(itemp)                          # consistent file names
 
+    # `components` is heterogeneous, so its element type is the abstract NamedTuple. The
+    # per-component work goes through a function barrier: each element is dispatched once
+    # and writeSelfEnergyComponent then runs on its own concrete NamedTuple type
     for c in components
-        base = folder * c.name * "_" * string(T) * "K"
-
-        # ----- data file -----
-        open(base * ".dat", "w") do io
-            if eltype(c.y) <: Complex
-                write(io, "#  " * c.xhead * "\tRe(" * c.yhead * ")\tIm(" * c.yhead * ")\n")
-                writedlm(io, [c.x real.(c.y) imag.(c.y)], '\t')
-            else
-                write(io, "#  " * c.xhead * "\t" * c.yhead * "\n")
-                writedlm(io, [c.x c.y], '\t')
-            end
-        end
-
-        # ----- plot -----
-        if eltype(c.y) <: Complex
-            plot(c.x, real.(c.y), color = :blue, label = "Real", linewidth = 2, xlabel = c.xlabel, ylabel = c.ylabel)
-            plot!(c.x, imag.(c.y), color = :red, label = "Imag", linewidth = 2)
-        else
-            plot(c.x, c.y, color = :blue, label = "", linewidth = 2, xlabel = c.xlabel, ylabel = c.ylabel)
-        end
-        inp.material != "Material" && title!(inp.material)
-        savefig(base * ".png")
+        writeSelfEnergyComponent(folder, T, inp.material, c)
     end
 
     return nothing
@@ -1070,29 +1077,58 @@ end
 
 
 """
-    saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi; chi, phiph, phic, epsilon, idx_ef)
+    writeSelfEnergyComponent(folder, T, material, c)
+
+Write one self-energy component of [`writeSelfEnergy`](@ref) as `.dat` + `.png`.
+"""
+function writeSelfEnergyComponent(folder::AbstractString, T::Float64, material::AbstractString, c::NamedTuple)
+
+    base = folder * c.name * "_" * string(T) * "K"
+
+    # ----- data file -----
+    open(base * ".dat", "w") do io
+        if eltype(c.y) <: Complex
+            write(io, "#  " * c.xhead * "\tRe(" * c.yhead * ")\tIm(" * c.yhead * ")\n")
+            writedlm(io, [c.x real.(c.y) imag.(c.y)], '\t')
+        else
+            write(io, "#  " * c.xhead * "\t" * c.yhead * "\n")
+            writedlm(io, [c.x c.y], '\t')
+        end
+    end
+
+    # ----- plot -----
+    if eltype(c.y) <: Complex
+        plot(c.x, real.(c.y), color = :blue, label = "Real", linewidth = 2, xlabel = c.xlabel, ylabel = c.ylabel)
+        plot!(c.x, imag.(c.y), color = :red, label = "Imag", linewidth = 2)
+    else
+        plot(c.x, c.y, color = :blue, label = "", linewidth = 2, xlabel = c.xlabel, ylabel = c.ylabel)
+    end
+    material != "Material" && title!(material)
+    savefig(base * ".png")
+
+    return nothing
+end
+
+
+"""
+    saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi; chi, phiph, phic, epsilon)
 
 Assemble the imaginary-axis (Matsubara) self-energy components and hand them to
 [`writeSelfEnergy`](@ref). Covers cDOS/vDOS and the μ / W(ε,ε′) modes: χ, φ_ph, φ_c are written only
-when provided. In vDOS+W, Δ(ε, iωₙ) is a matrix; only the slice at ε_F, Δ(ε_F, iωₙ), is written and
-plotted — the full ε-dependence is recoverable from the φ_ph(iωₙ) and φ_c(ε) files.
+when provided. In vDOS+W, `deltai` is Δ(ε_F, iωₙ) — the full ε-dependence is recoverable from the
+φ_ph(iωₙ) and φ_c(ε) files.
 """
-function saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi; chi = nothing, phiph = nothing, phic = nothing, epsilon = nothing, idx_ef = -1)
+function saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi; chi = nothing, phiph = nothing, phic = nothing, epsilon = nothing)
 
     comps = NamedTuple[]
 
     push!(comps, (name = "Z", x = wsi, y = znormi,
                   xlabel = "iωₙ / meV", ylabel = "Z(iωₙ) / 1", xhead = "iωₙ / meV", yhead = "Z(iωₙ) / 1"))
 
-    if ndims(deltai) == 2
-        # Δ(ε, iωₙ) is redundant with φ_ph(iωₙ) + φ_c(ε); keep only the ε_F slice
-        idx = idx_ef > 0 ? idx_ef : findmin(abs.(epsilon))[2]
-        push!(comps, (name = "Delta", x = wsi, y = deltai[idx, :],
-                      xlabel = "iωₙ / meV", ylabel = "Δ(ε_F, iωₙ) / meV", xhead = "iωₙ / meV", yhead = "Δ(ε_F, iωₙ) / meV"))
-    else
-        push!(comps, (name = "Delta", x = wsi, y = deltai,
-                      xlabel = "iωₙ / meV", ylabel = "Δ(iωₙ) / meV", xhead = "iωₙ / meV", yhead = "Δ(iωₙ) / meV"))
-    end
+    # Δ carries an ε-dependence exactly where φ_c does; the caller passes the ε_F slice
+    deltaLabel = isnothing(phic) ? "Δ(iωₙ) / meV" : "Δ(ε_F, iωₙ) / meV"
+    push!(comps, (name = "Delta", x = wsi, y = deltai,
+                  xlabel = "iωₙ / meV", ylabel = deltaLabel, xhead = "iωₙ / meV", yhead = deltaLabel))
 
     isnothing(chi)   || push!(comps, (name = "Chi", x = wsi, y = chi,
                   xlabel = "iωₙ / meV", ylabel = "χ(iωₙ) / meV", xhead = "iωₙ / meV", yhead = "χ(iωₙ) / meV"))
@@ -1174,7 +1210,8 @@ function Base.setproperty!(a::arguments, v::Symbol, @nospecialize(x))
     x isa Ft && return setfield!(a, v, x)
     try
         return setfield!(a, v, convert(Ft, x))
-    catch
+    catch ex
+        ex isa InterruptException && rethrow(ex)
         _throw_invalid(arguments, Symbol[], Pair{Symbol,Any}[v => x])
     end
 end

@@ -124,10 +124,10 @@ According to Lucrezi, Communication Physics, (2024) 7:33, eq. (16)
 or Lee, Computational Materials (2023) 9:156, eq. (32) 
 (See also Overleaf/Matsubara_sums)
 """
-function diff_Ne(mu, Ne_nsc, itemp, wsi, dos_en, dos, znormip, deltaip, shiftip)
+function diff_Ne(mu, Ne_nsc, itemp, wsi, dos_en, dos, znormip, phiip, shiftip)
     # eq (9) & (11) overleaf
     diff = dos_en .- mu
-    theta = (wsi' .* znormip') .^ 2 .+ (diff .+ shiftip') .^ 2 .+ (znormip' .* deltaip) .^ 2
+    theta = (wsi' .* znormip') .^ 2 .+ (diff .+ shiftip') .^ 2 .+ phiip .^ 2
     summand_sc = (diff .+ shiftip') ./ theta .- diff ./ (wsi'.^ 2 .+ diff.^ 2)
     
     # matsubara sum
@@ -144,40 +144,41 @@ end
 
 
 """
-    build_fmu_matsubara(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut) -> fmu
+    build_fmu_matsubara(itemp, wsi, dos_en, dos, znormip, phiphip, phicip, shiftip, idxShiftcut) -> fmu
 
 Return the charge-neutrality residual `fmu(μ) = Nₑ_nsc - Nₑ_sc(μ)` used by the imaginary-axis
 μ-update, *without* running the root find. This is the exact function whose root
 [`update_mu_own`](@ref) solves; it is factored out so it can be scanned/plotted on its own for
 debugging (see the μ-update testing notebook).
 """
-function build_fmu_matsubara(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut)
+function build_fmu_matsubara(itemp, wsi, dos_en, dos, znormip, phiphip, phicip, shiftip, idxShiftcut)
 
-    # delta as row vector, needed if no weep
-    if size(deltaip, 2) == 1
-        deltaip = deltaip'
-    else
-        deltaip = deltaip[idxShiftcut[1]:idxShiftcut[2],:]
-    end
+    # φ(ε, iωₙ) = φ_ph(iωₙ) + φ_c(ε) over the shiftcut window; φ_c is empty outside vDOS+W,
+    # where φ carries no ε-dependence and a single row is enough. Bound to a new name rather
+    # than reassigned: it is captured by `fmu` below, and assigning to a captured variable
+    # boxes it, which would leave the closure - and every arithmetic on its result in the
+    # root find - untyped. permutedims (not ') so that both branches give a Matrix{Float64}
+    phi_cut = isempty(phicip) ? permutedims(phiphip) :
+              permutedims(phiphip) .+ phicip[idxShiftcut[1]:idxShiftcut[2]]
 
     ### Calculate N_e in the non-SC state
     Ne_nsc = trapz(dos_en[idxShiftcut[1]:idxShiftcut[2]], 2 .* fermiFcn(dos_en[idxShiftcut[1]:idxShiftcut[2]], 0.0, itemp) .* dos[idxShiftcut[1]:idxShiftcut[2]])
 
     # call calc_Ne_Sc with first argument unspecified
-    fmu(x) = diff_Ne(x, Ne_nsc, itemp, wsi, dos_en[idxShiftcut[1]:idxShiftcut[2]], dos[idxShiftcut[1]:idxShiftcut[2]], znormip, deltaip, shiftip)
+    fmu(x) = diff_Ne(x, Ne_nsc, itemp, wsi, dos_en[idxShiftcut[1]:idxShiftcut[2]], dos[idxShiftcut[1]:idxShiftcut[2]], znormip, phi_cut, shiftip)
 
     return fmu
 end
 
 
 """
-    update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, deltaip, shiftip)
+    update_mu_own(itemp, wsi, ef, dos_en, dos, znormip, phiphip, phicip, shiftip)
 
 Routine to update chemical potential to fix the number of electrons
 """
-function update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, fermi_level, outdir)
+function update_mu_own(itemp, wsi, dos_en, dos, znormip, phiphip, phicip, shiftip, idxShiftcut, fermi_level, outdir)
 
-    fmu = build_fmu_matsubara(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut)
+    fmu = build_fmu_matsubara(itemp, wsi, dos_en, dos, znormip, phiphip, phicip, shiftip, idxShiftcut)
 
     mu = root_finding(fmu, outdir, fermi_level; shift = shiftip, omega_shift = wsi)
 

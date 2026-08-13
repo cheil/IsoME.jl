@@ -99,7 +99,8 @@ function _construct(::Type{T}, kw::Vector{Pair{Symbol,Any}}) where {T}
         else
             try
                 vals[i] = convert(Ft, val)      # e.g. Vector{Int} -> Vector{Float64}
-            catch
+            catch ex
+                ex isa InterruptException && rethrow(ex)
                 push!(wrong_types, name => val)
                 vals[i] = nothing
             end

@@ -14,11 +14,11 @@
 
 
 """
-    InputParser(inp, log_file)
+    InputParser!(inp, log_file)
 
 Read, convert, preprocess inputs for EliashbergSolver() (mode=0) and RealAxisSolver() (mode=1).
 """
-function InputParser(inp::arguments, log_file; mode::Int64=0)
+function InputParser!(inp::arguments, log_file; mode::Int64=0)
     # mode = 0: EliashbergSolver()
     # mode = 1: RealAxisSolver()
 
@@ -94,12 +94,18 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
                 de = inp.depsilon
                 dos_en = collect(enStart:de:enEnd)
                 dos = itpDos(dos_en)
-                Weep = nothing
+                Weep = Matrix{Float64}(undef, 0, 0)
             end
         end
 
-        # idx 
-        idxShiftcut = [findfirst(dos_en .> -inp.shiftcut), findlast(dos_en .< inp.shiftcut)]
+        # idx. Guarded one by one so that both stay Int64: a raw findfirst/findlast pair
+        # makes the vector a Vector{Union{Nothing, Int64}}, which no longer matches the
+        # ::Vector{Int64} the Eliashberg equations declare, and only fails deep inside them
+        idxLowShift = findfirst(dos_en .> -inp.shiftcut)
+        isnothing(idxLowShift) && error("The shiftcut window (±" * string(inp.shiftcut) * " meV) lies outside the energy range of the DOS. Reduce shiftcut or check the dos-file.\n\n")
+        idxHighShift = findlast(dos_en .< inp.shiftcut)
+        isnothing(idxHighShift) && error("The shiftcut window (±" * string(inp.shiftcut) * " meV) lies outside the energy range of the DOS. Reduce shiftcut or check the dos-file.\n\n")
+        idxShiftcut = [idxLowShift, idxHighShift]
 
     else
         # default values (typed empties so matval stays concrete: Vector{Float64}, not Vector{Any})
@@ -107,7 +113,7 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
         dos_en = Float64[]
         ef = NaN
         idxShiftcut = [-1,-1]
-        Weep = nothing
+        Weep = Matrix{Float64}(undef, 0, 0)
     end
 
     if inp.include_Weep == 0 && inp.cDOS_flag == 1
@@ -187,7 +193,7 @@ function InputParser(inp::arguments, log_file; mode::Int64=0)
     # material specific values
     matval = (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxShiftcut)
 
-    return inp, console, matval, ML_Tc
+    return console, matval, ML_Tc
 end
 
 
@@ -234,11 +240,11 @@ function initOutputTable(inp::arguments; mode::Int64=0)#
 end
 
 """
-    createDirectory(inp, strIsoME)
+    createDirectory!(inp, strIsoME)
 
 Create directory.
 """
-function createDirectory(inp::arguments, strIsoME::String)
+function createDirectory!(inp::arguments, strIsoME::String)
 
     if inp.testMode # hidden outputs in test mode
         log_file = IOBuffer()
@@ -262,6 +268,7 @@ function createDirectory(inp::arguments, strIsoME::String)
         try
             mkpath(inp.outdir)
         catch ex
+            ex isa InterruptException && rethrow(ex)
             error("Couldn't write into " * inp.outdir * "! Outdir may not writable or an invalid path.\n\n")
         end
 
@@ -269,8 +276,12 @@ function createDirectory(inp::arguments, strIsoME::String)
         print(log_file, strIsoME)
 
         # the log file is buffered: make sure what has been written so far reaches
-        # the disk even if the process is ended without unwinding the solver
-        atexit(() -> flushLog(log_file))
+        # the disk even if the process is ended without unwinding the solver.
+        # capture an alias that is assigned once, so that `log_file` - which is set in
+        # both branches above - is not boxed and keeps its type in the return value
+        let lf = log_file
+            atexit(() -> flushLog(lf))
+        end
 
         # logging to console and log-file (@warn,...)
         errorLogger = SimpleLogger(log_file, Logging.Error)
@@ -279,7 +290,7 @@ function createDirectory(inp::arguments, strIsoME::String)
         global_logger(tee_logger)
     end
 
-    return inp, log_file, errorLogger
+    return log_file, errorLogger
 
 end
 
@@ -290,7 +301,7 @@ end
 Check which input files (a2f, dos, weep) exist.
 For real axis solver: Additionally check if cDOS+W mode has been chosen
 """
-function checkInput(inp::arguments; realSolver::Bool=false)
+function checkInput!(inp::arguments; realSolver::Bool=false)
 
     # check input files / cDOS & Weep
     if ~isfile(inp.a2f_file)
@@ -328,7 +339,7 @@ function checkInput(inp::arguments; realSolver::Bool=false)
         end
     end
 
-    return inp
+    return nothing
 
 end
 
@@ -373,6 +384,28 @@ end
 
 
 """
+    autoHeaderFooter(data, nheader, nfooter, nameFile) -> nheader, nfooter
+
+Fill in the header/footer size of a read-in file where it was left to auto-detection
+(-1): everything above the first numeric entry of the first column is header, everything
+below the last one is footer.
+"""
+function autoHeaderFooter(data::Matrix{Any}, nheader::Int, nfooter::Int, nameFile::AbstractString)
+    (nheader >= 0 && nfooter >= 0) && return nheader, nfooter
+
+    numeric = isa.(data[:, 1], Number)
+    firstNum = findfirst(numeric)
+    isnothing(firstNum) && error("The first column of the " * nameFile * "-file holds no numeric entry, so header and footer can not be detected. Check the file and its column layout, or set the header/footer size manually.\n\n")
+
+    (nheader >= 0) || (nheader = firstNum - 1)
+    # a first numeric entry guarantees a last one
+    (nfooter >= 0) || (nfooter = size(data, 1) - findlast(numeric)::Int)
+
+    return nheader, nfooter
+end
+
+
+"""
     readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsmear=-1)
 
 Read in a2f file to solve the isotropic Migdal-Eliashberg equations
@@ -381,11 +414,13 @@ The first column must contain the energies, the second column onwards a2F values
 """
 function readIn_a2f(a2f_file, indSmear::Int=-1, unit="", nheader::Int=-1, nfooter::Int=-1, nsmear::Int=-1)
     ### Read in a2f file ###
-    a2f_data = readdlm(a2f_file)
+    # `Any` forces a Matrix{Any}: without it readdlm returns a Matrix{Float64} for a file
+    # without a header and a Matrix{Any} for one with, and the resulting union makes the
+    # whole header/footer detection below type-unstable
+    a2f_data = readdlm(a2f_file, Any)::Matrix{Any}
 
     ### Define defaults (-1 == auto-detect)
-    (nheader >= 0)  || (nheader = findfirst(isa.(a2f_data[:, 1], Number)) - 1)
-    (nfooter >= 0)  || (nfooter = size(a2f_data, 1) - findlast(isa.(a2f_data[:, 1], Number)))
+    nheader, nfooter = autoHeaderFooter(a2f_data, nheader, nfooter, "a2F")
     # ::Int assert: the raw (Any) a2f_data makes length() infer Any, which would leave
     # nsmear/indSmear (and hence the returned a2f) type-unstable.
     (nsmear >= 0)   || (nsmear = (length(a2f_data[nheader+1, isa.(a2f_data[nheader+1, :], Number)]) - 1)::Int)
@@ -439,11 +474,10 @@ The energies must be in column 1 and the dos in column 2
 function readIn_Dos(dos_file, ef::Float64=NaN, spin=2, unit="", nheader::Int=-1, nfooter::Int=-1; outdir="./", logFile=nothing)
 
     ### Read in dos file ###
-    dos_data = readdlm(dos_file)
+    dos_data = readdlm(dos_file, Any)::Matrix{Any}
 
     ### Default values (-1 == auto-detect) ###
-    (nheader >= 0) || (nheader = findfirst(isa.(dos_data[:, 1], Number)) - 1)
-    (nfooter >= 0) || (nfooter = size(dos_data, 1) - findlast(isa.(dos_data[:, 1], Number)))
+    nheader, nfooter = autoHeaderFooter(dos_data, nheader, nfooter, "Dos")
 
     ### Remove header & footer
     header = dos_data[1:nheader, :]
@@ -499,11 +533,10 @@ Weep data must be in column 3
 function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef::Float64=NaN, unit="", nheader::Int=-1, nfooter::Int=-1, nheaderWen::Int=-1, nfooterWen::Int=-1; outdir="./", logFile=nothing)
 
     ### Read in Weep file ###
-    Weep_data = readdlm(Weep_file)
+    Weep_data = readdlm(Weep_file, Any)::Matrix{Any}
 
     # Default values (-1 == auto-detect)
-    (nheader >= 0) || (nheader = findfirst(isa.(Weep_data[:, 1], Number)) - 1)
-    (nfooter >= 0) || (nfooter = size(Weep_data, 1) - findlast(isa.(Weep_data[:, 1], Number)))
+    nheader, nfooter = autoHeaderFooter(Weep_data, nheader, nfooter, "Weep")
 
     # Remove header & footer
     header = Weep_data[1:nheader, :]
@@ -567,11 +600,10 @@ Energy grid for Weep
 """
 function readIn_Wen(Wen_file, Wen_col, nheader::Int=-1, nfooter::Int=-1)
     ### Read in Weep file ###
-    Wen_data = readdlm(Wen_file)
+    Wen_data = readdlm(Wen_file, Any)::Matrix{Any}
 
     ### Default values (-1 == auto-detect) ###
-    (nheader >= 0) || (nheader = findfirst(isa.(Wen_data[:, 1], Number)) - 1)
-    (nfooter >= 0) || (nfooter = size(Wen_data, 1) - findlast(isa.(Wen_data[:, 1], Number)))
+    nheader, nfooter = autoHeaderFooter(Wen_data, nheader, nfooter, "Wen")
 
     ### Remove header & footer
     Wen = Float64.(Wen_data[nheader+1:end-nfooter, Wen_col])::Vector{Float64}
@@ -591,23 +623,34 @@ function extractFermiEnergy(header, unit, nameFile=nothing; outdir="./", logFile
 
     ef = NaN
     try
+        # every branch asserts ::Float64: the header cells are Any, and without it `ef`
+        # stays untyped and drags the unit conversion below down with it
         logNums = isa.(header, Number)
+        # the cells are Any, so `header .== "="` is not inferred as a Bool mask and drags
+        # the sum and every indexing operation below it to Any. Broadcasting a predicate
+        # that provably returns Bool keeps the mask - and everything indexed by it - a
+        # BitMatrix. It also survives a single-column header, where the mask is empty and
+        # `sum` of an empty Matrix{Any} would throw before the keyword search is reached.
+        isEqualSign(x)::Bool = x isa AbstractString && x == "="
+        maskEq = @view(logNums[:, 2:end]) .& isEqualSign.(@view header[:, 1:end-1])
         if sum(logNums) == 1
-            ef = Float64(only(header[logNums]))
-        elseif sum(logNums[:, 2:end] .& (header[:, 1:end-1] .== "=")) == 1
-            ef = Float64(only(header[:, 2:end][logNums[:, 2:end].&(header[:, 1:end-1].=="=")]))
+            ef = Float64(only(header[logNums])::Number)::Float64
+        elseif sum(maskEq) == 1
+            ef = Float64(only(@view(header[:, 2:end])[maskEq])::Number)::Float64
         else
             nameFermi = ["efermi", "ef", "fermi", "e_fermi"]
-            lcHeader = map(x -> isa(x, AbstractString) ? lowercase(x) : x, header)
 
             for name in nameFermi
-                if any(lcHeader .== name)
-                    idx = findall(lcHeader .== name)
-                    row = idx[1][1]
-                    col = idx[1][2]
-                    ef = Float64.(only(header[row, findfirst(isa.(header[row, col:end], Number))+col-1]))
-                    break
-                end
+                # first cell holding the keyword, then the first number at or after it
+                idx = findfirst(x -> isa(x, AbstractString) && lowercase(x) == name, header)
+                isnothing(idx) && continue
+
+                row, col = Tuple(idx)
+                idxNum = findfirst(x -> isa(x, Number), @view header[row, col:end])
+                isnothing(idxNum) && error("Found '" * name * "' in the header of the " * nameFile * "-file but no number after it.")
+
+                ef = Float64(header[row, col+idxNum-1]::Number)::Float64
+                break
             end
         end
 
@@ -625,6 +668,7 @@ function extractFermiEnergy(header, unit, nameFile=nothing; outdir="./", logFile
         end
 
     catch ex
+        ex isa InterruptException && rethrow(ex)
         text = "Error while reading the fermi energy from the " * nameFile * "-file."
         text *= "\nConsider setting the fermi-energy manually (ef or efW) or check the header of the " * nameFile * "-file\n\n"
         error(text)
@@ -667,8 +711,12 @@ end
 Discard zeros in dos.
 """
 function discardZeros(Dos::Vector{Float64}, energies::Vector{Float64})
-    idxLower = findfirst(Dos .!= 0)
-    idxUpper = findlast(Dos .!= 0)
+    idxLower = findfirst(!iszero, Dos)
+    idxUpper = findlast(!iszero, Dos)
+
+    # without this the `nothing` would only surface as a MethodError in the range below
+    isnothing(idxLower) && error("The density of states is zero over the whole energy range. Check the dos-file and the column layout (dos_file, spinDos).\n\n")
+    isnothing(idxUpper) && error("The density of states is zero over the whole energy range. Check the dos-file and the column layout (dos_file, spinDos).\n\n")
 
     return Dos[idxLower:idxUpper], energies[idxLower:idxUpper]
 end

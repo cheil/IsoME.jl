@@ -11,14 +11,9 @@
 
 """
 
-function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti = 0)
+function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; shifti = Float64[])
 
     real_c = inp.reOmega_c
-
-    # sinnvoller machen
-    if inp.include_Weep == 1
-        deltai = deltai[idx_ef, :]
-    end
 
     # g11i, gauxi = calcGF(wsi, deltai, znormi, shifti)
     # lneva = 0
@@ -34,6 +29,10 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; idx_ef=-1, shifti
         A12 = -imag.(g12) / pi
     end
     =#
+
+    # defined up front: it is filled and used under two separate tests of the same
+    # condition below, which the compiler can not correlate
+    shift_pade = ComplexF64[]
 
     lpade = 1
     if lpade == 1
@@ -157,10 +156,10 @@ function Pade(wsi, nsiw, real_c, g11i, gauxi)
     # Pade collapses with too many matsubara points:
     N = minimum([100, nsiw])
 
-    f11i = Array{Complex}(undef, N, N)
-    fauxi = Array{Complex}(undef, N, N)
-    a11 = Array{Complex}(undef, N)
-    aaux = Array{Complex}(undef, N)
+    f11i = Array{ComplexF64}(undef, N, N)
+    fauxi = Array{ComplexF64}(undef, N, N)
+    a11 = Array{ComplexF64}(undef, N)
+    aaux = Array{ComplexF64}(undef, N)
     for p in 1:N
         if p == 1
             f11i[p, :] = g11i[1:N]
@@ -195,8 +194,8 @@ function Pade(wsi, nsiw, real_c, g11i, gauxi)
     N_real = 5000       # dimension of array of output
     ws = LinRange(-real_c, real_c, N_real)
     
-    A = Array{Complex}(undef, N_real, N+1)
-    B = Array{Complex}(undef, N_real, N+1) # pade approximants
+    A = Array{ComplexF64}(undef, N_real, N+1)
+    B = Array{ComplexF64}(undef, N_real, N+1) # pade approximants
     A[:,1] .= 0
     A[:,2] .= a11[1]
     B[:,1] .= 1
@@ -275,8 +274,8 @@ function Pade_separate(wsi, nsiw, real_c, gi)
         N=nsiw
     end
     #N = nsiw
-    f = Array{Complex}(undef, N, N)
-    a = Array{Complex}(undef, N)
+    f = Array{ComplexF64}(undef, N, N)
+    a = Array{ComplexF64}(undef, N)
     #println("Arrays defined")
     for p in 1:N
         if p == 1
@@ -303,8 +302,8 @@ function Pade_separate(wsi, nsiw, real_c, gi)
     N_real = 2000       # dimension of array of output
     ws = LinRange(-real_c, real_c, N_real)
     
-    A = Array{Complex}(undef, N_real, N+1)
-    B = Array{Complex}(undef, N_real, N+1) # pade approximants
+    A = Array{ComplexF64}(undef, N_real, N+1)
+    B = Array{ComplexF64}(undef, N_real, N+1) # pade approximants
     A[:,1] .= 0 + 0*im
     A[:,2] .= a[1]
     B[:,1] .= 1 + 0*im
@@ -468,7 +467,7 @@ function plotSpectralFunction(itemp, ws, A11, A12, folder, material, mode="neva"
     xlims!(-xlim_max, xlim_max)
     ylims!(0, ylim_max)
     if material != "Material"
-        title!(inp.material)
+        title!(material)
     end
     xlabel!(L"\omega ~ \mathrm{(meV)}")
     ylabel!(L"\mathrm{A}^{\textrm{11}}(\omega) \;\;\; [\mathrm{eV^{-1}}]")
@@ -481,7 +480,7 @@ function plotSpectralFunction(itemp, ws, A11, A12, folder, material, mode="neva"
     xlims!(-xlim_max, xlim_max)
     ylims!(ylim_min, ylim_max)
     if material != "Material"
-        title!(inp.material)
+        title!(material)
     end
     xlabel!(L"\omega ~ \mathrm{(meV)}")
     ylabel!(L"\mathrm{A}^{\textrm{an}}(\omega) \;\;\; [\mathrm{eV^{-1}}]")
@@ -508,7 +507,7 @@ function plotQDOS(itemp, ws, dos_qp, folder, material, mode="neva")
     xlims!(0, xlim_max)
     ylims!(0, ylim_max)
     if material != "Material"
-        title!(inp.material)
+        title!(material)
     end
     xlabel!(L"\omega ~ \mathrm{(meV)}")
     ylabel!(L"\mathrm{N}_{\mathrm{S}}(\omega)/\mathrm{N}_{\mathrm{F}}")
@@ -537,7 +536,7 @@ function plotGap(itemp, ws, delta, folder, material, mode= "neva")
     xlims!(-xlim_max, xlim_max)
     #ylims!(0, ylim_max)
     if material != "Material"
-        title!(inp.material)
+        title!(material)
     end
     xlabel!(L"\omega ~ \mathrm{(meV)}")
     ylabel!(L"\Delta(\omega) ~ \mathrm{(meV)}")
@@ -565,7 +564,7 @@ function plotZ(itemp, ws, Z, folder, material, mode= "neva")
     xlims!(-xlim_max, xlim_max)
     #ylims!(0, ylim_max)
     if material != "Material"
-        title!(inp.material)
+        title!(material)
     end
     xlabel!(L"\omega ~ \mathrm{(meV)}")
     ylabel!(L"Z(\omega) ~ \mathrm{(1)}")
@@ -593,7 +592,7 @@ function plotShift(itemp, ws, shift, folder, material, mode= "neva")
     xlims!(-xlim_max, xlim_max)
     #ylims!(0, ylim_max)
     if material != "Material"
-        title!(inp.material)
+        title!(material)
     end
     xlabel!(L"\omega ~ \mathrm{(meV)}")
     ylabel!(L"\chi(\omega) ~ \mathrm{(meV)}")

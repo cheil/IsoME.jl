@@ -164,9 +164,15 @@ Everything the kernel build needs from α²F: the interpolant `G` and its suppor
 function setUpOmegaAxis(inp, matval)
     (a2f_omega, a2f) = matval
 
-    # nonzero values of a2F, ensure endpoints are zero
-    idx_left = min(findfirst(a2f .> 1e-2), findfirst(a2f_omega .> 2*inp.domega))   # a2F(w>domega) DISCUSS THIS CUTOFF!!
-    idx_right = findlast(a2f .> 1e-2)
+    # nonzero values of a2F, ensure endpoints are zero. Guarded so an α²F that never rises
+    # above the 1e-2 threshold gives a message instead of a MethodError on `nothing` below
+    idx_a2f = findfirst(a2f .> 1e-2)                                               # a2F(w>domega) DISCUSS THIS CUTOFF!!
+    idx_dw  = findfirst(a2f_omega .> 2*inp.domega)
+    isnothing(idx_a2f) && error("α²F stays below 1e-2 over the whole frequency range - check the a2F-file and the selected smearing (ind_smear).\n\n")
+    isnothing(idx_dw) && error("The a2F frequency grid does not reach 2·domega = " * string(2*inp.domega) * " meV. Reduce domega or check the a2F-file.\n\n")
+
+    idx_left = min(idx_a2f, idx_dw)
+    idx_right = findlast(a2f .> 1e-2)::Int   # a first entry above the threshold implies a last one
 
     W_left = a2f_omega[idx_left]
     W_right = a2f_omega[idx_right]
@@ -234,7 +240,15 @@ function kernel_integral_helper(
     end
 
     # support of G on the Ω-axis, and the Ω-only parts of the integrands there
-    idx_supp = findfirst(>(0.0), int_axis):findlast(<(W_cut), int_axis)
+    lo_supp = findfirst(>(0.0), int_axis)
+    hi_supp = findlast(<(W_cut), int_axis)
+
+    # an Ω-axis that misses the support of G entirely would only surface as a MethodError
+    # in the range below
+    isnothing(lo_supp) && error("The Ω-integration axis has no point above 0; the support of α²F is not sampled.\n\n")
+    isnothing(hi_supp) && error("The Ω-integration axis has no point below the phonon cutoff ($(W_cut) meV); the support of α²F is not sampled.\n\n")
+
+    idx_supp = lo_supp:hi_supp
     Ω_supp   = collect(int_axis[idx_supp])
     wG       = [wgt_Ω[j] * G(int_axis[j] + W_left) for j in idx_supp]
     wGn      = [wG[k] * bose(Ω_supp[k] + W_left) for k in eachindex(Ω_supp)]

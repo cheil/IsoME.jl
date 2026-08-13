@@ -36,73 +36,10 @@ function RealAxisSolver(inp::arguments)
             strIsoME = printIsoME()
 
             ### Create directory
-            inp, log_file, errorLogger = createDirectory(inp, strIsoME)
+            log_file, errorLogger = createDirectory!(inp, strIsoME)
 
-            ### Check input
-            inp = stage("in input structure") do
-                checkInput(inp, realSolver=true)
-            end
-
-            ### read inputs
-            """
-            ********** ToDo **********
-            - adapt messages in printFlagsAsText
-            - add names to start message
-            """
-            inp, console, matval, ML_Tc = stage("while reading the inputs") do
-                InputParser(inp, log_file, mode=1)
-            end
-
-            ### Print to console ###
-            printFlagsAsText(inp, log_file, mode="realFreq")
-
-            ########### start loop over temperatures ##########
-            Tc, temps, Znorm0, Delta0, Shift0 = stage("while solving the Eliashberg equations") do
-                findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
-            end
-
-            ### write Tc to console
-            attempt(inp, log_file, "Error while printing the summary.") do
-                printSummary(inp, Tc, log_file)
-            end
-
-            ### Outputs ###
-            if ~inp.testMode # no output in test mode
-                ### save inputs
-                attempt(inp, log_file, "Error while creating the Info file.") do
-                    createInfoFile(inp)
-                end
-
-
-                ### create Summary file
-                attempt(inp, log_file, "Error while creating the Summary.dat file.") do
-                    # sampled at the gap edge ω_g, not at ω = 0 - see `gap_edge_index`
-                    header = "# T/K   Re{Δ(ω_g)}/meV   Im{Δ(ω_g)}/meV   Re{Z(ω_g)}/1   Im{Z(ω_g)}/1   "
-                    out_vars = Array{Float64}(undef, length(Delta0), 5)
-                    out_vars[:, 1] = temps
-                    out_vars[:, 2] = real(Delta0)
-                    out_vars[:, 3] = imag(Delta0)
-                    out_vars[:, 4] = real(Znorm0)
-                    out_vars[:, 5] = imag(Znorm0)
-                    if inp.cDOS_flag == 0   # for later when vDOS is implemented
-                        header = header * "Re{χ(ω_g)}/meV   Im{χ(ω_g)}/meV   ϵ_F-μ/meV   "
-                        out_vars = hcat(out_vars, real(Shift0), imag(Shift0))
-                    end
-                    createSummaryFile(inp, Tc, out_vars, header)
-                end
-
-
-                """
-                ---------------- ToDo -------------
-                plot different figures, e.g. real and imag of Delta
-                """
-                ### figures
-                if inp.flag_figure == 1
-                    attempt(inp, log_file, "Error while plotting. Skipping plots.") do
-                        createFigures(inp, matval, real(Delta0), temps, Tc, log_file)
-                    end
-                end
-            end
+            ### solve
+            Tc = run_realAxis(inp, log_file)
         end
 
 
@@ -119,8 +56,10 @@ function RealAxisSolver(inp::arguments)
         # close & save - also on the way out of an error. sigint is disabled so
         # that an impatient second Ctrl+C can not interrupt the cleanup itself
         if ~inp.testMode
+            # alias assigned once: capturing it below leaves `log_file` itself unboxed
+            lf = log_file
             Base.disable_sigint() do
-                closeLog(log_file)
+                closeLog(lf)
             end
         end
     end
@@ -128,6 +67,83 @@ function RealAxisSolver(inp::arguments)
     if inp.returnTc
         return Tc
     end
+
+end
+
+
+"""
+    run_realAxis(inp, log_file) -> Tc
+
+Body of [`RealAxisSolver`](@ref), from the input check to the output files.
+
+Split off so that it runs with a concrete `log_file`: in `RealAxisSolver` the log stream
+starts as a placeholder and is replaced once the output directory exists, which costs it
+its type. Here it is an argument, so everything below this call stays inferrable.
+"""
+function run_realAxis(inp::arguments, log_file)
+
+    ### Check input
+    stage("in input structure") do
+        checkInput!(inp, realSolver=true)
+    end
+
+    ### read inputs
+    console, matval, ML_Tc = stage("while reading the inputs") do
+        InputParser!(inp, log_file, mode=1)
+    end
+
+    ### Print to console ###
+    printFlagsAsText(inp, log_file, mode="realFreq")
+
+    ########### start loop over temperatures ##########
+    Tc, temps, Znorm0, Delta0, Shift0 = stage("while solving the Eliashberg equations") do
+        findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
+    end
+
+    ### write Tc to console
+    attempt(inp, log_file, "Error while printing the summary.") do
+        printSummary(inp, Tc, log_file)
+    end
+
+    ### Outputs ###
+    if ~inp.testMode # no output in test mode
+        ### save inputs
+        attempt(inp, log_file, "Error while creating the Info file.") do
+            createInfoFile(inp)
+        end
+
+
+        ### create Summary file
+        attempt(inp, log_file, "Error while creating the Summary.dat file.") do
+            # sampled at the gap edge ω_g, not at ω = 0 - see `gap_edge_index`
+            header = "# T/K   Re{Δ(ω_g)}/meV   Im{Δ(ω_g)}/meV   Re{Z(ω_g)}/1   Im{Z(ω_g)}/1   "
+            out_vars = Array{Float64}(undef, length(Delta0), 5)
+            out_vars[:, 1] = temps
+            out_vars[:, 2] = real(Delta0)
+            out_vars[:, 3] = imag(Delta0)
+            out_vars[:, 4] = real(Znorm0)
+            out_vars[:, 5] = imag(Znorm0)
+            if inp.cDOS_flag == 0   # for later when vDOS is implemented
+                header = header * "Re{χ(ω_g)}/meV   Im{χ(ω_g)}/meV   ϵ_F-μ/meV   "
+                out_vars = hcat(out_vars, real(Shift0), imag(Shift0))
+            end
+            createSummaryFile(inp, Tc, out_vars, header)
+        end
+
+
+        """
+        ---------------- ToDo -------------
+        plot different figures, e.g. real and imag of Delta
+        """
+        ### figures
+        if inp.flag_figure == 1
+            attempt(inp, log_file, "Error while plotting. Skipping plots.") do
+                createFigures(inp, matval, real(Delta0), temps, Tc, log_file)
+            end
+        end
+    end
+
+    return Tc
 
 end
 
@@ -163,16 +179,21 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
 
             realAxisParameter = precompute(β, inp, matval, console, log_file)
 
-            if inp.cDOS_flag == 0 && isnothing(realAxisState)
-                # initial values vDOS
-                realAxisState = initialize_real_axis_vDOS(itemp, inp, console.cDOS, matval, realAxisParameter, log_file)
-            end
-
             # solve Eliashberg equations
             if inp.cDOS_flag == 0
-                data, realAxisState = solve_realAxis_vDOS(itemp, inp, console.vDOS, matval, realAxisParameter, realAxisState, log_file)
+                # first temperature: seed from the cDOS solution. Bound here rather than in a
+                # separate block, so that `state` is a RealAxisState and not a Union with
+                # nothing - the solver below declares ::RealAxisState
+                state = isnothing(realAxisState) ?
+                        initialize_real_axis_vDOS(itemp, inp, console.cDOS, matval, realAxisParameter, log_file) :
+                        realAxisState
+                data, realAxisState = solve_realAxis_vDOS(itemp, inp, console.vDOS, matval, realAxisParameter, state, log_file)
             elseif inp.cDOS_flag == 1
                 data, realAxisState = solve_realAxis_cDOS(itemp, inp, console.cDOS, matval, realAxisParameter, log_file)
+            else
+                # checkInput! rejects anything else, so this is only reached if `inp` was
+                # modified afterwards - without it `data` would be undefined below
+                error("Invalid cDOS_flag value. Use 0 for a variable density of states (vDOS) or 1 for a constant density of states (cDOS).")
             end
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
@@ -292,16 +313,20 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
             realAxisParameter = precompute(β, inp, matval, console, log_file)
 
 
-            # initial values vDOS
-            if inp.cDOS_flag == 0 && iT == 1
-                realAxisState = initialize_real_axis_vDOS(itemp, inp, console.cDOS, matval, realAxisParameter, log_file)
-            end
-
             # solve Eliashberg equations
             if inp.cDOS_flag == 0
-                data, realAxisState = solve_realAxis_vDOS(itemp, inp, console.vDOS, matval, realAxisParameter, realAxisState, log_file)
+                # first temperature (realAxisState still unset): seed from the cDOS solution.
+                # Bound here so that `state` is a RealAxisState and not a Union with nothing
+                state = isnothing(realAxisState) ?
+                        initialize_real_axis_vDOS(itemp, inp, console.cDOS, matval, realAxisParameter, log_file) :
+                        realAxisState
+                data, realAxisState = solve_realAxis_vDOS(itemp, inp, console.vDOS, matval, realAxisParameter, state, log_file)
             elseif inp.cDOS_flag == 1
                 data, realAxisState = solve_realAxis_cDOS(itemp, inp, console.cDOS, matval, realAxisParameter, log_file)
+            else
+                # checkInput! rejects anything else, so this is only reached if `inp` was
+                # modified afterwards - without it `data` would be undefined below
+                error("Invalid cDOS_flag value. Use 0 for a variable density of states (vDOS) or 1 for a constant density of states (cDOS).")
             end
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
@@ -390,7 +415,9 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
     for i_it in 1:N_it
         delta_prev = copy(delta_new)
         Z_prev = copy(Z_new)
-        broyden_beta = mixing_parameter(inp, i_it)
+        # abs() once here: mixing_beta comes straight from the input, so a negative value
+        # has to be folded away before it is used as a mixing weight
+        beta_mix = abs(mixing_parameter(inp, i_it))
 
         gap0 = spectral_gap(w_static, delta_prev, gap0)
         pole = gap0
@@ -405,8 +432,8 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
         # Update Eliashberg
         Z_new, delta_new = realEliashbergEq(muc_ME, β, delta_prev, ws_ht, w_static, wgCoulomb)
 
-        Z_new = (1.0 - abs(broyden_beta)) .* Z_prev .+ abs(broyden_beta) .* Z_new
-        delta_new = (1.0 - abs(broyden_beta)) .* delta_prev .+ abs(broyden_beta) .* delta_new
+        Z_new = (1.0 - beta_mix) .* Z_prev .+ beta_mix .* Z_new
+        delta_new = (1.0 - beta_mix) .* delta_prev .+ beta_mix .* delta_new
 
 
         rel_delta = sum(abs.(delta_new - delta_prev))
@@ -497,8 +524,11 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         M1W = (NW1 .- NW0) ./ dε
         M0W = NW0 .- eps_1 .* M1W
     else
-        M1W = nothing
-        M0W = nothing
+        # typed empties, not `nothing`: these go into `electronic_spec`, and a
+        # Union{Nothing,Matrix{Float64}} element makes that tuple abstract, which turns
+        # every call taking it (μ-update, both Eliashberg kernels) into a runtime dispatch
+        M1W = Matrix{Float64}(undef, 0, 0)
+        M0W = Matrix{Float64}(undef, 0, 0)
     end
 
     electronic_spec = (eps_1, eps_2, dos_1, dos_2, dε, ddos, M0W, M1W)
@@ -537,16 +567,15 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
     # never Δ(w_static[1]) - see spectral_gap in wprimeGrid.jl
     gap0 = spectral_gap(w_static, state.delta, BCS_gap)
 
-    # optional Broyden mixer (broyden_flag == 1); default is linear mixing
-    broyden = inp.broyden_flag == 1 ? BroydenMixer(inp.broyden_mem) : nothing
-
     for i_it in 1:N_it
         delta_prev = copy(delta_new)
         Z_prev = copy(Z_new)
         chi_prev = copy(chi_new)
         phi_ph_prev = copy(phi_ph_new)
         phi_c_prev = copy(phi_c_new)
-        broyden_beta = mixing_parameter(inp, i_it)
+        # abs() once here: mixing_beta comes straight from the input, so a negative value
+        # has to be folded away before it is used as a mixing weight
+        beta_mix = abs(mixing_parameter(inp, i_it))
         gap0 = spectral_gap(w_static, delta_prev, gap0)
 
         # locate the ω'-integrand poles (vDOS+W: from the modified S/P quantities)
@@ -578,16 +607,11 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
             phi_c_new = ComplexF64[]
         end
 
-        # mixing on the primary variables (Z, χ, φ_ph, φ_c); φ_c is empty in vDOS+μ (no-op)
-        if inp.broyden_flag == 1
-            Z_new, chi_new, phi_ph_new, phi_c_new = broyden_mix!(broyden, abs(broyden_beta), Z_prev, chi_prev, phi_ph_prev, phi_c_prev, Z_new, chi_new, phi_ph_new, phi_c_new)
-        else
-            β_mix = abs(broyden_beta)
-            chi_new    = (1.0 - β_mix) .* chi_prev    .+ β_mix .* chi_new
-            Z_new      = (1.0 - β_mix) .* Z_prev      .+ β_mix .* Z_new
-            phi_ph_new = (1.0 - β_mix) .* phi_ph_prev .+ β_mix .* phi_ph_new
-            phi_c_new  = (1.0 - β_mix) .* phi_c_prev  .+ β_mix .* phi_c_new
-        end
+        # linear mixing on the primary variables (Z, χ, φ_ph, φ_c); φ_c is empty in vDOS+μ (no-op)
+        chi_new    = (1.0 - beta_mix) .* chi_prev    .+ beta_mix .* chi_new
+        Z_new      = (1.0 - beta_mix) .* Z_prev      .+ beta_mix .* Z_new
+        phi_ph_new = (1.0 - beta_mix) .* phi_ph_prev .+ beta_mix .* phi_ph_new
+        phi_c_new  = (1.0 - beta_mix) .* phi_c_prev  .+ beta_mix .* phi_c_new
 
         # Δ(ω) = φ(ω, ε_F)/Z(ω); φ(ω, ε_F) = φ_ph(ω) + φ_c(ε_F) (vDOS+W) or φ_ph(ω) (vDOS+μ)
         phi_ef = inp.include_Weep == 1 ? phi_ph_new .+ phi_c_new[idx_ef] : phi_ph_new
@@ -612,6 +636,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
                                             phi_c=(inp.include_Weep == 1 ? phi_c_new : nothing),
                                             epsilon=(inp.include_Weep == 1 ? dos_en : nothing))
                 catch ex
+                    ex isa InterruptException && rethrow(ex)
                     writeToCrashFile(inp)
                     printWarning("Error while saving self energy components.", log_file, ex=ex)
                 end
@@ -682,6 +707,7 @@ function save_real_axis_cDOS_outputs(itemp, inp, state, w_static, log_file)
         try
             saveSelfEnergy_realAxis(itemp, inp, collect(w_static), state.delta, state.Z)
         catch ex
+            ex isa InterruptException && rethrow(ex)
             writeToCrashFile(inp)
             printWarning("Error while saving self energy components.", log_file, ex=ex)
         end

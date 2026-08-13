@@ -58,7 +58,8 @@ function interpolateInputs(itpDos, dos_en, itpStepSize, itpBounds, encut; itpWee
         # Calculate Weep at energy grid points
         Weep = itpWeep(epsilon, epsilon)
      else
-        Weep = nothing
+        # typed empty, not nothing, so that matval stays a single concrete tuple type
+        Weep = Matrix{Float64}(undef, 0, 0)
      end
  
      return epsilon, dos, Weep

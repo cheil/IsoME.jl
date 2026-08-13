@@ -79,7 +79,7 @@ include("InputValidation.jl")
     nfooter_a2f::Int64  = -1
     a2f_unit::String    = ""
     a2f_Nef::Float64    = NaN          # NaN == off; N(ε_F) used when α²F was computed. If set, α²F is
-                                       # rescaled by dosef/a2f_Nef (dosef read from the DOS file)
+                                       # rescaled by a2f_Nef/dosef (dosef read from the DOS file)
 
     # dos input file
     dos_file::String    = ""

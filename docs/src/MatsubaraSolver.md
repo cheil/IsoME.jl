@@ -70,13 +70,15 @@ This almost always points at the DOS input file rather than at the solver.
 The mixing is linear with an iteration-dependent factor ramping from ``1`` down to ``0.5``, unless `mixing_beta` fixes it.
 The Coulomb contribution is ramped up over the first `nItFullCoul` iterations, which prevents the instability that arises when the Coulomb part of the order parameter exceeds the phononic part early in the iteration (see the [FAQ](@ref)).
 
-Convergence is measured by the relative change of the gap, ``\sum_n |\Delta_n^{i} - \Delta_n^{i-1}| / \sum_n |\Delta_n^{i}|`` (at ``\varepsilon_F`` in the ``W`` approximations), and is accepted once it drops below `conv_thr` and at least `min_it` iterations have passed.
+Convergence is measured by the relative change of the gap, ``\sum_n |\Delta_n^{i} - \Delta_n^{i-1}| / \sum_n |\Delta_n^{i}|`` (at ``\varepsilon_F`` in the ``W`` approximations), and is accepted once it drops below `conv_thr` and at least 15 iterations — and one more than `nItFullCoul` — have passed. (`min_it` is a real-axis parameter; the imaginary-axis minimum is fixed.)
 A temperature is considered normal conducting when ``\Delta(i\omega_0)`` falls below `minGap`, which is what brackets ``T_c`` in ``T_c``-search mode: the search starts from a machine-learning estimate, brackets the transition by bisection, and accelerates convergence with a fit of ``\Delta(T)``.
 
 ## Analytic continuation
 With `flag_acon = true` the converged imaginary-axis solution is continued to real frequencies with Padé approximants.
-``\Delta``, ``Z`` and ``\chi`` are continued separately (which is more stable than continuing the Green's function directly), and the resulting real-frequency gap, renormalization and quasiparticle DOS are plotted and written out.
-Padé is sensitive to the number of input frequencies and to noise in the converged solution; if the continued quantities look unphysical, the direct [Real Axis Solver](@ref) is the more reliable route.
+``\Delta``, ``Z`` and ``\chi`` are continued separately (which is more stable than continuing the Green's function directly), and the resulting real-frequency gap, renormalization and quasiparticle DOS are plotted and written to `outdir/ACON/`, one file per temperature.
+The real-frequency window of the continuation is set by `reOmega_c` — the only real-axis parameter that also acts on the imaginary-axis solver.
+Padé is sensitive to the number of input frequencies and to noise in the converged solution: at most 200 Matsubara points are used, since the approximants collapse when fed more.
+If the continued quantities look unphysical, the direct [Real Axis Solver](@ref) is the more reliable route.
 
 ## Relevant input parameters
 | Parameter | Role |

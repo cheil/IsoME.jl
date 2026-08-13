@@ -31,16 +31,14 @@ These inputs are shared by both solvers unless noted otherwise.
 | typEl | Float64 |  NaN | Typical electronic energy scale | In meV; used to calculate ``\mu^*`` from ``\mu`` |
 | ef        | Float64 |  NaN | Fermi energy of the DOS | In meV; `NaN`: extracted from the DOS-file header |
 | efW       | Float64 |  NaN | Fermi energy of the ``W`` grid | In meV; `NaN`: extracted from the ``W``-file header |
-| encut  | Float64 |  10000.0  | Symmetric energy cutoff of the ``\varepsilon``-grid | In meV; the grid spans ``\pm`` `encut` |
+| encut  | Float64 |  2000.0  | Symmetric energy cutoff of the ``\varepsilon``-grid | In meV; the grid spans ``\pm`` `encut`. In real-axis vDOS runs it is clamped to `reOmega_c` |
 | mu_flag    | Int64 | 1   | Update the chemical potential in vDOS calculations | 0: no; 1: yes, recommended |
-| mixing_beta | Float64 | NaN | Linear mixing factor | `NaN`: use the default iteration-dependent schedule |
-| broyden_flag | Int64 | 0 | Mixing scheme | 0: linear mixing; 1: Broyden mixing (real-axis vDOS only) |
-| broyden_mem | Int64 | 4 | Broyden history depth | Number of stored iterations |
+| mixing_beta | Float64 | NaN | Linear mixing factor | `NaN`: use the default iteration-dependent schedule. Both solvers mix linearly |
 | nItFullCoul | Int64 |  10    | Number of iterations used to ramp up the Coulomb contribution | Helps stabilize the initial iterations |
 | conv_thr | Float64 | ``10^{-4}`` | Convergence threshold | Applied to the gap update |
-| minGap   | Float64 | 0.1  | Lower gap threshold | In meV; the temperature is treated as normal conducting if ``\Delta(0) <`` `minGap` |
+| minGap   | Float64 | 0.1  | Lower gap threshold | In meV; the temperature is treated as normal conducting if the gap drops below `minGap` |
 | N_it | Int64 | 5000 | Maximum number of iterations | - |
-| min_it | Int64 | 10 | Minimum number of iterations before convergence is accepted | - |
+| min_it | Int64 | 10 | Minimum number of iterations before convergence is accepted | Real-axis solver only; the imaginary-axis solver uses a fixed minimum of 15 |
 | outdir | String |  pwd() | Path to the output directory | |
 | flag_figure | Int64 |  1 | Plot the gap and ``\alpha^2F`` values | 0: no; 1: yes |
 | flag_writeSelfEnergy | Int64 | 0  | Save **and** plot the self-energy components (`.dat` + `.png`) | 0: no; 1: yes. Works for both solvers and all modes; files are written to `outdir/SelfEnergy/` |
@@ -59,7 +57,7 @@ These inputs control the imaginary-axis solver `EliashbergSolver()` and its post
 | sparseSamplingTemp | Float64 | 2.0 | Temperature below which sparse sampling is used | In K |
 | itpBounds | Vector{Float64} | [100.0, 500.0] | Bounds of the DOS interpolation regions around the Fermi level | In meV |
 | itpStepSize | Vector{Int64} | [1, 5, 50] | Step sizes used within the interpolation regions | In meV; one entry more than `itpBounds` |
-| flag_acon | Bool | false | Analytically continue the converged solution to real frequencies and plot it | Padé approximants; imaginary axis only. Independent of `flag_writeSelfEnergy` |
+| flag_acon | Bool | false | Analytically continue the converged solution to real frequencies and plot it | Padé approximants; imaginary axis only. Written to `outdir/ACON/`; the real-frequency window is `reOmega_c`. Independent of `flag_writeSelfEnergy` |
 
 ## Real-axis inputs
 These inputs control the direct real-axis solver `RealAxisSolver()`, which supports cDOS``+\mu``, vDOS``+\mu`` and vDOS``+W``.
@@ -68,11 +66,14 @@ The ``\varepsilon``-grid of the real-axis solver is uniform (step `depsilon`) an
 
 | Name    |      Type      |   Default   | Description | Comment  |
 |:--------|:---------------|:------------|:------------|:---------|
-| reOmega_c  | Float64 | 4000.0 | Frequency cutoff of ``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` | In meV; also bounds the ``\omega'``-integration. `encut` is clamped to at most this value in vDOS |
-| domega | Float64 | 1.0 | Step of the ``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` grids | In meV; also the step of the ``\omega'``-tail |
-| dKernel | Float64 | 1.0 | Step of the tabulated kernel | In meV; sets the resolution of the ``\Omega``-integral over ``\alpha^2F`` |
-| n_cheb | Int64 | 5000 | Chebyshev points per pole in the head region of the ``\omega'``-grid | Resolves the poles of the ``\omega'``-integrand |
+| reOmega_c  | Float64 | 7000.0 | Frequency cutoff of ``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` | In meV; also bounds the ``\omega'``-integration. `encut` is clamped to at most this value in vDOS |
+| domega | Float64 | 1.0 | Step of the ``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` grids | In meV; also the step of the ``\omega'``-tail **and** of the tabulated kernel |
+| n_cheb | Int64 | 1000 | Chebyshev points per pole in the head region of the ``\omega'``-grid | Resolves the poles of the ``\omega'``-integrand |
 | depsilon | Int64 | 10 | Step of the ``\varepsilon``-grid | In meV; vDOS calculations only |
+
+The ``\omega``-grid does not start at ``0``: its first point is the smallest multiple of `domega` that is at least ``0.1`` meV, because several integrands behave like ``1/\omega``.
+`domega` is a single step size that all real-axis grids share — the ``\omega``-grids, the ``\omega'``-tail and the kernel tables — so it is the one convergence parameter of the frequency discretization.
+The kernel tables are only ever sampled at multiples of `domega`, which is why they carry no step of their own.
 
 
 ### Pseudopotentials ``\mu,~\mu^*_{AD}~\&~\mu^*_{ME}``

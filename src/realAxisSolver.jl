@@ -16,9 +16,19 @@ end
 RealAxisState(Z, delta, chi, fermi_level) = RealAxisState(Z, delta, chi, fermi_level, ComplexF64[], ComplexF64[])
 
 
-""" 
+"""
+    RealAxisSolver(inp::arguments)
 
-Real axis eliashberg solver.
+Solve the isotropic Eliashberg equations directly on the real frequency axis.
+
+`inp` carries every input; only `inp.a2f_file` is mandatory. The approximation follows from
+the flags: cDOS+μ (`cDOS_flag = 1`), vDOS+μ (`cDOS_flag = 0`) or vDOS+W (`cDOS_flag = 0`,
+`include_Weep = 1`; cDOS+W is not supported here). With `temps = [-1.0]` the solver searches
+for `Tc`, otherwise it solves at the given temperatures.
+
+Writes the log, the summary, the input overview and - if enabled - the figures and the
+self-energy components into `inp.outdir`. Returns the `Tc` bracket `[T_sc, T_nsc]` when
+`inp.returnTc` is set, and `nothing` otherwise.
 """
 function RealAxisSolver(inp::arguments)
     # do not show plots
@@ -617,7 +627,10 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         phi_ef = inp.include_Weep == 1 ? phi_ph_new .+ phi_c_new[idx_ef] : phi_ph_new
         delta_new = phi_ef ./ Z_new
 
-        convergence = sqrt(sum(abs2.(delta_new .- delta_prev))/length(delta_new))
+        # same measure as the cDOS branch: relative change of Δ over the whole ω-grid
+        rel_delta = sum(abs.(delta_new - delta_prev))
+        abs_delta = sum(abs.(delta_new))
+        convergence = rel_delta / abs_delta
         # Z, Δ and χ are taken at the gap edge, not at w_static[1] - see `gap_edge_index`
         idx_gapEdge = gap_edge_index(w_static, gap0)
         data = [Z_new[idx_gapEdge], delta_new[idx_gapEdge], chi_new[idx_gapEdge]]

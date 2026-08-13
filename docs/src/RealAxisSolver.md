@@ -15,14 +15,15 @@ For each temperature the solver performs the following steps:
    - performs the ``\varepsilon``-integration, which reduces the ``(\omega',\varepsilon)``-integrand to a pure function of ``\omega'``,
    - performs the ``\omega'``-integration against the kernel, giving the new ``Z``, ``\phi`` and ``\chi``,
    - mixes the new and old solutions and checks convergence.
-3. **Termination**. A temperature counts as converged once the root-mean-square change of ``\Delta`` relative to ``\Delta(0)`` drops below `conv_thr`. If ``\Delta(0)`` falls below `minGap`, the temperature is counted as normal conducting, which is what brackets ``T_c`` in ``T_c``-search mode.
+3. **Termination**. A temperature counts as converged once the relative change of the gap, ``\sum_\omega |\Delta^{i}-\Delta^{i-1}| / \sum_\omega |\Delta^{i}|``, drops below `conv_thr` and at least `min_it` iterations have passed. If the gap falls below `minGap`, the temperature is counted as normal conducting, which is what brackets ``T_c`` in ``T_c``-search mode.
 
 Throughout the loop the primary variables are ``Z``, ``\chi`` and the order parameter ``\phi``; the gap is derived as ``\Delta = \phi/Z`` after mixing.
-This matters in the vDOS``+W`` case, where ``\phi(\omega,\varepsilon)`` is energy dependent and ``\Delta(\omega)`` is defined through ``\phi(\omega,\varepsilon_F)/Z(\omega)``.
+This matters in the vDOS``+W`` case, where ``\phi`` is split into a phononic part ``\phi_{ph}(\omega)`` and an energy-dependent Coulomb part ``\phi_c(\varepsilon)``, and the gap follows as ``\Delta(\omega) = [\phi_{ph}(\omega)+\phi_c(\varepsilon_F)]/Z(\omega)``.
 
 The frequency grids on which the self-energy is stored are uniform and fixed for the whole run.
-``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` all live on the same grid `1e-1 : domega : reOmega_c`, and the ``\omega'``-integration covers the same range.
-The grid deliberately starts at ``0.1`` meV rather than at ``0``: several integrands behave like ``1/\omega``, which makes the result sensitive to the first grid point.
+``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` all live on the same grid of step `domega` up to `reOmega_c`, and the ``\omega'``-integration covers the same range.
+The grid deliberately does not start at ``0``, but at the smallest multiple of `domega` that is at least ``0.1`` meV: several integrands behave like ``1/\omega``, which makes the result sensitive to the first grid point.
+For the same reason the gap reported in the console, in `Summary.dat` and to the ``T_c`` search is read off at the **gap edge** ``\omega_g`` — the root of ``\omega - \mathrm{Re}\,\Delta(\omega)`` — and not at the first grid point, where ``Z`` diverges and ``\Delta = \phi/Z`` is suppressed.
 
 ## Kernel
 The electron-phonon interaction enters the equations through the kernels ``K^{\pm}(\omega,\omega')`` (supplemental eq. (47) of the reference).
@@ -37,12 +38,13 @@ I_1(x) = \mathcal{P}\!\int \! d\Omega \, \frac{G(\Omega)}{\Omega-x}~,\qquad
 I_2(x) = \mathcal{P}\!\int \! d\Omega \, \frac{G(\Omega)\, n(\Omega)}{\Omega-x}~,
 ```
 where ``G`` is the interpolated ``\alpha^2F`` and ``n`` the Bose function.
-``G`` is nonzero only between the first and the last frequency at which ``\alpha^2F`` exceeds ``10^{-6}``; outside this window the integrands vanish identically, which bounds the ``\Omega``-integration range.
+``G`` is nonzero only between the first and the last frequency at which ``\alpha^2F`` exceeds ``10^{-2}``; outside this window the integrands vanish identically, which bounds the ``\Omega``-integration range.
 
-The ``\Omega``-axis is composed of a Chebyshev grid inside a small window around the ``1/\Omega`` singularity, where the integrand varies rapidly and the principal value has to be resolved, and of linear grids outside of it, where the integrand is smooth.
+The ``\Omega``-axis is composed of a Chebyshev grid inside a ``\pm 3`` meV window around the ``1/\Omega`` singularity, where the integrand varies rapidly and the principal value has to be resolved, and of linear grids out to the width over which ``G`` is nonzero, where the integrand is smooth (300 points each).
 The integration itself is performed with the trapezoidal rule.
+Only the few ``x`` whose pole falls inside the support of ``G`` need a point-by-point evaluation; for all others the ``\Omega``-dependent part factorizes and each ``x`` reduces to a dot product.
 
-``I_1`` and ``I_2`` are tabulated on a uniform ``x``-grid of step `dKernel` that spans ``\pm 2\,\omega_{\max}``, so that every combination ``\pm\omega\pm\omega'`` reachable from the frequency grids falls inside the table.
+``I_1`` and ``I_2`` are tabulated on a uniform ``x``-grid of step `domega` that spans ``\pm 2\,\omega_{\max}``, so that every combination ``\pm\omega\pm\omega'`` reachable from the frequency grids falls inside the table.
 This is the expensive part of the setup, and it is also the reason the kernel cannot be reused across temperatures: both ``I_2`` and the Fermi factors depend on ``\beta``.
 
 ### The linear (difference-grid) representation
@@ -58,8 +60,9 @@ K^{-}(\omega,\omega') = -\mathcal{K}(\omega,\omega') - \mathcal{K}(\omega,-\omeg
 Only the ``\mathcal{O}(N)`` tables ``A`` and ``B`` are stored; the ``\mathcal{O}(N^2)`` kernel matrix is never formed.
 Evaluating the kernel at an arbitrary pair ``(\omega,\omega')`` then amounts to interpolating ``A`` and ``B`` at ``x = \omega'-\omega`` and ``x = -\omega-\omega'``, plus one Fermi factor.
 
-Because the kernel is reconstructed by *interpolating* these tables, `dKernel` controls how well the ``\Omega``-integral — and with it the phonon structure — is resolved.
-A too coarse `dKernel` smears the sharp features of ``\alpha^2F`` and can suppress the gap altogether; see the [FAQ](@ref).
+The tables share their step with the ``\omega``- and ``\omega'``-grids: they are only ever *sampled* at multiples of `domega` — the tail is a `domega` grid and the head lattice is ``domega\cdot\mathbb{Z}`` — so a finer kernel step would only refine a table that is subsampled again afterwards.
+`domega` therefore also controls how well the ``\Omega``-integral, and with it the phonon structure, is resolved.
+A too coarse `domega` smears the sharp features of ``\alpha^2F`` and can suppress the gap altogether; see the [FAQ](@ref).
 
 ## ``\varepsilon``-integration
 In the vDOS approximations the equations contain an integral over the electronic energy ``\varepsilon``, weighted with the density of states ``N(\varepsilon)``.
@@ -103,7 +106,7 @@ and analogously for ``\chi`` on the larger frequency grid.
 These integrands are sharply peaked: the ``\varepsilon``-integration leaves poles wherever a Lorentzian width collapses, i.e. at the roots of ``\mathrm{Im}(\chi \pm \varepsilon_p)``, plus a branch point at the gap edge, where ``|\varepsilon_p|^2`` becomes minimal.
 Their positions move from iteration to iteration as the self-energy changes, so a fixed grid would either be inaccurate or prohibitively dense.
 
-The ``\omega'``-grid is therefore split at ``\omega'_{\max} = 2\Delta(0)`` of the starting state (clamped to a sensible range) into a **head** and a **tail**:
+The ``\omega'``-grid is therefore split at ``\omega'_{\max} = 2\,\omega_g`` of the starting state (clamped to ``[10\,`` `domega` ``,\ `` `reOmega_c` ``/2]``) into a **head** and a **tail**:
 
 - **Head** — ``(0, \omega'_{\max}]``, the region in which the poles live. Every pole receives a Chebyshev cluster of `n_cheb` points, dense towards the pole from both sides, and the clusters tile the whole interval up to the midpoints between neighbouring poles. In the cDOS case there is a single pole, namely the root of ``\omega' - \mathrm{Re}\,\Delta(\omega')``.
 - **Tail** — ``[\omega'_{\max}, \omega_c]``, where the integrand is smooth. A uniform grid of step `domega` up to `reOmega_c`, in both cDOS and vDOS.
@@ -112,8 +115,10 @@ Both parts are integrated with trapezoidal weights, and the junction point belon
 
 The split is also what makes the solver affordable:
 
-- The head kernel blocks are materialized — they are only as wide as the head is long — and the integration is a matrix-vector product. They are rebuilt only when the poles actually move by more than ``10^{-3}\,\omega'_{\max}`` or when their number changes, not in every iteration. If a pole wanders beyond ``\omega'_{\max}``, the workspace is rebuilt with a larger head.
+- The head is contracted through a *hat lattice*: because ``A`` and ``B`` are piecewise linear on the ``domega``-lattice, the sum over the Chebyshev nodes can be scattered onto ``M \approx \omega'_{\max}/`` `domega` lattice cells first, after which the kernel is read straight off the tables at exact multiples of `domega` — no interpolation and no kernel block. The lattice depends only on where the head nodes sit, so it is rebuilt (in ``\mathcal{O}(n_{\text{head}})``, without touching any kernel data) only when the poles actually move by more than ``10^{-3}\,\omega'_{\max}`` or when their number changes. If a pole wanders beyond ``\omega'_{\max}``, the workspace is rebuilt with a larger head.
 - The tail shares its step with the ``\omega``-grids. The kernel arguments then depend only on ``j-i`` (difference channel, Toeplitz) and ``i+j`` (sum channel, Hankel), so ``A`` and ``B`` have to be sampled only ``\mathcal{O}(n_\omega + n_{\text{tail}})`` times. The tail contribution is accumulated on the fly from these samples, and its kernel matrix is never built.
+
+Since ``Z``, ``\phi`` and ``\chi`` share `reOmega_c`, one ``K^{+}`` pass serves both the ``\phi`` and the ``\chi`` channel, so all three integrals are obtained in a single sweep over the kernel tables.
 
 ## Chemical potential
 In the vDOS approximations the transition to the superconducting state shifts the chemical potential.
@@ -124,9 +129,9 @@ Only the ``Z``- and the ``\chi``-branch of the ``\varepsilon``-integral are need
 The ``\mu``-update is the part of the real-axis solver that reacts most sensitively to the grids and cutoffs; the [FAQ](@ref) lists the typical failure modes and how to recognize them.
 
 ## Self-consistency and convergence
-The default mixing is linear with an iteration-dependent factor that ramps from ``1`` down to ``0.5``.
-A fixed factor can be enforced through `mixing_beta`, and `broyden_flag = 1` switches to Broyden mixing (with a history depth of `broyden_mem`) of ``Z``, ``\chi`` and ``\phi``.
-In the vDOS``+W`` case the Coulomb contribution is ramped up over the first `nItFullCoul` iterations, which stabilizes the early iterations.
+The mixing is linear with an iteration-dependent factor that ramps from ``1`` down to ``0.5``, applied to the primary variables ``Z``, ``\chi``, ``\phi_{ph}`` and ``\phi_c``.
+A fixed factor can be enforced through `mixing_beta`.
+The Coulomb contribution is ramped up over the first `nItFullCoul` iterations, which stabilizes the early iterations.
 
 vDOS calculations are never started from scratch: the first temperature is seeded with a cDOS solution at the same temperature, and every subsequent temperature starts from the converged solution of the previous one.
 ``T_c``-search mode uses the same bisection-and-fit strategy as the imaginary-axis solver, so ``T_c`` ends up bracketed by the highest temperature with ``\Delta(0) >`` `minGap` and the lowest one without a solution.
@@ -134,8 +139,7 @@ vDOS calculations are never started from scratch: the first temperature is seede
 ## Relevant input parameters
 | Parameter | Role |
 |:----------|:-----|
-| `reOmega_c`, `domega` | Cutoff and step of the ``Z(\omega)``, ``\Delta(\omega)``, ``\chi(\omega)`` grid, and of the ``\omega'``-tail |
-| `dKernel` | Step of the kernel tables ``A(x)``, ``B(x)``; sets the resolution of the ``\Omega``-integral |
+| `reOmega_c`, `domega` | Cutoff and step of the ``Z(\omega)``, ``\Delta(\omega)``, ``\chi(\omega)`` grid, of the ``\omega'``-tail, and of the kernel tables ``A(x)``, ``B(x)`` |
 | `n_cheb` | Chebyshev points per pole in the head region of the ``\omega'``-grid |
 | `depsilon` | Step of the ``\varepsilon``-grid (vDOS) |
 | `encut` | Range of the ``\varepsilon``-integration |

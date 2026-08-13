@@ -75,6 +75,25 @@ formats, and the [FAQ](@ref) for the assumed column layout.
 | `Could not determine the unit of the <file>-file. …` | The unit in the file header was not recognized | Units are case-sensitive; supported are **meV, eV, THz, Ry, Ha**. Set it manually via the matching `*_unit` flag (*a2f_unit*, *dos_unit*, *Weep_unit*, *Wen_unit*). See [FAQ Q1](@ref "FAQ"). |
 | `Error while reading the fermi energy from the <file>-file.` | The header line for the Fermi energy could not be parsed | Set it manually via *ef* / *efW*, or check the file header. |
 | `Could not extract the Fermi energy from the <file>-file.` | Parsing ran but matched no Fermi-energy value | Same as above. |
+| `The first column of the <file>-file holds no numeric entry …` | Header/footer auto-detection found no numbers in the first column | Check the column layout of the file, or set the header/footer size manually via `nheader_*` / `nfooter_*`. |
+| `α²F stays below 1e-2 over the whole frequency range …` | The selected ``\alpha^2F`` column is (almost) zero everywhere | Check the ``\alpha^2F`` file and the selected smearing column *ind_smear*; the unit conversion may also have scaled the values away. |
+| `The a2F frequency grid does not reach 2·domega = …` | *domega* is larger than half the first phonon frequency of the ``\alpha^2F`` grid | Reduce *domega*, or check that the ``\alpha^2F`` file and its unit are read correctly. |
+| `The density of states is zero over the whole energy range.` | The column read as the DOS contains only zeros | Check *dos_file*, its column layout and *spinDos*. |
+| `The shiftcut window (±…) lies outside the energy range of the DOS.` | *shiftcut* exceeds the extent of the DOS file | Reduce *shiftcut*, or supply a DOS covering a wider energy range. |
+| `a2f_Nef must be positive (got …).` | *a2f_Nef* was set to a non-positive value | Pass the ``N(\varepsilon_F)`` used for the ``\alpha^2F`` calculation, or leave it at `NaN` to disable the rescaling. |
+
+### Errors from `arguments()` itself
+
+The fields of `arguments` are concretely typed, so a wrong keyword is caught when the input structure
+is built — before any solver runs. Two messages come from there:
+
+- *unknown input to `arguments`* — the keyword is not a field. Every offending name is listed with a
+  "did you mean …?" suggestion, which is what a renamed or misspelled field looks like.
+- *invalid input to `arguments`* — a required keyword (*a2f_file*) is missing, or a value cannot be
+  converted to the declared type. All offending fields are reported at once, each with its expected
+  type and a hint (e.g. *pass a vector, e.g. temps = [10.0]*).
+
+`?arguments` lists every field with its type.
 
 ## The μ-update
 
@@ -109,12 +128,8 @@ channel, and the accuracy of the μ-update is governed by two convergence parame
   finder walks ``\mu`` away from the Fermi level. The *ef-mu* column in the console then grows from
   iteration to iteration instead of settling.
   **Fix:** increase *reOmega_c* until ``\mu`` settles, and check `muError_shift.png` to confirm that
-  ``\chi`` has decayed to ``\approx 0`` at the edge of the grid.
-
-  Earlier versions gave ``\chi`` its own, much larger cutoff (*reOmega_c_shift*). That parameter no
-  longer exists: a wider ``\chi`` grid only bought a tail in which ``Z`` and ``\varphi`` had to be
-  extrapolated, and that extrapolated stretch dominated the ``\omega'``-integral. All channels now
-  share *reOmega_c*.
+  ``\chi`` has decayed to ``\approx 0`` at the edge of the grid. ``Z``, ``\Delta`` and ``\chi`` share
+  the single cutoff *reOmega_c*, so there is no separate knob for the shift channel.
 
 - **``\mu \to 0`` — decrease *depsilon*.**
   The ``\varepsilon``-integrals are evaluated analytically on a piecewise-linear DOS on a uniform
@@ -168,7 +183,7 @@ limit.
 <!-- Give LaBH8 as example where larger encut makes results worse -> because of a2F =/= a2F(epsilon) -->
 
 ## ToDo: Add further information derived from the convergence tests
-<!-- For all convergence parameter: domega, dKernel, reOmgega_c, encut, depsilon give examples when they are diverging.  -->
+<!-- For all convergence parameter: domega, reOmgega_c, encut, depsilon give examples when they are diverging.  -->
 
 ## μ\* conversion
 
@@ -195,16 +210,16 @@ The real-axis solver is far more sensitive to its grids than the imaginary-axis 
 integrands are complex, sharply peaked, and their poles move during the iteration. Besides the
 μ-update parameters above, the kernel resolution matters:
 
-- **No ``T_c`` is found although one is expected — decrease *dKernel*.**
+- **No ``T_c`` is found although one is expected — decrease *domega*.**
   The kernel is not evaluated pair by pair; the ``\Omega``-integrals over ``\alpha^2F`` are tabulated
-  on a uniform grid of step *dKernel* and the kernel is reconstructed by interpolation. If *dKernel*
-  is too coarse, sharp phonon peaks are smeared out, the coupling is underestimated, and the gap is
-  suppressed. The solver then reports ``\Delta(0) <`` *minGap* even at low temperature and the
-  ``T_c`` search ends without a transition, although the Allen-Dynes ``T_c`` printed at the start of
-  the run is finite. An Allen-Dynes ``T_c`` orders of magnitude above the solver's ``T_c`` is a good
-  indicator. **Fix:** decrease *dKernel*, especially for materials with narrow phonon peaks. It
-  dominates the setup cost of each temperature, so converge it on a single temperature rather than
-  during a full ``T_c`` search.
+  on a uniform grid of step *domega* — the same step the ``\omega``- and ``\omega'``-grids use — and
+  the kernel is reconstructed from these tables. If *domega* is too coarse, sharp phonon peaks are
+  smeared out, the coupling is underestimated, and the gap is suppressed. The solver then reports a
+  gap below *minGap* even at low temperature and the ``T_c`` search ends without a transition,
+  although the Allen-Dynes ``T_c`` printed at the start of the run is finite. An Allen-Dynes ``T_c``
+  orders of magnitude above the solver's ``T_c`` is a good indicator. **Fix:** decrease *domega*,
+  especially for materials with narrow phonon peaks. Building the kernel dominates the setup cost of
+  each temperature, so converge it on a single temperature rather than during a full ``T_c`` search.
 
 A fuller description of where each of these parameters enters is on the
 [Real Axis Solver](@ref) page.

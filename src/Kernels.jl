@@ -159,7 +159,7 @@ end
 
 Everything the kernel build needs from α²F: the interpolant `G` and its support
 [`W_left`, `W_right`], the ω-grid `w_axis` on which the kernel tables are laid out (step
-`dKernel`, spanning the largest output grid), and the Ω-integration axis `int_axis`.
+`domega`, spanning the largest output grid), and the Ω-integration axis `int_axis`.
 """
 function setUpOmegaAxis(inp, matval)
     (a2f_omega, a2f) = matval
@@ -392,8 +392,8 @@ end
 ###########################################
 # - Kernel evaluation -- consumer side -- #
 ###########################################
-# Used by wprimeGrid.jl in every Eliashberg iteration: the head blocks are
-# materialized once per ω'-grid, the tail is summed from the A,B samples.
+# Used by wprimeGrid.jl in every Eliashberg iteration: the head is contracted through its
+# hat lattice, the tail is summed from the A,B samples. Neither materializes a kernel block.
 
 """
     fermi_pm(β, wp)

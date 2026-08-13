@@ -541,9 +541,19 @@ end
 
 
 """
-    EliashbergSolver(inp)
+    EliashbergSolver(inp::arguments)
 
-Main function. User has to pass the input arguments and it returns the Tc.
+Solve the isotropic Migdal-Eliashberg equations on the imaginary (Matsubara) frequency axis.
+
+`inp` carries every input; only `inp.a2f_file` is mandatory. The approximation follows from
+the flags `cDOS_flag` and `include_Weep`: cDOS+μ, vDOS+μ, vDOS+W (and cDOS+W, which is not
+recommended). With `temps = [-1.0]` the solver searches for `Tc`, otherwise it solves at the
+given temperatures. `flag_acon = true` additionally continues the converged solution to real
+frequencies with Padé approximants.
+
+Writes the log, the summary, the input overview and - if enabled - the figures and the
+self-energy components into `inp.outdir`. Returns the `Tc` bracket `[T_sc, T_nsc]` when
+`inp.returnTc` is set, and `nothing` otherwise.
 """
 function EliashbergSolver(inp::arguments)
 

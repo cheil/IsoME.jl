@@ -22,22 +22,22 @@ Solve the eliashberg eq. self-consistently for a fixed temperature
 """
 function solve_eliashberg(itemp, inp, console, matval, log_file)
     # destruct inputs
-    (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxShiftcut) = matval
-    (; cDOS_flag, include_Weep, imOmega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag, outdir, sparseSamplingTemp, flag_acon) = inp
+    (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap) = matval
+    (; cDOS_flag, include_Weep, omega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag, outdir, sparseSamplingTemp, flag_acon) = inp
 
     # active output table (mode 0 populates cDOS or vDOS by cDOS_flag)
     table = cDOS_flag == 1 ? console.cDOS : console.vDOS
 
     ### Matsubara frequencies ###
     beta = 1 / (kb * itemp)
-    M = ceil(Int, (imOmega_c / (pi * kb * itemp) - 1) / 2)
+    M = ceil(Int, (omega_c / (pi * kb * itemp) - 1) / 2)
     wsi = collect((2 * (0:M) .+ 1) .* π .* kb .* itemp)
     nsiw = size(wsi, 1)
 
     ### sparse sampling
     if itemp < sparseSamplingTemp    
         sparse_sampling_flag = 1
-        ind_mat_freq = initSparseSampling(beta, imOmega_c, M)       
+        ind_mat_freq = initSparseSampling(beta, omega_c, M)       
 
         # write to console
         printTextCentered("T = "*string(itemp)*" K ", console.partingLine, file = log_file, bold = true)
@@ -166,10 +166,10 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             if cDOS_flag == 0
                 ### mu update 
                 if mu_flag == 1 && i_it > 1
-                    fermi_level = update_mu_own(itemp, wsi, dos_en, dos, znormip, phiphip, phicip, shiftip, idxShiftcut, fermi_level, outdir)
+                    fermi_level = update_mu_own(itemp, wsi, dos_en, dos, znormip, phiphip, phicip, shiftip, fermi_level, outdir)
                 end
 
-                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb, fermi_level, idxShiftcut)
+                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb, fermi_level)
                 shifti = (1.0 - beta_mix) .* shiftip .+ beta_mix .* new_data[4]
 
                 ### Constant DoS ###
@@ -212,10 +212,10 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             if cDOS_flag == 0
                 ### mu update
                 if mu_flag == 1 && i_it > 1
-                    fermi_level = update_mu_own(itemp, wsi, dos_en, dos, znormip, znormip .* deltaip, Float64[], shiftip, idxShiftcut, fermi_level, outdir)
+                    fermi_level = update_mu_own(itemp, wsi, dos_en, dos, znormip, znormip .* deltaip, Float64[], shiftip, fermi_level, outdir)
                 end
 
-                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, fermi_level, wgCoulomb, idxShiftcut)
+                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, fermi_level, wgCoulomb)
                 shifti = (1.0 - beta_mix) .* shiftip .+ beta_mix .* new_data[3]
 
             else

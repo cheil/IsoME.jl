@@ -185,8 +185,8 @@ function setUpOmegaAxis(inp, matval)
     # ω'-grids use: the kernel tables are only ever *sampled* at multiples of domega (the
     # tail is a domega grid, the head lattice below is domega·ℤ), so tabulating them more
     # finely refines a table that is then subsampled at stride domega.
-    # All channels (Z, φ, χ) share reOmega_c, so cDOS and vDOS size w_axis identically.
-    w_axis = 0:inp.domega:(inp.reOmega_c+inp.domega)   # w-axis at which K(ω,ω') is calculated
+    # All channels (Z, φ, χ) share omega_c, so cDOS and vDOS size w_axis identically.
+    w_axis = 0:inp.domega:(inp.omega_c+inp.domega)   # w-axis at which K(ω,ω') is calculated
     # Ω-integration axis: 300 Chebyshev points inside ±3 meV (the 1/Ω pole), 300 linear
     # points out to ±(W_right-W_left), the width over which G is nonzero.
     int_axis = make_integration_axis(W_right-W_left, 300, 300, 3)
@@ -378,7 +378,7 @@ function precompute(β, inp, matval, console, log_file)
     ω1 = omega_grid_start(inp.domega)
     # One ω-grid for every channel: Z(ω), Δ(ω)/φ(ω) and χ(ω) are all solved here.
     # Sensitive to the start value, do not choose < 1e-1.
-    w_static = ω1:inp.domega:inp.reOmega_c
+    w_static = ω1:inp.domega:inp.omega_c
 
     # The kernel tables are only defined on w_axis: the output grid must fit inside it.
     @assert first(w_axis) <= first(w_static) && last(w_static) <= last(w_axis)

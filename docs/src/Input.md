@@ -31,7 +31,8 @@ These inputs are shared by both solvers unless noted otherwise.
 | typEl | Float64 |  NaN | Typical electronic energy scale | In meV; used to calculate ``\mu^*`` from ``\mu`` |
 | ef        | Float64 |  NaN | Fermi energy of the DOS | In meV; `NaN`: extracted from the DOS-file header |
 | efW       | Float64 |  NaN | Fermi energy of the ``W`` grid | In meV; `NaN`: extracted from the ``W``-file header |
-| encut  | Float64 |  2000.0  | Symmetric energy cutoff of the ``\varepsilon``-grid | In meV; the grid spans ``\pm`` `encut`. In real-axis vDOS runs it is clamped to `reOmega_c` |
+| omega_c | Float64 | 7000.0 | Frequency cutoff ``\omega_c`` | In meV; the Matsubara cutoff on the imaginary axis and the ``\omega``-grid cutoff on the real axis |
+| encut  | Float64 |  2000.0  | Symmetric energy cutoff of the ``\varepsilon``-grid | In meV; the grid spans ``\pm`` `encut` and bounds every ``\varepsilon``-integration, including ``\chi`` and the charge neutrality condition. In real-axis vDOS runs it is clamped to `omega_c` |
 | mu_flag    | Int64 | 1   | Update the chemical potential in vDOS calculations | 0: no; 1: yes, recommended |
 | mixing_beta | Float64 | NaN | Linear mixing factor | `NaN`: use the default iteration-dependent schedule. Both solvers mix linearly |
 | nItFullCoul | Int64 |  10    | Number of iterations used to ramp up the Coulomb contribution | Helps stabilize the initial iterations |
@@ -52,21 +53,19 @@ These inputs control the imaginary-axis solver `EliashbergSolver()` and its post
 
 | Name    |      Type      |   Default   | Description | Comment  |
 |:--------|:---------------|:------------|:------------|:---------|
-| imOmega_c | Float64 | 7000.0 | Matsubara cutoff ``\omega_c`` | In meV; determines the number of Matsubara frequencies at a given temperature |
-| shiftcut  | Float64 | 2000.0 | Energy cutoff of the shift and charge-neutrality integrations | In meV; should be smaller than `encut` |
 | sparseSamplingTemp | Float64 | 2.0 | Temperature below which sparse sampling is used | In K |
 | itpBounds | Vector{Float64} | [100.0, 500.0] | Bounds of the DOS interpolation regions around the Fermi level | In meV |
 | itpStepSize | Vector{Int64} | [1, 5, 50] | Step sizes used within the interpolation regions | In meV; one entry more than `itpBounds` |
-| flag_acon | Bool | false | Analytically continue the converged solution to real frequencies and plot it | Padé approximants; imaginary axis only. Written to `outdir/ACON/`; the real-frequency window is `reOmega_c`. Independent of `flag_writeSelfEnergy` |
+| flag_acon | Bool | false | Analytically continue the converged solution to real frequencies and plot it | Padé approximants; imaginary axis only. Written to `outdir/ACON/`; the real-frequency window is `omega_c`. Independent of `flag_writeSelfEnergy` |
 
 ## Real-axis inputs
 These inputs control the direct real-axis solver `RealAxisSolver()`, which supports cDOS``+\mu``, vDOS``+\mu`` and vDOS``+W``.
 Note that `include_Weep = 1` requires `cDOS_flag = 0` here.
 The ``\varepsilon``-grid of the real-axis solver is uniform (step `depsilon`) and does not use `itpBounds`/`itpStepSize`.
+The cutoff of the ``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` grids — which also bounds the ``\omega'``-integration — is the shared `omega_c` listed under the general inputs; `encut` is clamped to at most that value in vDOS.
 
 | Name    |      Type      |   Default   | Description | Comment  |
 |:--------|:---------------|:------------|:------------|:---------|
-| reOmega_c  | Float64 | 7000.0 | Frequency cutoff of ``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` | In meV; also bounds the ``\omega'``-integration. `encut` is clamped to at most this value in vDOS |
 | domega | Float64 | 1.0 | Step of the ``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` grids | In meV; also the step of the ``\omega'``-tail **and** of the tabulated kernel |
 | n_cheb | Int64 | 1000 | Chebyshev points per pole in the head region of the ``\omega'``-grid | Resolves the poles of the ``\omega'``-integrand |
 | depsilon | Int64 | 10 | Step of the ``\varepsilon``-grid | In meV; vDOS calculations only |
@@ -84,7 +83,7 @@ It is connected to the pseudopotentials via:
 ```
 where ``\omega_{ph}`` is a characteristic cutoff frequency for the phonon-induced interaction and ``\varepsilon_{el}`` is a characteristic electronic energy scale.
 The typical electronic energy can be specified explicitly through *typEl*; otherwise, the Fermi energy (*ef* or *efW*) will be used.
-For the characteristic phonon cutoff, the maximum given phonon frequency is used for AD, while ME uses the frequency cutoff of the respective solver — *imOmega_c* on the imaginary axis and *reOmega_c* on the real axis.
+For the characteristic phonon cutoff, the maximum given phonon frequency is used for AD, while ME uses the frequency cutoff *omega_c*, which is shared by both solvers.
 
 By default, the ``\mu`` and ``\mu^*`` values are unset (`NaN`), which means that *muc_AD* = 0.12 is used. This also fixes *muc_ME* through
 ```math

@@ -21,7 +21,7 @@ Throughout the loop the primary variables are ``Z``, ``\chi`` and the order para
 This matters in the vDOS``+W`` case, where ``\phi`` is split into a phononic part ``\phi_{ph}(\omega)`` and an energy-dependent Coulomb part ``\phi_c(\varepsilon)``, and the gap follows as ``\Delta(\omega) = [\phi_{ph}(\omega)+\phi_c(\varepsilon_F)]/Z(\omega)``.
 
 The frequency grids on which the self-energy is stored are uniform and fixed for the whole run.
-``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` all live on the same grid of step `domega` up to `reOmega_c`, and the ``\omega'``-integration covers the same range.
+``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` all live on the same grid of step `domega` up to `omega_c`, and the ``\omega'``-integration covers the same range.
 The grid deliberately does not start at ``0``, but at the smallest multiple of `domega` that is at least ``0.1`` meV: several integrands behave like ``1/\omega``, which makes the result sensitive to the first grid point.
 For the same reason the gap reported in the console, in `Summary.dat` and to the ``T_c`` search is read off at the **gap edge** ``\omega_g`` — the root of ``\omega - \mathrm{Re}\,\Delta(\omega)`` — and not at the first grid point, where ``Z`` diverges and ``\Delta = \phi/Z`` is suppressed.
 
@@ -106,10 +106,10 @@ and analogously for ``\chi`` on the larger frequency grid.
 These integrands are sharply peaked: the ``\varepsilon``-integration leaves poles wherever a Lorentzian width collapses, i.e. at the roots of ``\mathrm{Im}(\chi \pm \varepsilon_p)``, plus a branch point at the gap edge, where ``|\varepsilon_p|^2`` becomes minimal.
 Their positions move from iteration to iteration as the self-energy changes, so a fixed grid would either be inaccurate or prohibitively dense.
 
-The ``\omega'``-grid is therefore split at ``\omega'_{\max} = 2\,\omega_g`` of the starting state (clamped to ``[10\,`` `domega` ``,\ `` `reOmega_c` ``/2]``) into a **head** and a **tail**:
+The ``\omega'``-grid is therefore split at ``\omega'_{\max} = 2\,\omega_g`` of the starting state (clamped to ``[10\,`` `domega` ``,\ `` `omega_c` ``/2]``) into a **head** and a **tail**:
 
 - **Head** — ``(0, \omega'_{\max}]``, the region in which the poles live. Every pole receives a Chebyshev cluster of `n_cheb` points, dense towards the pole from both sides, and the clusters tile the whole interval up to the midpoints between neighbouring poles. In the cDOS case there is a single pole, namely the root of ``\omega' - \mathrm{Re}\,\Delta(\omega')``.
-- **Tail** — ``[\omega'_{\max}, \omega_c]``, where the integrand is smooth. A uniform grid of step `domega` up to `reOmega_c`, in both cDOS and vDOS.
+- **Tail** — ``[\omega'_{\max}, \omega_c]``, where the integrand is smooth. A uniform grid of step `domega` up to `omega_c`, in both cDOS and vDOS.
 
 Both parts are integrated with trapezoidal weights, and the junction point belongs to both grids, so the split is exact.
 
@@ -118,7 +118,7 @@ The split is also what makes the solver affordable:
 - The head is contracted through a *hat lattice*: because ``A`` and ``B`` are piecewise linear on the ``domega``-lattice, the sum over the Chebyshev nodes can be scattered onto ``M \approx \omega'_{\max}/`` `domega` lattice cells first, after which the kernel is read straight off the tables at exact multiples of `domega` — no interpolation and no kernel block. The lattice depends only on where the head nodes sit, so it is rebuilt (in ``\mathcal{O}(n_{\text{head}})``, without touching any kernel data) only when the poles actually move by more than ``10^{-3}\,\omega'_{\max}`` or when their number changes. If a pole wanders beyond ``\omega'_{\max}``, the workspace is rebuilt with a larger head.
 - The tail shares its step with the ``\omega``-grids. The kernel arguments then depend only on ``j-i`` (difference channel, Toeplitz) and ``i+j`` (sum channel, Hankel), so ``A`` and ``B`` have to be sampled only ``\mathcal{O}(n_\omega + n_{\text{tail}})`` times. The tail contribution is accumulated on the fly from these samples, and its kernel matrix is never built.
 
-Since ``Z``, ``\phi`` and ``\chi`` share `reOmega_c`, one ``K^{+}`` pass serves both the ``\phi`` and the ``\chi`` channel, so all three integrals are obtained in a single sweep over the kernel tables.
+Since ``Z``, ``\phi`` and ``\chi`` share `omega_c`, one ``K^{+}`` pass serves both the ``\phi`` and the ``\chi`` channel, so all three integrals are obtained in a single sweep over the kernel tables.
 
 ## Chemical potential
 In the vDOS approximations the transition to the superconducting state shifts the chemical potential.
@@ -139,7 +139,7 @@ vDOS calculations are never started from scratch: the first temperature is seede
 ## Relevant input parameters
 | Parameter | Role |
 |:----------|:-----|
-| `reOmega_c`, `domega` | Cutoff and step of the ``Z(\omega)``, ``\Delta(\omega)``, ``\chi(\omega)`` grid, of the ``\omega'``-tail, and of the kernel tables ``A(x)``, ``B(x)`` |
+| `omega_c`, `domega` | Cutoff and step of the ``Z(\omega)``, ``\Delta(\omega)``, ``\chi(\omega)`` grid, of the ``\omega'``-tail, and of the kernel tables ``A(x)``, ``B(x)`` |
 | `n_cheb` | Chebyshev points per pole in the head region of the ``\omega'``-grid |
 | `depsilon` | Step of the ``\varepsilon``-grid (vDOS) |
 | `encut` | Range of the ``\varepsilon``-integration |

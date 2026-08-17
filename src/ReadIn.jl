@@ -98,21 +98,11 @@ function InputParser!(inp::arguments, log_file; mode::Int64=0)
             end
         end
 
-        # idx. Guarded one by one so that both stay Int64: a raw findfirst/findlast pair
-        # makes the vector a Vector{Union{Nothing, Int64}}, which no longer matches the
-        # ::Vector{Int64} the Eliashberg equations declare, and only fails deep inside them
-        idxLowShift = findfirst(dos_en .> -inp.shiftcut)
-        isnothing(idxLowShift) && error("The shiftcut window (±" * string(inp.shiftcut) * " meV) lies outside the energy range of the DOS. Reduce shiftcut or check the dos-file.\n\n")
-        idxHighShift = findlast(dos_en .< inp.shiftcut)
-        isnothing(idxHighShift) && error("The shiftcut window (±" * string(inp.shiftcut) * " meV) lies outside the energy range of the DOS. Reduce shiftcut or check the dos-file.\n\n")
-        idxShiftcut = [idxLowShift, idxHighShift]
-
     else
         # default values (typed empties so matval stays concrete: Vector{Float64}, not Vector{Any})
         dos = Float64[]
         dos_en = Float64[]
         ef = NaN
-        idxShiftcut = [-1,-1]
         Weep = Matrix{Float64}(undef, 0, 0)
     end
 
@@ -137,12 +127,8 @@ function InputParser!(inp::arguments, log_file; mode::Int64=0)
     a2f = rescale_a2F(a2f, inp, dosef, log_file)
 
     ### calc mu*'s
-    phonon_cutoff = 0.0
-    if mode == 0
-        phonon_cutoff = inp.imOmega_c
-    elseif mode == 1
-        phonon_cutoff = inp.reOmega_c
-    end
+    # both solvers use the same frequency cutoff
+    phonon_cutoff = inp.omega_c
 
     if isnan(inp.mu) && isnan(inp.muc_ME) && isnan(inp.muc_AD)
         # defaut value
@@ -191,7 +177,7 @@ function InputParser!(inp::arguments, log_file; mode::Int64=0)
     printADtable(console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log, log_file)
 
     # material specific values
-    matval = (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxShiftcut)
+    matval = (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap)
 
     return console, matval, ML_Tc
 end
@@ -332,10 +318,10 @@ function checkInput!(inp::arguments; realSolver::Bool=false)
 
         # vDOS: the ω-integrals of the μ-update and of χ(ω) only show their correct limiting
         # behaviour as long as ω reaches at least as far as ε, so the ε-window must stay inside
-        # the ω-cutoff. Require encut ≤ reOmega_c and clamp encut down.
-        if inp.cDOS_flag == 0 && inp.encut > inp.reOmega_c
-            @warn "encut = $(inp.encut) exceeds reOmega_c = $(inp.reOmega_c); the ε-integration has to stay inside the ω-cutoff. Setting encut = $(inp.reOmega_c). Increase reOmega_c to keep the larger ε-window. See the μ-update section of the Troubleshooting page."
-            inp.encut = inp.reOmega_c
+        # the ω-cutoff. Require encut ≤ omega_c and clamp encut down.
+        if inp.cDOS_flag == 0 && inp.encut > inp.omega_c
+            @warn "encut = $(inp.encut) exceeds omega_c = $(inp.omega_c); the ε-integration has to stay inside the ω-cutoff. Setting encut = $(inp.omega_c). Increase omega_c to keep the larger ε-window. See the μ-update section of the Troubleshooting page."
+            inp.encut = inp.omega_c
         end
     end
 

@@ -19,14 +19,14 @@ In the ``W`` approximations the order parameter is split into a phononic part ``
 The equations follow Pickett, PRB **26**, 1186 (1982) and Lee *et al.*, npj Comput. Mater. **9**, 156 (2023) for the full-bandwidth case, and Margine & Giustino, PRB **87**, 024505 (2013) for the constant-DOS case.
 
 ## Matsubara grid
-The fermionic Matsubara frequencies ``\omega_n = (2n+1)\pi k_B T`` are generated up to the cutoff `imOmega_c`, which fixes their number as
+The fermionic Matsubara frequencies ``\omega_n = (2n+1)\pi k_B T`` are generated up to the cutoff `omega_c`, which fixes their number as
 ```math
 M = \left\lceil \frac{1}{2}\left(\frac{\omega_c}{\pi k_B T} - 1\right) \right\rceil~.
 ```
 The grid is thus temperature dependent: the lower the temperature, the denser the frequencies and the more of them fall below the cutoff.
 This is what makes low-temperature calculations expensive, and it is the reason for sparse sampling (see below).
 
-`imOmega_c` is a convergence parameter, but it is bounded from above in practice: ``\mu^*_{ME}`` is adapted to the cutoff through the Morel-Anderson formula, and that adaptation breaks down for very large cutoffs.
+`omega_c` is a convergence parameter, but it is bounded from above in practice: ``\mu^*_{ME}`` is adapted to the cutoff through the Morel-Anderson formula, and that adaptation breaks down for very large cutoffs.
 See [Best practices](@ref).
 
 The electron-phonon coupling
@@ -44,10 +44,8 @@ The accuracy is set entirely by the ``\varepsilon``-grid, which is built by inte
 With the defaults (`itpBounds = [100, 500]`, `itpStepSize = [1, 5, 50]`) the grid uses a 1 meV step within ``\pm 100`` meV of ``\varepsilon_F``, 5 meV out to ``\pm 500`` meV, and 50 meV beyond that.
 The structure of the DOS near ``\varepsilon_F`` is what drives the results, hence the fine step there and the coarse one in the wings.
 
-Two cutoffs limit the ``\varepsilon``-integrations:
-
-- `encut` bounds the grid itself, and with it the ``Z``- and ``\Delta``-integrations. It is a scalar giving the symmetric window ``\pm`` `encut`.
-- `shiftcut` bounds the ``\chi``-integration and the charge-neutrality condition, and should be chosen smaller than `encut`. The shift converges faster in ``\varepsilon`` than the other components, and the electron number is only meaningful within a window in which the DOS is well resolved.
+A single cutoff limits the ``\varepsilon``-integrations: `encut`, a scalar giving the symmetric window ``\pm`` `encut`.
+It bounds the ``\varepsilon``-grid itself, and with it every ``\varepsilon``-integration — ``Z``, ``\Delta``, ``\chi`` and the charge-neutrality condition alike.
 
 ## Sparse sampling
 As ``T \to 0`` the number of Matsubara frequencies below the cutoff grows like ``1/T``, while the self-energy components stay smooth functions of ``\omega_n``.
@@ -61,7 +59,7 @@ The number of sampled frequencies is reported in the log file next to the total.
 ## Chemical potential
 In the vDOS approximations the chemical potential is updated in every iteration (from the second one on) when `mu_flag = 1`, by requiring the electron number to be the same in the superconducting and the normal state.
 The electron number in the superconducting state is a Matsubara sum over the DOS-weighted Green's function; the resulting root of ``N_e^{\text{nsc}}(\mu) - N_e^{\text{sc}}(\mu)`` is found with a Regula-Falsi method, starting from a ``\pm 50`` meV window around the current Fermi level that is widened until it brackets a sign change.
-Both electron numbers are integrated over the `shiftcut` window rather than the full grid.
+Both electron numbers are integrated over the ``\varepsilon``-grid, i.e. over the `encut` window.
 
 If the electron number *increases* with decreasing ``\mu``, or if no sign change is found within ``\pm 5`` eV, the run stops and writes `muError.png`/`muError.dat` for inspection.
 This almost always points at the DOS input file rather than at the solver.
@@ -76,16 +74,15 @@ A temperature is considered normal conducting when ``\Delta(i\omega_0)`` falls b
 ## Analytic continuation
 With `flag_acon = true` the converged imaginary-axis solution is continued to real frequencies with Padé approximants.
 ``\Delta``, ``Z`` and ``\chi`` are continued separately (which is more stable than continuing the Green's function directly), and the resulting real-frequency gap, renormalization and quasiparticle DOS are plotted and written to `outdir/ACON/`, one file per temperature.
-The real-frequency window of the continuation is set by `reOmega_c` — the only real-axis parameter that also acts on the imaginary-axis solver.
+The real-frequency window of the continuation is set by `omega_c`, the same cutoff that fixes the number of Matsubara frequencies.
 Padé is sensitive to the number of input frequencies and to noise in the converged solution: at most 200 Matsubara points are used, since the approximants collapse when fed more.
 If the continued quantities look unphysical, the direct [Real Axis Solver](@ref) is the more reliable route.
 
 ## Relevant input parameters
 | Parameter | Role |
 |:----------|:-----|
-| `imOmega_c` | Matsubara cutoff; sets the number of frequencies at a given temperature |
-| `encut` | Range of the ``\varepsilon``-grid and of the ``Z``-/``\Delta``-integrations |
-| `shiftcut` | Range of the ``\chi``- and charge-neutrality integrations |
+| `omega_c` | Matsubara cutoff; sets the number of frequencies at a given temperature |
+| `encut` | Range of the ``\varepsilon``-grid and of all ``\varepsilon``-integrations (``Z``, ``\Delta``, ``\chi``, charge neutrality) |
 | `itpBounds`, `itpStepSize` | Regions and step sizes of the DOS/``W`` interpolation around ``\varepsilon_F`` |
 | `sparseSamplingTemp` | Temperature below which IR sparse sampling is used |
 | `flag_acon` | Analytic continuation of the converged solution |

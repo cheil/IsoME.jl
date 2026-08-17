@@ -48,7 +48,7 @@ julia> inp = arguments(
 All other input values are optional and are contained within `arguments()`.
 The inputs can be viewed using the dot notation, e.g.
 ```julia-repl
-julia> inp.imOmega_c
+julia> inp.omega_c
 7000.0
 ```
 gives the cutoff of the Matsubara summation in meV.

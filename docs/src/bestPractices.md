@@ -76,12 +76,12 @@ Accurate results can only be achieved through carefully conducted convergence te
 - **Convergence parameters in IsoME:**
 Considerable effort has been invested in selecting default parameters that, in most cases, ensure both computational efficiency and robust convergence.
 Nevertheless, convergence should always be checked.
-On the imaginary axis the convergence parameters are the Matsubara cutoff *imOmega_c* and the energy cutoff *encut*.
-In both cases, the ideal cutoff is bounded from above as the adaption formula of *muc_ME* breaks down for very large *imOmega_c* and arbitrary high *encut*'s are incompatible with the isotropic approximation.
+On the imaginary axis the convergence parameters are the frequency cutoff *omega_c* (the Matsubara cutoff here) and the energy cutoff *encut*.
+In both cases, the ideal cutoff is bounded from above as the adaption formula of *muc_ME* breaks down for very large *omega_c* and arbitrary high *encut*'s are incompatible with the isotropic approximation.
 
 Furthermore, the energy gird around the Fermi surface must be sufficiently dense. The steps and interpolation boundaries can be adapted through *itpStepSize* and *itpBounds*.
 
-The real-axis solver has its own set: the frequency cutoff *reOmega_c*, the frequency step *domega* (which also sets the resolution of the kernel) and, in vDOS calculations, the energy step *depsilon*.
+The real-axis solver shares *omega_c* — there it is the cutoff of the ``\omega``-grid — and adds the frequency step *domega* (which also sets the resolution of the kernel) and, in vDOS calculations, the energy step *depsilon*.
 It reacts far more sensitively to these than the imaginary-axis solver does to its own — see [Real-axis grids and the kernel](@ref) and [The μ-update](@ref) on the [Troubleshooting](@ref) page for the symptoms of each.
 
 

@@ -5,10 +5,10 @@
     The grid is split at wp_max into
         - head: pole-anchored Chebyshev clusters in (0, wp_max], rebuilt whenever
                 the integrand poles move (only the nodes; no kernel work)
-        - tail: fixed linear grid [wp_max, reOmega_c], kernels evaluated
+        - tail: fixed linear grid [wp_max, omega_c], kernels evaluated
                 once per temperature
 
-    Z, φ and χ share the single cutoff reOmega_c, so all three are solved on the
+    Z, φ and χ share the single cutoff omega_c, so all three are solved on the
     same ω-grid and the ω'-integration covers the same range for all of them.
 
     The ω'-integration itself is done as a matrix-vector product with the
@@ -290,17 +290,17 @@ end
 
 Set up the vDOS workspace for one temperature. The head/tail split is at
 wp_max = 2·Δ(0) of the starting state (the cDOS solution / previous temperature),
-kept within [10·domega, reOmega_c/2].
+kept within [10·domega, omega_c/2].
 """
 function build_wprime_workspace(inp::arguments, realAxisParameter, gap0_start::Float64)
     (w_static, kernel) = realAxisParameter
 
     gap0 = (isfinite(gap0_start) && gap0_start > 0) ? gap0_start : inp.minGap
-    wp_max = clamp(2 * gap0, 10 * inp.domega, inp.reOmega_c / 2)
+    wp_max = clamp(2 * gap0, 10 * inp.domega, inp.omega_c / 2)
     pts_per_pole = inp.n_cheb    # Chebyshev points per pole in the head region
 
     # tail on the domega grid (same step as w_static) -> all channels k=1
-    wp_tail = collect(wp_max:inp.domega:inp.reOmega_c)
+    wp_tail = collect(wp_max:inp.domega:inp.omega_c)
     wp_head = make_head_grid([gap0], wp_max, pts_per_pole)
 
     return WPrimeWorkspace(wp_head, wp_tail, w_static; poles=[gap0], ker=kernel)
@@ -423,18 +423,18 @@ spectral_gap(w_static, deltaip::Vector{ComplexF64}, gap_prev::Float64) =
     build_cDOS_wprime_workspace(inp, realAxisParameter, gap0_start)
 
 Head/tail ω'-workspace for the cDOS+μ approximation. The head/tail split is at
-wp_max = 2·gap0_start (kept within [10·domega, reOmega_c/2]); the head is a Chebyshev
-cluster around the pole of Θ(ω') and the tail is a static linear grid up to reOmega_c
+wp_max = 2·gap0_start (kept within [10·domega, omega_c/2]); the head is a Chebyshev
+cluster around the pole of Θ(ω') and the tail is a static linear grid up to omega_c
 (step domega) whose kernels are built once. Only the Km/Kp channels are built (no χ channel).
 """
 function build_cDOS_wprime_workspace(inp::arguments, realAxisParameter, gap0_start::Float64)
     (w_static, kernel) = realAxisParameter
 
     gap = (isfinite(gap0_start) && gap0_start > 0) ? gap0_start : inp.minGap
-    wp_max = clamp(2 * gap, 10 * inp.domega, inp.reOmega_c / 2)
+    wp_max = clamp(2 * gap, 10 * inp.domega, inp.omega_c / 2)
     pts_per_pole = inp.n_cheb    # Chebyshev points in the pole-anchored head region
 
-    wp_tail = collect(wp_max:inp.domega:inp.reOmega_c)     # static linear tail, kernels built once
+    wp_tail = collect(wp_max:inp.domega:inp.omega_c)     # static linear tail, kernels built once
     wp_head = make_head_grid([gap], wp_max, pts_per_pole)  # Chebyshev cluster around the pole
 
     return WPrimeWorkspace(wp_head, wp_tail, w_static; poles=[gap], ker=kernel)

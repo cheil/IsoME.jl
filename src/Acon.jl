@@ -13,7 +13,7 @@
 
 function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; shifti = Float64[])
 
-    real_c = inp.reOmega_c
+    real_c = inp.omega_c
 
     # g11i, gauxi = calcGF(wsi, deltai, znormi, shifti)
     # lneva = 0

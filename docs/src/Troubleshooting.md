@@ -79,7 +79,6 @@ formats, and the [FAQ](@ref) for the assumed column layout.
 | `α²F stays below 1e-2 over the whole frequency range …` | The selected ``\alpha^2F`` column is (almost) zero everywhere | Check the ``\alpha^2F`` file and the selected smearing column *ind_smear*; the unit conversion may also have scaled the values away. |
 | `The a2F frequency grid does not reach 2·domega = …` | *domega* is larger than half the first phonon frequency of the ``\alpha^2F`` grid | Reduce *domega*, or check that the ``\alpha^2F`` file and its unit are read correctly. |
 | `The density of states is zero over the whole energy range.` | The column read as the DOS contains only zeros | Check *dos_file*, its column layout and *spinDos*. |
-| `The shiftcut window (±…) lies outside the energy range of the DOS.` | *shiftcut* exceeds the extent of the DOS file | Reduce *shiftcut*, or supply a DOS covering a wider energy range. |
 | `a2f_Nef must be positive (got …).` | *a2f_Nef* was set to a non-positive value | Pass the ``N(\varepsilon_F)`` used for the ``\alpha^2F`` calculation, or leave it at `NaN` to disable the rescaling. |
 
 ### Errors from `arguments()` itself
@@ -116,20 +115,20 @@ Both write two diagnostics to the output directory:
   grid. ``N_e`` is obtained from an ``\omega``-integral of ``\chi``, so if ``\chi`` has **not decayed
   to ``\approx 0`` at the edge of its grid** the integral is truncated and the update cannot
   converge. This is the direct symptom of a too-small cutoff (real axis: increase
-  *reOmega_c*, see below).
+  *omega_c*, see below).
 
 On the **real axis**, the electron number is obtained from an ``\omega``-integral of the shift
 channel, and the accuracy of the μ-update is governed by two convergence parameters:
 
-- **The μ-update diverges — increase *reOmega_c*.**
+- **The μ-update diverges — increase *omega_c*.**
   The shift ``\chi(\omega)`` decays more slowly than ``\Delta(\omega)`` or ``Z(\omega)``, so it is
-  usually ``\chi`` that dictates how large the cutoff has to be. If *reOmega_c* is too small, the
+  usually ``\chi`` that dictates how large the cutoff has to be. If *omega_c* is too small, the
   tail of the integral is truncated, the electron number is systematically wrong, and the root
   finder walks ``\mu`` away from the Fermi level. The *ef-mu* column in the console then grows from
   iteration to iteration instead of settling.
-  **Fix:** increase *reOmega_c* until ``\mu`` settles, and check `muError_shift.png` to confirm that
+  **Fix:** increase *omega_c* until ``\mu`` settles, and check `muError_shift.png` to confirm that
   ``\chi`` has decayed to ``\approx 0`` at the edge of the grid. ``Z``, ``\Delta`` and ``\chi`` share
-  the single cutoff *reOmega_c*, so there is no separate knob for the shift channel.
+  the single cutoff *omega_c*, so there is no separate knob for the shift channel.
 
 - **``\mu \to 0`` — decrease *depsilon*.**
   The ``\varepsilon``-integrals are evaluated analytically on a piecewise-linear DOS on a uniform
@@ -161,17 +160,17 @@ crosses over towards ``0`` for the outermost energies, and both the electron num
 The crossover is gradual, so no sharp ratio ``\omega/\varepsilon`` can be derived at which
 ``J_\omega`` goes from ``1`` to ``0``. IsoME therefore requires that the ``\varepsilon``-window stay
 inside the ``\omega``-cutoff: in the vDOS case of the real-axis solver *encut* must not exceed
-*reOmega_c*, which bounds the ``\omega'``-integration. If it does, the run prints
+*omega_c*, which bounds the ``\omega'``-integration. If it does, the run prints
 
 ```
-encut = … exceeds reOmega_c = …; the ε-integration has to stay inside the ω-cutoff.
+encut = … exceeds omega_c = …; the ε-integration has to stay inside the ω-cutoff.
 Setting encut = …
 ```
 
 and continues with the reduced ``\varepsilon``-window. If you need the larger *encut*, do **not**
-work around the warning by shrinking the energy window — raise *reOmega_c* instead (a larger cutoff
+work around the warning by shrinking the energy window — raise *omega_c* instead (a larger cutoff
 is beneficial for the μ-update anyway, see above). Note that ``J_\omega`` is only fully recovered
-for ``\omega \gg \varepsilon``, so *encut* close to *reOmega_c* still leaves a systematic error at
+for ``\omega \gg \varepsilon``, so *encut* close to *omega_c* still leaves a systematic error at
 the outermost energies; treat *encut* as a convergence parameter rather than pushing it to the
 limit.
 

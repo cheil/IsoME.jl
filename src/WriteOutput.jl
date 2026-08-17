@@ -499,9 +499,9 @@ function printFlagsAsText(inp, log_file; mode ="Matsubara")
     
     # cut off
     if mode == "Matsubara"
-        text *= " - Matsubara cutoff: "*string(inp.imOmega_c)*" meV\n"
+        text *= " - Matsubara cutoff: "*string(inp.omega_c)*" meV\n"
     elseif mode == "realFreq"
-        text *= " - Frequency cutoff: "*string(inp.reOmega_c)*" meV\n"
+        text *= " - Frequency cutoff: "*string(inp.omega_c)*" meV\n"
         text *= " - Frequency grid step: "*string(inp.domega)*" meV\n"
     end
 

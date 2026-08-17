@@ -45,7 +45,7 @@ include("InputValidation.jl")
     # Parameters
     temps::Vector{Float64}                  = [-1.0]        # concrete: Vector{Float64} is type-stable; Int entries auto-convert
     muc_AD::Float64                         = NaN           # NaN == "not assigned" (isnan check); NaN never a valid μ*
-    imOmega_c::Float64                      = 7000.0
+    omega_c::Float64                        = 7000.0        # frequency cutoff, shared by both solvers (Matsubara / real axis)
     muc_ME::Float64                         = NaN
     mu::Float64                             = NaN
     ef::Float64                             = NaN           # NaN == "auto-extract from DOS file header"
@@ -56,8 +56,7 @@ include("InputValidation.jl")
     minGap::Float64                         = 0.1
     N_it::Int64                             = 5000
     min_it::Int64                           = 10            # min iterations in eliashberg solver   
-    encut::Float64                          = 2000.0      # symmetric outer energy cutoff: window [-encut, encut]
-    shiftcut::Float64                       = 2000.0      # cutoff shift & Ne
+    encut::Float64                          = 2000.0      # symmetric outer energy cutoff: window [-encut, encut]; also bounds χ & Nₑ
     sparseSamplingTemp::Float64             = 2.0
     typEl::Float64                          = NaN
     flag_acon::Bool                         = false
@@ -109,8 +108,7 @@ include("InputValidation.jl")
     testMode::Bool              = false
 
     # ----------- real axis inputs ----------- #
-    # linear ω-grid
-    reOmega_c::Float64          = 7000.0    # ω-grid cutoff (all channels)
+    # linear ω-grid (cutoff: omega_c, see above)
     domega::Float64             = 1.0       # ω-grid step size / meV; also the kernel table step
     # ω'-chebyshev
     n_cheb::Int64               = 1000      # number of chebyshev points around poles in ω'-integration

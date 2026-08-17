@@ -382,15 +382,15 @@ When `vDOS_initial_guess=true`, the cDOS solution is returned in a `RealAxisStat
 with zero χ so it can seed the vDOS solver.
 """
 function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log_file; vDOS_initial_guess::Bool=false)
-    (; reOmega_c, N_it, conv_thr, minGap, nItFullCoul, min_it) = inp
+    (; omega_c, N_it, conv_thr, minGap, nItFullCoul, min_it) = inp
     (w_static, _) = realAxisParameter
-    (_, _, _, _, Weep, dosef, idx_ef, _, BCS_gap, _) = matval
+    (_, _, _, _, Weep, dosef, idx_ef, _, BCS_gap) = matval
     # When used as vDOS+W initializer, muc_ME is unset (nothing). Derive it from W(εF,εF)·N(εF)
     # using the Morel-Anderson formula, consistent with calcMucs() in ReadIn.jl.
     muc_ME = if vDOS_initial_guess && isnan(inp.muc_ME) && inp.include_Weep == 1
         typEl = !isnan(inp.typEl) ? inp.typEl : inp.efW
         mu = Weep[idx_ef, idx_ef] * dosef
-        mu / (1 + mu * log(typEl / reOmega_c))
+        mu / (1 + mu * log(typEl / omega_c))
     else
         Float64(inp.muc_ME)
     end
@@ -512,7 +512,7 @@ Solve the real-axis Eliashberg equations in the vDOS+μ approximation.
 """
 function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, state::RealAxisState, log_file)
     # destruct inputs
-    (_, _, dos_en, dos, Weep, dosef, idx_ef, _, BCS_gap, _) = matval
+    (_, _, dos_en, dos, Weep, dosef, idx_ef, _, BCS_gap) = matval
     (; muc_ME, mu_flag, N_it, conv_thr, minGap, nItFullCoul, min_it) = inp
     (w_static, _) = realAxisParameter
 

@@ -35,6 +35,6 @@ looks the same in all of these cases, so check whether the calculation is still 
 
 ## Q6: Which role do the cutoffs and grids play in the real-axis solver?
 The real-axis solver is far more sensitive to its grids than the imaginary-axis solver: its integrands are complex, sharply peaked and their poles move during the iteration.
-Most of the failures reported so far can be traced back to *reOmega_c*, *depsilon* or *domega*.
+Most of the failures reported so far can be traced back to *omega_c*, *depsilon* or *domega*.
 Each of these is discussed, together with the symptoms it produces, in the [Real-axis grids and the kernel](@ref) and [The μ-update](@ref) sections of the [Troubleshooting](@ref) page.
 A detailed description of where each parameter enters is given on the [Real Axis Solver](@ref) page.

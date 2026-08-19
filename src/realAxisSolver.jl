@@ -427,7 +427,7 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
         Z_prev = copy(Z_new)
         # abs() once here: mixing_beta comes straight from the input, so a negative value
         # has to be folded away before it is used as a mixing weight
-        beta_mix = abs(mixing_parameter(inp, i_it))
+        beta_mix = mixing_parameter(inp, i_it)
 
         gap0 = spectral_gap(w_static, delta_prev, gap0)
         pole = gap0
@@ -585,7 +585,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         phi_c_prev = copy(phi_c_new)
         # abs() once here: mixing_beta comes straight from the input, so a negative value
         # has to be folded away before it is used as a mixing weight
-        beta_mix = abs(mixing_parameter(inp, i_it))
+        beta_mix = mixing_parameter(inp, i_it)
         gap0 = spectral_gap(w_static, delta_prev, gap0)
 
         # locate the ω'-integrand poles (vDOS+W: from the modified S/P quantities)
@@ -643,7 +643,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
 
             if inp.flag_writeSelfEnergy == 1
                 try
-                    saveSelfEnergy_realAxis(itemp, inp, collect(w_static), delta_new, Z_new,
+                    saveSelfEnergy_realAxis(itemp, inp, collect(w_static), delta_new, Z_new, fermi_level,
                                             chi=chi_new,
                                             phi_ph=(inp.include_Weep == 1 ? phi_ph_new : nothing),
                                             phi_c=(inp.include_Weep == 1 ? phi_c_new : nothing),
@@ -705,20 +705,23 @@ end
     mixing_parameter(inp, i_it)
 
 linear mixing factor of eliashberg solutions
+
+abs() here: mixing_beta comes straight from the input, so a negative value has to be
+folded away before it is used as a mixing weight
 """
 function mixing_parameter(inp, i_it)
     if isnan(inp.mixing_beta)
-        return maximum([0.5, 1.0 - 0.05 * (i_it - 1)])
+        return maximum([0.6, 1.0 - 0.05 * (i_it - 1)])
     end
 
-    return inp.mixing_beta
+    return abs(inp.mixing_beta)
 end
 
 
 function save_real_axis_cDOS_outputs(itemp, inp, state, w_static, log_file)
     if inp.flag_writeSelfEnergy == 1
         try
-            saveSelfEnergy_realAxis(itemp, inp, collect(w_static), state.delta, state.Z)
+            saveSelfEnergy_realAxis(itemp, inp, collect(w_static), state.delta, state.Z, state.fermi_level)
         catch ex
             ex isa InterruptException && rethrow(ex)
             writeToCrashFile(inp)

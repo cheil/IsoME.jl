@@ -42,7 +42,7 @@ These inputs are shared by both solvers unless noted otherwise.
 | min_it | Int64 | 10 | Minimum number of iterations before convergence is accepted | Real-axis solver only; the imaginary-axis solver uses a fixed minimum of 15 |
 | outdir | String |  pwd() | Path to the output directory | |
 | flag_figure | Int64 |  1 | Plot the gap and ``\alpha^2F`` values | 0: no; 1: yes |
-| flag_writeSelfEnergy | Int64 | 0  | Save **and** plot the self-energy components (`.dat` + `.png`) | 0: no; 1: yes. Works for both solvers and all modes; files are written to `outdir/SelfEnergy/` |
+| flag_writeSelfEnergy | Int64 | 0  | Save **and** plot the self-energy components (`.dat` + `.png`) | 0: no; 1: yes. Works for both solvers and all modes; files are written to `outdir/SelfEnergy/`. The first header line of each `.dat` carries the converged chemical potential as `mu_F = … meV` (relative to the ``\varepsilon_F`` of the DOS input), which any ``\varepsilon``-resolved post-processing needs |
 | material | String | "Material" | Name of the compound | Used in plots and summaries |
 | returnTc | Bool | false | Return the estimated ``T_c`` interval | Mainly useful for scripts and tests |
 | testMode | Bool | false | Suppress all file output | Used by the test suite |

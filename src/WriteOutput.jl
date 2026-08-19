@@ -1046,7 +1046,7 @@ end
 
 
 """
-    writeSelfEnergy(itemp, inp, components)
+    writeSelfEnergy(itemp, inp, components, mu)
 
 Write each self-energy component to `outdir/SelfEnergy/` as both a `.dat` file and a `.png` plot.
 Single entry point for both axes and all modes; every component carries its own grid, column header
@@ -1055,8 +1055,11 @@ and axis labels, so the frequency label (ω vs iωₙ) and the units are always 
 `components` is a vector of NamedTuples `(name, x, y, xlabel, ylabel, xhead, yhead)`. A complex `y` is
 written as Re/Im columns and plotted as Re (blue) / Im (red); a real `y` (imaginary-axis quantities)
 gets a single column and curve.
+
+`mu` is the converged chemical potential of this temperature; it goes into the header of every
+file, see [`writeSelfEnergyComponent`](@ref).
 """
-function writeSelfEnergy(itemp, inp, components)
+function writeSelfEnergy(itemp, inp, components, mu::Float64)
 
     folder = inp.outdir * "SelfEnergy/"
     if ~isdir(folder)
@@ -1069,7 +1072,7 @@ function writeSelfEnergy(itemp, inp, components)
     # per-component work goes through a function barrier: each element is dispatched once
     # and writeSelfEnergyComponent then runs on its own concrete NamedTuple type
     for c in components
-        writeSelfEnergyComponent(folder, T, inp.material, c)
+        writeSelfEnergyComponent(folder, T, inp.material, c, mu)
     end
 
     return nothing
@@ -1077,16 +1080,26 @@ end
 
 
 """
-    writeSelfEnergyComponent(folder, T, material, c)
+    writeSelfEnergyComponent(folder, T, material, c, mu)
 
 Write one self-energy component of [`writeSelfEnergy`](@ref) as `.dat` + `.png`.
+
+The first header line carries the chemical potential `mu`, measured from the ε_F of the DOS input
+(i.e. μ − ε_F, the quantity the solver adds to the ε-grid as ε − μ). Without it a written
+self-energy is not self-contained: every ε-resolved quantity built from these files - the
+quasiparticle DOS, the tunneling conductance, the electron number - needs the position of the
+Fermi level, and χ(ω) alone does not carry it. It is `0.0` whenever the μ-update is off
+(`mu_flag = 0`) and in every cDOS mode.
 """
-function writeSelfEnergyComponent(folder::AbstractString, T::Float64, material::AbstractString, c::NamedTuple)
+function writeSelfEnergyComponent(folder::AbstractString, T::Float64, material::AbstractString,
+                                  c::NamedTuple, mu::Float64)
 
     base = folder * c.name * "_" * string(T) * "K"
 
     # ----- data file -----
     open(base * ".dat", "w") do io
+        write(io, "#  chemical potential relative to the Fermi energy of the DOS input: mu_F = " *
+                  string(mu) * " meV\n")
         if eltype(c.y) <: Complex
             write(io, "#  " * c.xhead * "\tRe(" * c.yhead * ")\tIm(" * c.yhead * ")\n")
             writedlm(io, [c.x real.(c.y) imag.(c.y)], '\t')
@@ -1111,14 +1124,14 @@ end
 
 
 """
-    saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi; chi, phiph, phic, epsilon)
+    saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi, mu; chi, phiph, phic, epsilon)
 
 Assemble the imaginary-axis (Matsubara) self-energy components and hand them to
 [`writeSelfEnergy`](@ref). Covers cDOS/vDOS and the μ / W(ε,ε′) modes: χ, φ_ph, φ_c are written only
 when provided. In vDOS+W, `deltai` is Δ(ε_F, iωₙ) — the full ε-dependence is recoverable from the
-φ_ph(iωₙ) and φ_c(ε) files.
+φ_ph(iωₙ) and φ_c(ε) files. `mu` is written into the header of every file.
 """
-function saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi; chi = nothing, phiph = nothing, phic = nothing, epsilon = nothing)
+function saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi, mu::Float64; chi = nothing, phiph = nothing, phic = nothing, epsilon = nothing)
 
     comps = NamedTuple[]
 
@@ -1137,19 +1150,20 @@ function saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi; chi = nothing
     isnothing(phic)  || push!(comps, (name = "Phic", x = epsilon, y = phic,
                   xlabel = "ε / meV", ylabel = "φ_c(ε) / meV", xhead = "ε / meV", yhead = "φ_c(ε) / meV"))
 
-    writeSelfEnergy(itemp, inp, comps)
+    writeSelfEnergy(itemp, inp, comps, mu)
     return nothing
 end
 
 
 """
-    saveSelfEnergy_realAxis(itemp, inp, w_static, delta, Z; chi, phi_ph, phi_c, epsilon)
+    saveSelfEnergy_realAxis(itemp, inp, w_static, delta, Z, mu; chi, phi_ph, phi_c, epsilon)
 
 Assemble the real-axis self-energy components (Δ, Z, χ and φ_ph all on `w_static`; φ_c(ε) on the
 ε-grid) and hand them to [`writeSelfEnergy`](@ref). Optional channels are written only when
-provided, so the same call serves cDOS and vDOS (+μ / +W).
+provided, so the same call serves cDOS and vDOS (+μ / +W). `mu` is written into the header of
+every file.
 """
-function saveSelfEnergy_realAxis(itemp, inp, w_static, delta, Z; chi = nothing, phi_ph = nothing, phi_c = nothing, epsilon = nothing)
+function saveSelfEnergy_realAxis(itemp, inp, w_static, delta, Z, mu::Float64; chi = nothing, phi_ph = nothing, phi_c = nothing, epsilon = nothing)
 
     comps = NamedTuple[]
 
@@ -1165,7 +1179,7 @@ function saveSelfEnergy_realAxis(itemp, inp, w_static, delta, Z; chi = nothing, 
     (isnothing(phi_c) || isnothing(epsilon)) || push!(comps, (name = "Phic", x = epsilon, y = phi_c,
                   xlabel = "ε / meV", ylabel = "φ_c(ε) / meV", xhead = "ε / meV", yhead = "φ_c(ε) / meV"))
 
-    writeSelfEnergy(itemp, inp, comps)
+    writeSelfEnergy(itemp, inp, comps, mu)
     return nothing
 end
 

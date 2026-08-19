@@ -23,7 +23,7 @@ Solve the eliashberg eq. self-consistently for a fixed temperature
 function solve_eliashberg(itemp, inp, console, matval, log_file)
     # destruct inputs
     (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap) = matval
-    (; cDOS_flag, include_Weep, omega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag, outdir, sparseSamplingTemp, flag_acon) = inp
+    (; cDOS_flag, include_Weep, omega_c, nItFullCoul, muc_ME, mu_flag, outdir, sparseSamplingTemp, flag_acon) = inp
 
     # active output table (mode 0 populates cDOS or vDOS by cDOS_flag)
     table = cDOS_flag == 1 ? console.cDOS : console.vDOS
@@ -150,13 +150,8 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
         phicip  = phici
 
 
-        # mixing beta. abs() once here: mixing_beta comes straight from the input, so a
-        # negative value has to be folded away before it is used as a mixing weight
-        if isnan(mixing_beta)
-            beta_mix = maximum([0.5, 1.0 - 0.05*(i_it-1)])
-        else
-            beta_mix = abs(mixing_beta)
-        end
+        # mixing beta
+        beta_mix = mixing_parameter(inp, i_it)
 
         # weight coulomb interaction
         wgCoulomb = minimum([1, i_it / nItFullCoul])
@@ -273,15 +268,15 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
                 try
                     if include_Weep == 1
                         if inp.cDOS_flag == 0
-                            saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi, epsilon=dos_en, chi=shifti, phiph=phiphi, phic=phici)
+                            saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi, fermi_level, epsilon=dos_en, chi=shifti, phiph=phiphi, phic=phici)
                         elseif inp.cDOS_flag == 1
-                            saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi, epsilon=dos_en, phiph=phiphi, phic=phici)
+                            saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi, fermi_level, epsilon=dos_en, phiph=phiphi, phic=phici)
                         end
                     elseif inp.include_Weep == 0
                         if inp.cDOS_flag == 0
-                            saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi, chi=shifti)
+                            saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi, fermi_level, chi=shifti)
                         elseif inp.cDOS_flag == 1
-                            saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi)
+                            saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi, fermi_level)
                         end
                     end
                 catch ex

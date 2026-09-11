@@ -10,6 +10,10 @@ permissions:
 
 jobs:
   CompatHelper:
+    # Compat bounds are raised here and reach the release repo with the next version push,
+    # so this never needs to run there. Kept as a condition rather than a settings toggle so
+    # the intent stays in the file.
+    if: github.repository == 'cheil/IsoME_Dev'
     runs-on: ubuntu-latest
     steps:
       - uses: julia-actions/setup-julia@v3
@@ -20,6 +24,12 @@ jobs:
       - name: CompatHelper.main()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pull requests opened with GITHUB_TOKEN do not start other workflows, so these
+          # compat bumps arrive untested. Point COMPATHELPER_PRIV at an SSH deploy key with
+          # write access to THIS repo to have CompatHelper push as that key instead, and CI
+          # will then run on its pull requests. main currently points it at DOCUMENTER_KEY,
+          # which is the release repo's pages key - only correct if that key also has write
+          # access here.
         run: julia -e 'using CompatHelper; CompatHelper.main()'
 
 

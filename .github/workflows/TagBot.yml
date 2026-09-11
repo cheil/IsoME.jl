@@ -22,7 +22,12 @@ permissions:
   statuses: read
 jobs:
   TagBot:
-    if: github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'
+    # Tags and releases belong to the registered package, which is the release repo. The
+    # registry's comments arrive there, and a tag created anywhere else would fire both CI
+    # and the docs build through their tag triggers.
+    if: >-
+      github.repository == 'cheil/IsoME.jl' &&
+      (github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot')
     runs-on: ubuntu-latest
     steps:
       - uses: JuliaRegistries/TagBot@v1

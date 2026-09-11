@@ -7,9 +7,14 @@ on:
     tags: '*'
   pull_request:
 
-    
 jobs:
   build:
+    # Docs are built and published from the release repo only. `deploydocs` in docs/make.jl
+    # targets cheil/IsoME.jl, so a build started anywhere else publishes into the release
+    # repo's gh-pages - pull-request previews included. The dev repo's main is pushed to the
+    # release repo verbatim, so both repos always hold this same file: the split has to live
+    # in this condition, not in which files exist.
+    if: github.repository == 'cheil/IsoME.jl'
     permissions:
       actions: write
       contents: write
@@ -17,11 +22,11 @@ jobs:
       statuses: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: julia-actions/setup-julia@v2
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
         with:
           version: '1'
-      - uses: julia-actions/cache@v2
+      - uses: julia-actions/cache@v3
       - name: Install dependencies
         run: julia --project=docs/ -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
       - name: Build and deploy

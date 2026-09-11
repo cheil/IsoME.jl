@@ -14,63 +14,32 @@
 
 
 """
-    InputParser(inp, log_file)
+    InputParser!(inp, log_file)
 
-Read, convert, preprocess inputs.
+Read, convert, preprocess inputs for EliashbergSolver() (mode=0) and RealAxisSolver() (mode=1).
 """
-function InputParser(inp::arguments, log_file)
+function InputParser!(inp::arguments, log_file; mode::Int64=0)
+    # mode = 0: EliashbergSolver()
+    # mode = 1: RealAxisSolver()
 
     ### Init table size ###
-    console = Dict()
-    if inp.include_Weep == 1 && inp.cDOS_flag == 0
-        # header table
-        console["header"] = ["it", "phic", "phiph", "znormi", "shifti", "ef-mu", "deltai", "err_delta"]
-        # width table
-        console["width"] = [8, 10, 10, 10, 10, 10, 10, 11]
-        # precision data
-        console["precision"] = [0, 2, 2, 2, 2, 2, 2, 5]
+    console = initOutputTable(inp, mode=mode)
 
-    elseif inp.include_Weep == 1 && inp.cDOS_flag == 1
-        # header table
-        console["header"] = ["it", "phic", "phiph", "znormi", "deltai", "err_delta"]
-        #width table
-        console["width"] = [8, 10, 10, 10, 10, 11]
-        # precision data
-        console["precision"] = [0, 2, 2, 2, 2, 5]
-
-    elseif inp.include_Weep == 0 && inp.cDOS_flag == 0
-        # header table
-        console["header"] = ["it", "znormi", "shifti", "ef-mu", "deltai", "err_delta"]
-        #width table
-        console["width"] = [8, 10, 10, 11, 10, 11]
-        # precision data
-        console["precision"] = [0, 2, 2, 2, 2, 5]
-
-    elseif inp.include_Weep == 0 && inp.cDOS_flag == 1
-        # header table
-        console["header"] = ["it", "znormi", "deltai", "err_delta"]
-        #width table
-        console["width"] = [8, 14, 14, 14]
-        # precision data
-        console["precision"] = [0, 4, 4, 5]
-
-    else
-        error("Unkwon mode! Check if the cDOS_flag and include_Weep flag are set correctly!")
-    end
     console = formatTableHeader(console)
 
-    console = printStartMessage(console, log_file)
-  
-
-    ########## READ-IN ##########
-    ####### a2f file #######
-    a2f_omega, a2f, inp.ind_smear, inp.a2f_unit = readIn_a2f(inp.a2f_file, inp.ind_smear, inp.a2f_unit, inp.nheader_a2f, inp.nfooter_a2f, inp.nsmear)
+    console = printStartMessage(console, inp, log_file, mode=mode)
 
 
-    ########## Dos and Weep ##########
-    if isfile(inp.dos_file)     # ~isempty was wrong
+    # ================ READ-IN ================ #
+    # --------------- a2f file ---------------- #
+    a2f_omega, a2f, a2f_itp, inp.ind_smear, inp.a2f_unit = readIn_a2f(inp.a2f_file, inp.ind_smear, inp.a2f_unit, inp.nheader_a2f, inp.nfooter_a2f, inp.nsmear)
+
+
+    # ------------- Dos and Weep -------------- #
+    if isfile(inp.dos_file) && (inp.cDOS_flag == 0 || (isnan(inp.mu) && isfile(inp.Weep_file)))
+
         # read dos
-        dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.ef, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos, outdir = inp.outdir, logFile = log_file)
+        dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.ef, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos, outdir=inp.outdir, logFile=log_file)
         inp.ef = ef
 
         # remove zeros at begining/end of dos
@@ -78,52 +47,70 @@ function InputParser(inp::arguments, log_file)
 
         ### Interpolation ###
         # Interpolation Object DoS
-        epsilonItp = range(dos_en[1], dos_en[end], length(dos_en))      
-        itpDos = scale(interpolate(dos, BSpline(Cubic())), epsilonItp) 
+        epsilonItp = range(dos_en[1], dos_en[end], length(dos_en))
+        itpDos = scale(interpolate(dos, BSpline(Linear())), epsilonItp)
 
         # encut in meV
-        if (inp.encut > dos_en[end]) || (-inp.encut < dos_en[1])    
+        if (-inp.encut < dos_en[1]) || (inp.encut > dos_en[end])
             text = "Energy cutoff exceeds range of DOS!"
             printWarning(text, log_file)
         end
 
-        if inp.include_Weep == 1 || ((isfile(inp.Weep_file) && (isempty(inp.Wen_file) || isfile(inp.Wen_file))) && inp.mu == -1)  
+        if inp.include_Weep == 1 || ((isfile(inp.Weep_file) && (isempty(inp.Wen_file) || isfile(inp.Wen_file))) && isnan(inp.mu))
             # read Weep + energy grid points
-            Weep, Wen, inp.efW, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.Wen_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, outdir = inp.outdir, logFile = log_file)
+            Weep, Wen, inp.efW, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.Wen_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, outdir=inp.outdir, logFile=log_file)
 
             ### Interpolation ###
             # Interpolation Object Weep
             epsilonItp = range(Wen[1], Wen[end], length(Wen))       
             itpWeep = scale(interpolate(Weep, BSpline(Linear())), (epsilonItp, epsilonItp)) 
 
-            # interpolate 
-            dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut, itpWeep = itpWeep, Wen = Wen)
+            if mode == 0 
+                # interpolate 
+                dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut, itpWeep=itpWeep, Wen=Wen)
+            else
+                # interpolate dos/Weep on same grid
+                lowCut  = max(dos_en[1],   -inp.encut)
+                highCut = min(dos_en[end],  inp.encut)
+                enStart = Wen[findfirst(Wen .> lowCut)]
+                enEnd   = Wen[findlast( Wen .< highCut)]
+                de = inp.depsilon
+                dos_en = collect(enStart:de:enEnd)
+                dos = itpDos(dos_en)
+                Weep = itpWeep(dos_en, dos_en)
+
+            end
 
             # mu, idxWef = idx_ef
-            (inp.mu != -1) || (idxWef = findmin(abs.(dos_en))[2]; inp.mu = dos[idxWef].*Weep[idxWef,idxWef])
+            (!isnan(inp.mu)) || (idxWef = findmin(abs.(dos_en))[2]; inp.mu = dos[idxWef] .* Weep[idxWef, idxWef])
 
         else
-            # interpolate 
-            dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut)
+            if mode == 0
+                # interpolate 
+                dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut)
+            else 
+                enStart = dos_en[findfirst(dos_en .> -inp.encut)]
+                enEnd   = dos_en[findlast(dos_en .< inp.encut)]
+                de = inp.depsilon
+                dos_en = collect(enStart:de:enEnd)
+                dos = itpDos(dos_en)
+                Weep = Matrix{Float64}(undef, 0, 0)
+            end
         end
 
-        # idx 
-        idxShiftcut = [findfirst(dos_en .> -inp.shiftcut), findlast(dos_en .< inp.shiftcut)]
-
     else
-        # default values
-        dos = []
-        dos_en = []
-        ef = inp.ef
-        idxShiftcut = -1
-        Weep = nothing
+        # default values (typed empties so matval stays concrete: Vector{Float64}, not Vector{Any})
+        dos = Float64[]
+        dos_en = Float64[]
+        ef = NaN
+        Weep = Matrix{Float64}(undef, 0, 0)
     end
 
     if inp.include_Weep == 0 && inp.cDOS_flag == 1
         # default values in case no dos-file is given
         ndos = -1
         idx_ef = -1
-        dosef = -1
+        dosef = -1.0        # Float64 to match dos[idx_ef] in the else-branch (keeps matval[6] concrete)
     else
         # length energy vector
         ndos = size(dos_en, 1)
@@ -136,39 +123,46 @@ function InputParser(inp::arguments, log_file)
         dosef = dos[idx_ef]
     end
 
+    ### optionally rescale α²F to a better N(ε_F) (once, before any consumer: μ*, AD, matval)
+    a2f = rescale_a2F(a2f, inp, dosef, log_file)
+
     ### calc mu*'s
-    if inp.mu == -1 && inp.muc_ME == -1 && inp.muc_AD == -1
+    # both solvers use the same frequency cutoff
+    phonon_cutoff = inp.omega_c
+
+    if isnan(inp.mu) && isnan(inp.muc_ME) && isnan(inp.muc_AD)
         # defaut value
         inp.muc_AD = 0.12
-        calcMucME(inp, a2f, a2f_omega, log_file)
+        calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
 
-    elseif inp.muc_AD == -1 && inp.muc_ME == -1
-        if inp.typEl != -1
-            calcMucs(inp, inp.typEl, a2f, a2f_omega, log_file)
-        
-        elseif ~(isnothing(ef) || ef == -1 || ef == 0)
+    elseif isnan(inp.muc_AD) && isnan(inp.muc_ME)
+        if !isnan(inp.typEl)
+            calcMucs(inp, inp.typEl, a2f, a2f_omega, phonon_cutoff, log_file)
+
+        elseif ~(isnan(ef) || ef == 0)
             inp.typEl = ef
-            calcMucs(inp, inp.typEl, a2f, a2f_omega, log_file)
+            calcMucs(inp, inp.typEl, a2f, a2f_omega, phonon_cutoff, log_file)
 
-        elseif ~(inp.efW == -1 || inp.efW == 0)
+        elseif ~(isnan(inp.efW) || inp.efW == 0)
             inp.typEl = inp.efW
-            calcMucs(inp, inp.typEl, a2f, a2f_omega, log_file)
+            calcMucs(inp, inp.typEl, a2f, a2f_omega, phonon_cutoff, log_file)
 
         else
             text = "Unable to calculate μ* from μ without a typical electron energy!"
             text *= "\nConsider setting typEl, ef or efW manually."
-            text *= "\nUsing μ*_AD = 0.12 instead"
+            text *= "\nUsing μ*_AD = 0.12 instead."
+            text *= "\nSee the pseudopotential section of the Input documentation for the μ → μ* relation."
             printWarning(text, log_file)
 
             inp.muc_AD = 0.12
-            calcMucME(inp, a2f, a2f_omega, log_file)
+            calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
         end
 
-    elseif  inp.include_Weep == 0 && inp.muc_AD != -1 && inp.muc_ME == -1   
-        calcMucME(inp, a2f, a2f_omega, log_file)
+    elseif inp.include_Weep == 0 && !isnan(inp.muc_AD) && isnan(inp.muc_ME)
+        calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
 
-    elseif  inp.muc_ME != -1 && inp.muc_AD == -1 
-        calcMucAD(inp, a2f, a2f_omega)
+    elseif !isnan(inp.muc_ME) && isnan(inp.muc_AD)
+        calcMucAD(inp, a2f, a2f_omega, phonon_cutoff)
     end
 
     ### determine superconducting properties from Allen-Dynes McMillan equation based on interpolated a2F
@@ -183,45 +177,97 @@ function InputParser(inp::arguments, log_file)
     printADtable(console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log, log_file)
 
     # material specific values
-    matval = (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxShiftcut)
+    matval = (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap)
 
-    return inp, console, matval, ML_Tc
+    return console, matval, ML_Tc
 end
 
 
+
 """
-    createDirectory(inp, strIsoME)
+    initOutputTable(inp; mode=0)
+
+initialize output table: header names, column width and precision
+"""
+function initOutputTable(inp::arguments; mode::Int64=0)#
+    # mode = 0: EliashbergSolver()
+    # mode = 1: RealAxisSolver()
+
+    # Both modes access the table via console.cDOS / console.vDOS. The imaginary-axis
+    # solver (mode 0) populates only the slot selected by cDOS_flag; the other stays empty.
+    console = Console()
+    if mode == 0
+        if inp.include_Weep == 1 && inp.cDOS_flag == 0
+            console.vDOS = TableSpec(["it", "phic", "phiph", "znormi", "shifti", "ef-mu", "deltai", "err_delta"], [8, 10, 10, 10, 10, 10, 10, 11], [0, 2, 2, 2, 2, 2, 2, 5])
+
+        elseif inp.include_Weep == 1 && inp.cDOS_flag == 1
+            console.cDOS = TableSpec(["it", "phic", "phiph", "znormi", "deltai", "err_delta"], [8, 10, 10, 10, 10, 11], [0, 2, 2, 2, 2, 5])
+
+        elseif inp.include_Weep == 0 && inp.cDOS_flag == 0
+            console.vDOS = TableSpec(["it", "znormi", "shifti", "ef-mu", "deltai", "err_delta"], [8, 10, 10, 11, 10, 11], [0, 2, 2, 2, 2, 5])
+
+        elseif inp.include_Weep == 0 && inp.cDOS_flag == 1
+            console.cDOS = TableSpec(["it", "znormi", "deltai", "err_delta"], [8, 14, 14, 14], [0, 4, 4, 5])
+
+        else
+            error("Unknown mode! Check if the cDOS_flag and include_Weep flag are set correctly!")
+        end
+
+    elseif mode == 1
+
+        if inp.include_Weep in (0, 1)
+            console.cDOS = TableSpec(["it", "Re(Z)", "Im(Z)", "Re(Δ)", "Im(Δ)", "Error Δ"], [8, 10, 10, 10, 10, 11], [0, 4, 4, 4, 4, 5])
+            console.vDOS = TableSpec(["it", "Re(Z)", "Im(Z)", "Re(χ)", "Im(χ)", "ef-mu", "Re(Δ)", "Im(Δ)", "Error Δ"], [8, 10, 10, 10, 10, 10, 10, 10, 11], [0, 4, 4, 4, 4, 2, 4, 4, 5])
+        end
+
+    end
+
+    return console
+end
+
+"""
+    createDirectory!(inp, strIsoME)
 
 Create directory.
 """
-function createDirectory(inp::arguments, strIsoME::String)
+function createDirectory!(inp::arguments, strIsoME::String)
 
     if inp.testMode # hidden outputs in test mode
         log_file = IOBuffer()
         errorLogger = SimpleLogger(log_file, Logging.Error)
     else
         # create output directory
-        if isempty(inp.outdir) 
+        if isempty(inp.outdir)
             inp.outdir = "./"
         elseif ~(inp.outdir[end] == '/' || inp.outdir[end] == '\\')
-            inp.outdir = inp.outdir*"/"
+            inp.outdir = inp.outdir * "/"
         end
 
+        # check if directory exists
         idxDir = 1
         tempDir = inp.outdir[1:end-1]
         while isdir(inp.outdir)
-            inp.outdir = tempDir*"_"*string(idxDir)*"/"
-            idxDir+=1
+            inp.outdir = tempDir * "_" * string(idxDir) * "/"
+            idxDir += 1
         end
 
         try
-            mkpath(inp.outdir)   # mkpath
+            mkpath(inp.outdir)
         catch ex
+            ex isa InterruptException && rethrow(ex)
             error("Couldn't write into " * inp.outdir * "! Outdir may not writable or an invalid path.\n\n")
         end
 
         log_file = open(inp.outdir * "log.txt", "w")
         print(log_file, strIsoME)
+
+        # the log file is buffered: make sure what has been written so far reaches
+        # the disk even if the process is ended without unwinding the solver.
+        # capture an alias that is assigned once, so that `log_file` - which is set in
+        # both branches above - is not boxed and keeps its type in the return value
+        let lf = log_file
+            atexit(() -> flushLog(lf))
+        end
 
         # logging to console and log-file (@warn,...)
         errorLogger = SimpleLogger(log_file, Logging.Error)
@@ -230,7 +276,7 @@ function createDirectory(inp::arguments, strIsoME::String)
         global_logger(tee_logger)
     end
 
-    return inp, log_file, errorLogger
+    return log_file, errorLogger
 
 end
 
@@ -239,49 +285,138 @@ end
     checkInput!(inp)
 
 Check which input files (a2f, dos, weep) exist.
+For real axis solver: Additionally check if cDOS+W mode has been chosen
 """
-function checkInput(inp::arguments)
+function checkInput!(inp::arguments; realSolver::Bool=false)
 
     # check input files / cDOS & Weep
     if ~isfile(inp.a2f_file)
         error("Invalid path to a2f-file!")
-        
-    elseif ~isfile(inp.dos_file) && (inp.cDOS_flag == 0 || inp.include_Weep == 1)
 
+    elseif ~isfile(inp.dos_file) && (inp.cDOS_flag == 0 || inp.include_Weep == 1)
         text = "Invalid path to Dos-file!\n\n"
         error(text)
-    
+
     elseif inp.include_Weep == 1 && ((~isfile(inp.Weep_file)) || (~isempty(inp.Wen_file) && ~isfile(inp.Wen_file)))
-        
         text = "Invalid path to Weep or Wen-file!\n\n"
         error(text)
 
     end
 
-    return inp
+    if inp.cDOS_flag ∉ (0,1)
+        error("Invalid cDOS_flag value. Use 0 for a variable density of states (vDOS) or 1 for a constant density of states (cDOS).")
+    end
+
+    if inp.include_Weep ∉ (0, 1) 
+        error("Invalid include_Weep value. Use 0 for the μ approximation or 1 for the W(ε, ε′) interaction.")
+    end
+
+    if realSolver
+        if inp.include_Weep == 1 && inp.cDOS_flag == 1
+            error("The real-axis solver only supports the vDOS+W approximation (include_Weep = 1 requires cDOS_flag = 0). Set cDOS_flag = 0.\n\n")
+        end
+
+        # vDOS: the ω-integrals of the μ-update and of χ(ω) only show their correct limiting
+        # behaviour as long as ω reaches at least as far as ε, so the ε-window must stay inside
+        # the ω-cutoff. Require encut ≤ omega_c and clamp encut down.
+        if inp.cDOS_flag == 0 && inp.encut > inp.omega_c
+            @warn "encut = $(inp.encut) exceeds omega_c = $(inp.omega_c); the ε-integration has to stay inside the ω-cutoff. Setting encut = $(inp.omega_c). Increase omega_c to keep the larger ε-window. See the μ-update section of the Troubleshooting page."
+            inp.encut = inp.omega_c
+        end
+    end
+
+    return nothing
 
 end
 
 """
-    readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsmear=-1)   
+    rescale_a2F(a2f, inp, dosef, log_file) -> a2f
+
+Optionally rescale α²F to a better density of states at the Fermi level.
+
+If `inp.a2f_Nef` is set (not `NaN`), α²F is multiplied by `a2f_Nef / N(ε_F)`, where `a2f_Nef` is the
+N(ε_F) that the α²F calculation used and `N(ε_F)` is taken from the DOS file, so that α²F and the
+electronic normalization used in the Eliashberg equations share the *same* N(ε_F). 
+
+The better N(ε_F) is taken from `dosef` when the read-in already produced it (vDOS / Weep+μ). In
+cDOS+μ, where no DOS is read, it is read from `dos_file` if one is given (a local read for the
+rescale only; the cDOS `matval` sentinels are untouched). Without any DOS file the rescale is
+skipped with a warning. No-op when `a2f_Nef` is `NaN`.
+"""
+function rescale_a2F(a2f, inp, dosef, log_file)
+    isnan(inp.a2f_Nef) && return a2f                        # feature off
+
+    inp.a2f_Nef > 0 || error("a2f_Nef must be positive (got $(inp.a2f_Nef)).")
+
+    # better N(ε_F): use the read-in dosef if available, otherwise read it from the DOS file (cDOS+μ)
+    Nef = dosef
+    if !(Nef > 0) && isfile(inp.dos_file)
+        dos_en_r, dos_r, _, _ = readIn_Dos(inp.dos_file, inp.ef, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos, outdir=inp.outdir, logFile=log_file)
+        dos_r, dos_en_r = discardZeros(dos_r, dos_en_r)
+        Nef = dos_r[findmin(abs.(dos_en_r))[2]]             # N(ε_F): DOS at the energy closest to ε_F
+    end
+
+    if !(Nef > 0)
+        printWarning("a2f_Nef is set but no DOS file is available: α²F cannot be rescaled without a DOS file. Ignoring a2f_Nef.", log_file)
+        return a2f
+    end
+
+    factor = inp.a2f_Nef / Nef
+    printTee(log_file, "\nα²F rescaled to N(ε_F) from the DOS file: a2f_Nef = " * string(round(inp.a2f_Nef, sigdigits=5)) *
+                       ", N_dos(ε_F) = " * string(round(Nef, sigdigits=5)) *
+                       ", factor = " * string(round(factor, sigdigits=5)) * "\n")
+    return a2f .* factor
+end
+
+
+"""
+    autoHeaderFooter(data, nheader, nfooter, nameFile) -> nheader, nfooter
+
+Fill in the header/footer size of a read-in file where it was left to auto-detection
+(-1): everything above the first numeric entry of the first column is header, everything
+below the last one is footer.
+"""
+function autoHeaderFooter(data::Matrix{Any}, nheader::Int, nfooter::Int, nameFile::AbstractString)
+    (nheader >= 0 && nfooter >= 0) && return nheader, nfooter
+
+    numeric = isa.(data[:, 1], Number)
+    firstNum = findfirst(numeric)
+    isnothing(firstNum) && error("The first column of the " * nameFile * "-file holds no numeric entry, so header and footer can not be detected. Check the file and its column layout, or set the header/footer size manually.\n\n")
+
+    (nheader >= 0) || (nheader = firstNum - 1)
+    # a first numeric entry guarantees a last one
+    (nfooter >= 0) || (nfooter = size(data, 1) - findlast(numeric)::Int)
+
+    return nheader, nfooter
+end
+
+
+"""
+    readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsmear=-1)
 
 Read in a2f file to solve the isotropic Migdal-Eliashberg equations
 
 The first column must contain the energies, the second column onwards a2F values for different smearings
 """
-function readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsmear=-1)   
+function readIn_a2f(a2f_file, indSmear::Int=-1, unit="", nheader::Int=-1, nfooter::Int=-1, nsmear::Int=-1)
     ### Read in a2f file ###
-    a2f_data = readdlm(a2f_file);
+    # `Any` forces a Matrix{Any}: without it readdlm returns a Matrix{Float64} for a file
+    # without a header and a Matrix{Any} for one with, and the resulting union makes the
+    # whole header/footer detection below type-unstable
+    a2f_data = readdlm(a2f_file, Any)::Matrix{Any}
 
-    ### Define defaults
-    (nheader != -1) || (nheader = findfirst(isa.(a2f_data[:,1], Number))-1)
-    (nfooter != -1) || (nfooter = size(a2f_data, 1) - findlast(isa.(a2f_data[:,1], Number)))
-    (nsmear != -1) || (nsmear = length(a2f_data[nheader+1, isa.(a2f_data[nheader+1,:], Number)])-1)
-    (indSmear != -1) || (indSmear = Int64(ceil(nsmear/2)))
+    ### Define defaults (-1 == auto-detect)
+    nheader, nfooter = autoHeaderFooter(a2f_data, nheader, nfooter, "a2F")
+    # ::Int assert: the raw (Any) a2f_data makes length() infer Any, which would leave
+    # nsmear/indSmear (and hence the returned a2f) type-unstable.
+    (nsmear >= 0)   || (nsmear = (length(a2f_data[nheader+1, isa.(a2f_data[nheader+1, :], Number)]) - 1)::Int)
+    (indSmear >= 0) || (indSmear = Int64(ceil(nsmear / 2)))
 
     ### Remove header & footer
-    header = join(a2f_data[1:nheader,:], " ")
-    a2f_data = Float64.(a2f_data[nheader+1:end-nfooter, 1:nsmear+1])  # previous version: nheader+1:end-nfooter
+    header = join(a2f_data[1:nheader, :], " ")
+    # type-assert to a concrete Matrix{Float64}: readdlm infers as Any, so without this
+    # the whole numeric pipeline (and the return) stays Any-typed.
+    a2f_data = Float64.(a2f_data[nheader+1:end-nfooter, 1:nsmear+1])::Matrix{Float64}
 
     ### Convert omega ###
     omega_raw = a2f_data[:, 1]
@@ -289,52 +424,50 @@ function readIn_a2f(a2f_file, indSmear=-1, unit="", nheader=-1, nfooter=-1, nsme
     if "meV" == unit
         omega_raw = omega_raw
     elseif "eV" == unit
-        omega_raw = omega_raw*1000
+        omega_raw = omega_raw * 1000
     elseif "THz" == unit
-            omega_raw = omega_raw * THz2meV
+        omega_raw = omega_raw * THz2meV
     elseif "Ry" == unit
         omega_raw = omega_raw * Ry2meV
-    elseif  "Ha" == unit     # Hartree
-        omega_raw = omega_raw .* Ry2meV*2
+    elseif "Ha" == unit     # Hartree
+        omega_raw = omega_raw .* Ry2meV * 2
     else
-        error("Invalid Unit! Please check the header of the a2F-file and try again!")
+        error("Could not determine the unit of the a2F-file. Set it manually via a2f_unit or check the file header (supported units: meV, eV, THz, Ry, Ha).")
     end
 
     ### a2f for one smearing ###
-    a2f_raw = a2f_data[:, indSmear+1] 
+    a2f_raw = a2f_data[:, indSmear+1]
 
     ### interpolate a2F on 10x finer grid ###
-    omega_fine = range(1e-2, stop=omega_raw[end], length=10 * size(omega_raw)[1])
-    a2f_int = linear_interpolation(omega_raw, a2f_raw, extrapolation_bc=Line())
-    a2f_fine = a2f_int(omega_fine)
-    a2f_fine[a2f_fine.<0.0] .= 0.0
-
-
-    return omega_fine, a2f_fine, indSmear, unit
+    omega = range(1e-2, stop=omega_raw[end], length=size(omega_raw)[1])   
+    a2f_itp = linear_interpolation(omega_raw, a2f_raw, extrapolation_bc=0)     
+    a2f = a2f_itp(omega)
+    a2f[a2f.<0.0] .= 0.0
+    
+    return omega, a2f, a2f_itp, indSmear, unit
 
 end
 
 
 # Read in DOS
 """
-    readIn_Dos(dos_file, ef =-1, spin=2, unit="", nheader=-1, nfooter=-1; outdir ="./", logFile = nothing)
+    readIn_Dos(dos_file, ef=NaN, spin=2, unit="", nheader=-1, nfooter=-1; outdir ="./", logFile = nothing)
 
 Read the dos file. All quantities are converted to meV.
 
 The energies must be in column 1 and the dos in column 2
 """
-function readIn_Dos(dos_file, ef =-1, spin=2, unit="", nheader=-1, nfooter=-1; outdir ="./", logFile = nothing)
+function readIn_Dos(dos_file, ef::Float64=NaN, spin=2, unit="", nheader::Int=-1, nfooter::Int=-1; outdir="./", logFile=nothing)
 
     ### Read in dos file ###
-    dos_data = readdlm(dos_file) 
+    dos_data = readdlm(dos_file, Any)::Matrix{Any}
 
-    ### Default values ###
-    (nheader != -1) || (nheader = findfirst(isa.(dos_data[:, 1], Number)) - 1)
-    (nfooter != -1) || (nfooter = size(dos_data, 1) - findlast(isa.(dos_data[:, 1], Number)))
+    ### Default values (-1 == auto-detect) ###
+    nheader, nfooter = autoHeaderFooter(dos_data, nheader, nfooter, "Dos")
 
     ### Remove header & footer
     header = dos_data[1:nheader, :]
-    dos = Float64.(dos_data[nheader+1:end-nfooter, 1:2])
+    dos = Float64.(dos_data[nheader+1:end-nfooter, 1:2])::Matrix{Float64}
     (~isempty(unit)) || (unit = getUnit(join(header, " "), "Dos"))
 
     ### extract energies and dos
@@ -346,11 +479,11 @@ function readIn_Dos(dos_file, ef =-1, spin=2, unit="", nheader=-1, nfooter=-1; o
     dos = dos / spin
 
     ### Fermi energy
-    if ef == -1
-        ef = extractFermiEnergy(header, unit, "Dos", outdir = outdir, logFile = logFile)
+    if isnan(ef)
+        ef = extractFermiEnergy(header, unit, "Weep", outdir=outdir, logFile=logFile)
     end
 
-    ### Convert 
+    ### Convert
     if unit == "meV"
         energies = energies
         dos = dos
@@ -363,11 +496,11 @@ function readIn_Dos(dos_file, ef =-1, spin=2, unit="", nheader=-1, nfooter=-1; o
     elseif unit == "Ry"
         energies = energies .* Ry2meV
         dos = dos ./ Ry2meV
-    elseif  "Ha" == unit     # Hartree
-        energies = energies.*Ry2meV*2
-        dos = dos ./ Ry2meV*2
+    elseif "Ha" == unit     # Hartree
+        energies = energies .* Ry2meV * 2
+        dos = dos ./ Ry2meV * 2
     else
-        error("Invalid Unit! Either set the unit manually via dos_unit or check the header of the Dos-file and try again!")
+        error("Could not determine the unit of the DOS-file. Set it manually via dos_unit or check the file header (supported units: meV, eV, THz, Ry, Ha).")
     end
 
     ### Shift energies by ef for cDos ###
@@ -378,43 +511,42 @@ end
 
 
 """
-    readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=-1, unit = "", nheader=-1, nfooter=-1,  nheaderWen=-1, nfooterWen=-1; outdir = "./", logFile = nothing)
+    readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=NaN, unit = "", nheader=-1, nfooter=-1,  nheaderWen=-1, nfooterWen=-1; outdir = "./", logFile = nothing)
 
 Read in Weep file containing the sreened coulomb interaction.
 Weep data must be in column 3
 """
-function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=-1, unit = "", nheader=-1, nfooter=-1,  nheaderWen=-1, nfooterWen=-1; outdir = "./", logFile = nothing)
+function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef::Float64=NaN, unit="", nheader::Int=-1, nfooter::Int=-1, nheaderWen::Int=-1, nfooterWen::Int=-1; outdir="./", logFile=nothing)
 
     ### Read in Weep file ###
-    Weep_data = readdlm(Weep_file);
+    Weep_data = readdlm(Weep_file, Any)::Matrix{Any}
 
-    # Default values
-    (nheader != -1) || (nheader = findfirst(isa.(Weep_data[:,1], Number))-1)
-    (nfooter != -1) || (nfooter = size(Weep_data,1) - findlast(isa.(Weep_data[:,1], Number)))
+    # Default values (-1 == auto-detect)
+    nheader, nfooter = autoHeaderFooter(Weep_data, nheader, nfooter, "Weep")
 
     # Remove header & footer
-    header = Weep_data[1:nheader,:]
-    Weep = Float64.(Weep_data[nheader+1:end-nfooter, Weep_col])
-    
-    # reshape to matrix
+    header = Weep_data[1:nheader, :]
+    Weep = Float64.(Weep_data[nheader+1:end-nfooter, Weep_col])::Vector{Float64}
+
+    # reshape to matrix (Matrix, not a lazy Transpose, so matval carries a concrete Matrix{Float64})
     numWens = Int(sqrt(size(Weep, 1)))
-    Weep = transpose(reshape(Weep, numWens, numWens))
+    Weep = Matrix(transpose(reshape(Weep, numWens, numWens)))
 
     # remove outliers from Weep 
-    Weep[Weep .< 0] .= 0
+    Weep[Weep.<0] .= 0
 
     # unit
     (~isempty(unit)) || (unit = getUnit(join(header, " "), "Weep"))
 
     ### Fermi energy
-    if ef == -1
-        ef = extractFermiEnergy(header, unit, "Weep", outdir = outdir, logFile = logFile)
+    if isnan(ef)
+        ef = extractFermiEnergy(header, unit, "Weep", outdir=outdir, logFile=logFile)
     end
 
     ### read in W energies ###
     if isempty(Wen_file)
         #Wen = Float64.(Weep_data[nheader+1:numWens+nheader, Wen_col])
-        Wen = unique(Float64.(Weep_data[nheader+1:end-nfooter, Wen_col]))
+        Wen = unique(Float64.(Weep_data[nheader+1:end-nfooter, Wen_col])::Vector{Float64})
     else
         Wen = readIn_Wen(Wen_file, Wen_col, nheaderWen, nfooterWen)
     end
@@ -423,20 +555,20 @@ function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=-1, unit 
     if "meV" == unit    # meV
         Weep = Weep
         Wen = Wen
-    elseif  "eV" == unit     # eV
-        Weep = Weep.*1000
-        Wen = Wen.*1000
-    elseif  "Ry" == unit      # Ry
-        Weep = Weep.*Ry2meV
-        Wen = Wen.*Ry2meV
-    elseif  "Ha" == unit     # Hartree
-        Weep = Weep.*Ry2meV*2
-        Wen = Wen.*Ry2meV*2
+    elseif "eV" == unit     # eV
+        Weep = Weep .* 1000
+        Wen = Wen .* 1000
+    elseif "Ry" == unit      # Ry
+        Weep = Weep .* Ry2meV
+        Wen = Wen .* Ry2meV
+    elseif "Ha" == unit     # Hartree
+        Weep = Weep .* Ry2meV * 2
+        Wen = Wen .* Ry2meV * 2
     elseif unit == "THz"
         Weep = Weep .* THz2meV
         Wen = Wen .* THz2meV
     else
-        error("Invalid Unit! Consider setting the unit manually (Weep_unit) or check the header of the Weep-file and try again!")
+        error("Could not determine the unit of the Weep-file. Set it manually via Weep_unit or check the file header (supported units: meV, eV, THz, Ry, Ha).")
     end
 
     # shift by ef
@@ -447,21 +579,20 @@ function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=-1, unit 
 end
 
 """
-    readIn_Wen(Wen_file, Wen_col, nheader=-1, nfooter=-1)
+    readIn_Wen(Wen_file, Wen_col, nheader=nothing, nfooter=nothing)
 
-Read in Wen 
-Energy grid for Weep 
+Read in Wen
+Energy grid for Weep
 """
-function readIn_Wen(Wen_file, Wen_col, nheader=-1, nfooter=-1)
+function readIn_Wen(Wen_file, Wen_col, nheader::Int=-1, nfooter::Int=-1)
     ### Read in Weep file ###
-    Wen_data = readdlm(Wen_file);
+    Wen_data = readdlm(Wen_file, Any)::Matrix{Any}
 
-    ### Default values ###
-    (nheader != -1) || (nheader = findfirst(isa.(Wen_data[:,1], Number))-1)
-    (nfooter != -1) || (nfooter = size(Wen_data, 1) - findlast(isa.(Wen_data[:, 1], Number)))
+    ### Default values (-1 == auto-detect) ###
+    nheader, nfooter = autoHeaderFooter(Wen_data, nheader, nfooter, "Wen")
 
     ### Remove header & footer
-    Wen = Float64.(Wen_data[nheader+1:end-nfooter, Wen_col])
+    Wen = Float64.(Wen_data[nheader+1:end-nfooter, Wen_col])::Vector{Float64}
 
     return Wen
 
@@ -474,28 +605,39 @@ end
 
 Extract the fermi energy from the header of the input files
 """
-function extractFermiEnergy(header, unit, nameFile=nothing; outdir = "./", logFile = nothing)
+function extractFermiEnergy(header, unit, nameFile=nothing; outdir="./", logFile=nothing)
 
-    ef = -1
+    ef = NaN
     try
+        # every branch asserts ::Float64: the header cells are Any, and without it `ef`
+        # stays untyped and drags the unit conversion below down with it
         logNums = isa.(header, Number)
-        if sum(logNums) == 1 
-            ef = Float64(only(header[logNums]))
-        elseif sum(logNums[:, 2:end] .& (header[:, 1:end-1] .== "=" )) == 1 
-            ef = Float64(only(header[:, 2:end][logNums[:, 2:end] .& (header[:, 1:end-1] .== "=" )]))
+        # the cells are Any, so `header .== "="` is not inferred as a Bool mask and drags
+        # the sum and every indexing operation below it to Any. Broadcasting a predicate
+        # that provably returns Bool keeps the mask - and everything indexed by it - a
+        # BitMatrix. It also survives a single-column header, where the mask is empty and
+        # `sum` of an empty Matrix{Any} would throw before the keyword search is reached.
+        isEqualSign(x)::Bool = x isa AbstractString && x == "="
+        maskEq = @view(logNums[:, 2:end]) .& isEqualSign.(@view header[:, 1:end-1])
+        if sum(logNums) == 1
+            ef = Float64(only(header[logNums])::Number)::Float64
+        elseif sum(maskEq) == 1
+            ef = Float64(only(@view(header[:, 2:end])[maskEq])::Number)::Float64
         else
             nameFermi = ["efermi", "ef", "fermi", "e_fermi"]
-            lcHeader = map(x -> isa(x, AbstractString) ? lowercase(x) : x, header)
 
             for name in nameFermi
-                if any(lcHeader .== name)
-                    idx = findall(lcHeader .== name)
-                    row = idx[1][1]
-                    col = idx[1][2]
-                    ef = Float64.(only(header[row, findfirst(isa.(header[row, col:end], Number))+col-1]))
-                    break
-                end
-            end 
+                # first cell holding the keyword, then the first number at or after it
+                idx = findfirst(x -> isa(x, AbstractString) && lowercase(x) == name, header)
+                isnothing(idx) && continue
+
+                row, col = Tuple(idx)
+                idxNum = findfirst(x -> isa(x, Number), @view header[row, col:end])
+                isnothing(idxNum) && error("Found '" * name * "' in the header of the " * nameFile * "-file but no number after it.")
+
+                ef = Float64(header[row, col+idxNum-1]::Number)::Float64
+                break
+            end
         end
 
         ### Convert ###
@@ -508,16 +650,20 @@ function extractFermiEnergy(header, unit, nameFile=nothing; outdir = "./", logFi
         elseif "Ha" == unit     # Hartree
             ef = ef .* Ry2meV * 2
         else
-            error("Invalid Unit! Consider setting the unit manually ("*nameFile*"_unit) or check the header of the "*nameFile*"-file and try again!")
+            error("Could not determine the unit of the " * nameFile * "-file. Set it manually via " * nameFile * "_unit or check the file header (supported units: meV, eV, THz, Ry, Ha).")
         end
 
     catch ex
+        ex isa InterruptException && rethrow(ex)
         text = "Error while reading the fermi energy from the " * nameFile * "-file."
         text *= "\nConsider setting the fermi-energy manually (ef or efW) or check the header of the " * nameFile * "-file\n\n"
-        @error text
+        error(text)
     end
 
-    return ef
+    # extraction ran without throwing but matched nothing -> ef still NaN
+    isnan(ef) && error("Could not extract the Fermi energy from the " * nameFile * "-file.\nSet it manually (ef or efW) or check the file header.\n\n")
+
+    return ef::Float64
 end
 
 
@@ -535,13 +681,13 @@ function getUnit(header, nameFile=nothing)
             return unit
         end
     end
-    
-    println("Auto-extraction of unit from "*nameFile*"-file failed! Please type the correct unit case sensitive into the console (it might be that you need to type it twice due to a bug in julia):")
-    unit = readline();
+
+    println("Auto-extraction of unit from " * nameFile * "-file failed! Please type the correct unit case sensitive into the console (it might be that you need to type it twice due to a bug in julia):")
+    unit = readline()
 
     return unit
 
-    
+
 end
 
 
@@ -551,10 +697,14 @@ end
 Discard zeros in dos.
 """
 function discardZeros(Dos::Vector{Float64}, energies::Vector{Float64})
-    idxLower = findfirst(Dos .!= 0)
-    idxUpper = findlast(Dos .!= 0)
+    idxLower = findfirst(!iszero, Dos)
+    idxUpper = findlast(!iszero, Dos)
 
-    return     Dos[idxLower:idxUpper], energies[idxLower:idxUpper]
+    # without this the `nothing` would only surface as a MethodError in the range below
+    isnothing(idxLower) && error("The density of states is zero over the whole energy range. Check the dos-file and the column layout (dos_file, spinDos).\n\n")
+    isnothing(idxUpper) && error("The density of states is zero over the whole energy range. Check the dos-file and the column layout (dos_file, spinDos).\n\n")
+
+    return Dos[idxLower:idxUpper], energies[idxLower:idxUpper]
 end
 
 
@@ -565,16 +715,23 @@ Calculate μ*_ME from μ*_AD using formula as in
 Pellegrini, Ab initio methods for superconductivity 
 DOI: 10.1038/s42254-024-00738-9
 """
-function calcMucME(inp, a2f, a2f_omega, log_file)
-    inp.muc_ME = inp.muc_AD / (1 + inp.muc_AD * log(maximum(a2f_omega[a2f.>0.01]) / inp.omega_c))
+function calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
+    inp.muc_ME = inp.muc_AD / (1 + inp.muc_AD * log(maximum(a2f_omega[a2f.>0.01]) / phonon_cutoff))
 
     if inp.muc_ME < 0 || inp.muc_ME > 0.8 || inp.muc_ME > 3 * inp.muc_AD
         inp.muc_ME = minimum([3 * inp.muc_AD, 0.8])
 
         text = "Couldn't calculate a reasonable μ*_ME from μ*_AD."
         text *= "\nUsing μ*_ME = minimum(3*μ*_AD, 0.8) instead."
-        text *= "\nConsider setting it manually!"
+        text *= "\nCheck muc_ME.png and consider setting μ* manually or changing the Matsubara cutoff!"
+        text *= "\nSee the μ* conversion section of the Troubleshooting page and the pseudopotential section of the Input documentation."
         printWarning(text, log_file)
+
+        wc_plot = range(min(100, floor(phonon_cutoff/2)), max(ceil(2*phonon_cutoff), 1e4), 500)
+        muc_ME_plot = inp.muc_AD ./ (1 .+ inp.muc_AD .* log.(maximum(a2f_omega[a2f.>0.01]) ./ wc_plot))
+
+        plot(wc_plot, muc_ME_plot)
+        savefig(inp.outdir*"muc_ME.png")
     end
 end
 
@@ -586,10 +743,10 @@ Calculate μ*_AD from μ*_ME using formula (30) in
 Pellegrini, Ab initio methods for superconductivity 
 DOI: 10.1038/s42254-024-00738-9
 """
-function calcMucAD(inp, a2f, a2f_omega)
-    inp.muc_AD = inp.muc_ME / (1 - inp.muc_ME * log(maximum(a2f_omega[a2f.>0.01]) / inp.omega_c))
+function calcMucAD(inp, a2f, a2f_omega, phonon_cutoff)
+    inp.muc_AD = inp.muc_ME / (1 - inp.muc_ME * log(maximum(a2f_omega[a2f.>0.01]) / phonon_cutoff))
 
-    if inp.muc_AD < 0 || inp.muc_AD > 0.2 
+    if inp.muc_AD < 0 || inp.muc_AD > 0.2
         inp.muc_AD = 0.12   # default
     end
 end
@@ -602,19 +759,26 @@ Calculate μ*_ME and μ*_AD from μ using formulas as in
 Pellegrini, Ab initio methods for superconductivity 
 DOI: 10.1038/s42254-024-00738-9
 """
-function calcMucs(inp, ef, a2f, a2f_omega, log_file)
+function calcMucs(inp, ef, a2f, a2f_omega, phonon_cutoff, log_file)
     # μ*_ME < 4*μ
-    if inp.omega_c > ef * exp(3 / (4 * inp.mu))
-        inp.omega_c = ef * exp(3 / (4 * inp.mu))
+    if phonon_cutoff > ef * exp(3 / (4 * inp.mu))
+        phonon_cutoff = ef * exp(3 / (4 * inp.mu))
 
         text = "Matsubara cutoff would lead to μ*_ME > 4*μ."
         text *= "\nomega_c has been set to a smaller value."
-        text *= "\nConsider checking the typical electronic energy typEl!"
+        text *= "\nCheck muc_ME.png and the typical electronic energy typEl!"
+        text *= "\nSee the μ* conversion section of the Troubleshooting page and the pseudopotential section of the Input documentation."
         printWarning(text, log_file)
+
+        wc_plot = range(min(100, floor(phonon_cutoff/2)), max(ceil(2*phonon_cutoff), 1e4), 500)
+        muc_ME_plot = inp.muc_AD ./ (1 .+ inp.muc_AD .* log.(maximum(a2f_omega[a2f.>0.01]) ./ wc_plot))
+
+        plot(wc_plot, muc_ME_plot)
+        savefig(inp.outdir*"muc_ME.png")
     end
 
     inp.muc_AD = inp.mu / (1 + inp.mu * log(ef / maximum(a2f_omega[a2f.>0.01])))
     if inp.include_Weep == 0
-        inp.muc_ME = inp.mu / (1 + inp.mu * log(ef / inp.omega_c))
+        inp.muc_ME = inp.mu / (1 + inp.mu * log(ef / phonon_cutoff))
     end
 end

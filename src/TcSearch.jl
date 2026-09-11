@@ -14,7 +14,6 @@
 # inspired by the EPW implementation
 # 2023-10-17 - Christoph Heil
 
-export EliashbergSolver
 
 """
     solve_eliashberg(itemp, inp, console, matval, log_file)
@@ -23,8 +22,11 @@ Solve the eliashberg eq. self-consistently for a fixed temperature
 """
 function solve_eliashberg(itemp, inp, console, matval, log_file)
     # destruct inputs
-    (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap, idxShiftcut) = matval
-    (; cDOS_flag, include_Weep, omega_c, mixing_beta, nItFullCoul, muc_ME, mu_flag, outdir, sparseSamplingTemp) = inp
+    (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap) = matval
+    (; cDOS_flag, include_Weep, omega_c, nItFullCoul, muc_ME, mu_flag, outdir, sparseSamplingTemp, flag_acon) = inp
+
+    # active output table (mode 0 populates cDOS or vDOS by cDOS_flag)
+    table = cDOS_flag == 1 ? console.cDOS : console.vDOS
 
     ### Matsubara frequencies ###
     beta = 1 / (kb * itemp)
@@ -38,7 +40,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
         ind_mat_freq = initSparseSampling(beta, omega_c, M)       
 
         # write to console
-        printTextCentered("T = "*string(itemp)*" K ", console["partingLine"], file = log_file, bold = true)
+        printTextCentered("T = "*string(itemp)*" K ", console.partingLine, file = log_file, bold = true)
         printstyled("\n - Number of Matsubara Frequencies = ", length(ind_mat_freq), " / ", nsiw)
         println("\n")
 
@@ -50,7 +52,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
         ind_mat_freq = collect(1:M+1)
 
         # write to console
-        printTextCentered("T = "*string(itemp)*" K ", console["partingLine"], file = log_file, bold = true)
+        printTextCentered("T = "*string(itemp)*" K ", console.partingLine, file = log_file, bold = true)
         printstyled("\n - Number of Matsubara Frequencies = ", nsiw)
         println("\n")
 
@@ -65,59 +67,66 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
 
 
     ##### Initialize variables #####
+    # the mode branches below are exhaustive in these two flags; checkInput! rejects
+    # anything else, so this only triggers if `inp` was modified afterwards
+    cDOS_flag ∈ (0, 1) || error("Invalid cDOS_flag value. Use 0 for a variable density of states (vDOS) or 1 for a constant density of states (cDOS).")
+    include_Weep ∈ (0, 1) || error("Invalid include_Weep value. Use 0 for the μ approximation or 1 for the W(ε, ε′) interaction.")
+
+    # χ(iω_n) and μ exist in vDOS only, φ_ph/φ_c only with W. Initialized for every mode
+    # so that each variable is defined on every path - the mode is tested again further
+    # down and the compiler can not correlate those tests with the branches below
+    shifti = zeros(nsiw)
+    fermi_level = 0.0
+    phici = Float64[]
+    phiphi = Float64[]
+
     if include_Weep == 1
         if cDOS_flag == 0
             ### Initialize
-            deltai = ones(ndos, nsiw) .* BCS_gap
-            znormi = ones(nsiw) 
-            shifti = -zeros(nsiw)
+            deltai = ones(nsiw) .* BCS_gap
+            znormi = ones(nsiw)
             phici = -ones(ndos).*0.1
             phiphi = ones(nsiw) .* maximum([BCS_gap, 2*phici[1]])
-            muintr = 0.0
 
             ### Print to console & log file
-            console["InitValues"] = [0 phici[idx_ef] phiphi[1] znormi[1] shifti[1] -muintr deltai[idx_ef, 1] nothing]
-            console = printTableHeader(console, log_file)
+            initValues = [0 phici[idx_ef] phiphi[1] znormi[1] shifti[1] -fermi_level deltai[1] nothing]
+            printTableHeader(table, initValues, log_file)
 
-        elseif cDOS_flag == 1
+        else
             ### Initialize
-            deltai = ones(ndos, nsiw) .* BCS_gap
-            znormi = ones(nsiw) 
+            deltai = ones(nsiw) .* BCS_gap
+            znormi = ones(nsiw)
             phici = -ones(ndos).*0.1
             phiphi = ones(nsiw) .* maximum([BCS_gap, 2*phici[1]])
 
             ### Print to console & log file
-            console["InitValues"] = [0 phici[idx_ef] phiphi[1] znormi[1] deltai[idx_ef, 1] nothing]
-            console = printTableHeader(console, log_file)
-
-        end
-
-    elseif include_Weep == 0
-
-        if cDOS_flag == 0
-            ### Initialize 
-            deltai = ones(nsiw) .* BCS_gap
-            znormi = ones(nsiw) 
-            shifti = zeros(nsiw)
-            muintr = 0.0
-
-            ### Print to console & log file
-            console["InitValues"] = [0 znormi[1] shifti[1] -muintr deltai[1] nothing]
-            console = printTableHeader(console, log_file)
-
-        elseif cDOS_flag == 1
-            ### Initialize 
-            deltai = ones(nsiw) .* BCS_gap
-            znormi = ones(nsiw) 
-
-            ### Print to console & log file
-            console["InitValues"] = [0 znormi[1] deltai[1] nothing]
-            console = printTableHeader(console, log_file)
+            initValues = [0 phici[idx_ef] phiphi[1] znormi[1] deltai[1] nothing]
+            printTableHeader(table, initValues, log_file)
 
         end
 
     else
-        @error "Unkwon mode! Check if the cDOS_flag and include_Weep flag are set correctly!"
+
+        if cDOS_flag == 0
+            ### Initialize
+            deltai = ones(nsiw) .* BCS_gap
+            znormi = ones(nsiw)
+
+            ### Print to console & log file
+            initValues = [0 znormi[1] shifti[1] -fermi_level deltai[1] nothing]
+            printTableHeader(table, initValues, log_file)
+
+        else
+            ### Initialize
+            deltai = ones(nsiw) .* BCS_gap
+            znormi = ones(nsiw)
+
+            ### Print to console & log file
+            initValues = [0 znormi[1] deltai[1] nothing]
+            printTableHeader(table, initValues, log_file)
+
+        end
+
     end
 
 
@@ -125,38 +134,24 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
 
     ##### Start iterations #####
     err_delta = 0
+    # declared here so that the `return data` after the loop is reachable for the compiler.
+    # Assigned in every iteration below; if it were local to the loop, solve_eliashberg
+    # would return Union{Nothing, Vector{Float64}} and every data[...] in findTc would be
+    # a possible MethodError on Nothing
+    data = Float64[]
     for i_it in 1:inp.N_it
-        if include_Weep == 1
-            if cDOS_flag == 0
-                deltaip = copy(deltai)
-                znormip = znormi
-                shiftip = shifti
-                phiphip = phiphi
-                phicip = phici
-            elseif cDOS_flag == 1
-                deltaip = copy(deltai)
-                znormip = znormi
-                phiphip = phiphi
-                phicip = phici
-            end
-        elseif include_Weep == 0
-            if cDOS_flag == 0
-                deltaip = copy(deltai)
-                znormip = znormi
-                shiftip = shifti
-            elseif cDOS_flag == 1
-                deltaip = copy(deltai)
-                znormip = znormi
-            end
-        end
+        # previous iteration. No copies and no branching: the components are only ever
+        # rebound below, never written into, and the ones a mode does not use keep their
+        # initial value
+        deltaip = deltai
+        znormip = znormi
+        shiftip = shifti
+        phiphip = phiphi
+        phicip  = phici
 
 
         # mixing beta
-        if mixing_beta == -1
-            broyden_beta = maximum([0.5, 1.0 - 0.05*(i_it-1)]) 
-        else
-            broyden_beta = mixing_beta
-        end 
+        beta_mix = mixing_parameter(inp, i_it)
 
         # weight coulomb interaction
         wgCoulomb = minimum([1, i_it / nItFullCoul])
@@ -166,64 +161,64 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             if cDOS_flag == 0
                 ### mu update 
                 if mu_flag == 1 && i_it > 1
-                    muintr = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, outdir)
+                    fermi_level = update_mu_own(itemp, wsi, dos_en, dos, znormip, phiphip, phicip, shiftip, fermi_level, outdir)
                 end
 
-                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb, muintr, idxShiftcut)
-                shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[4]
+                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb, fermi_level)
+                shifti = (1.0 - beta_mix) .* shiftip .+ beta_mix .* new_data[4]
 
                 ### Constant DoS ###
-            elseif cDOS_flag == 1
+            else
                 new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, idx_ef, wgCoulomb)
             end
 
             # linear mixing
-            znormi = (1.0 - abs(broyden_beta)) .* znormi .+ abs(broyden_beta) .* new_data[1]
-            phiphi = (1.0 - abs(broyden_beta)) .* phiphi .+ abs(broyden_beta) .* new_data[2]
-            phici  = (1.0 - abs(broyden_beta)) .* phici  .+ abs(broyden_beta) .* new_data[3]
-            deltai = (phiphi' .+ phici) ./ znormi'
+            znormi = (1.0 - beta_mix) .* znormip .+ beta_mix .* new_data[1]
+            phiphi = (1.0 - beta_mix) .* phiphip .+ beta_mix .* new_data[2]
+            phici  = (1.0 - beta_mix) .* phicip  .+ beta_mix .* new_data[3]
+            deltai = (phiphi .+ phici[idx_ef]) ./ znormi
 
-            rel_delta = sum(abs.(deltai[idx_ef, :] .- deltaip[idx_ef, :]))
-            abs_delta = sum(abs.(deltai[idx_ef, :]))
+            rel_delta = sum(abs.(deltai .- deltaip))
+            abs_delta = sum(abs.(deltai))
             err_delta = rel_delta / abs_delta
 
 
             ### Console Output ###
             if cDOS_flag == 0
                 # Console output
-                outputVec = [i_it, phici[idx_ef], phiphi[1], znormi[1], shifti[1], -muintr, deltai[idx_ef, 1], err_delta]
+                outputVec = [i_it, phici[idx_ef], phiphi[1], znormi[1], shifti[1], -fermi_level, deltai[1], err_delta]
 
                 # data for return
-                data = [znormi[1], deltai[idx_ef, 1], shifti[1], -muintr]
+                data = [znormi[1], deltai[1], shifti[1], -fermi_level]
 
-            elseif cDOS_flag == 1
+            else
                 # Console output
-                outputVec = [i_it, phici[idx_ef], phiphi[1], znormi[1], deltai[idx_ef, 1], err_delta]
+                outputVec = [i_it, phici[idx_ef], phiphi[1], znormi[1], deltai[1], err_delta]
 
                 # data for return
-                data = [znormi[1], deltai[idx_ef, 1]]
+                data = [znormi[1], deltai[1]]
 
             end # cDOS_flag
 
 
         ##### No Weep #####
-        elseif include_Weep == 0
+        else
 
             if cDOS_flag == 0
                 ### mu update
                 if mu_flag == 1 && i_it > 1
-                    muintr = update_mu_own(itemp, wsi, dos_en, dos, znormip, deltaip, shiftip, idxShiftcut, outdir)
+                    fermi_level = update_mu_own(itemp, wsi, dos_en, dos, znormip, znormip .* deltaip, Float64[], shiftip, fermi_level, outdir)
                 end
 
-                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, muintr, wgCoulomb, idxShiftcut)
-                shifti = (1.0 - abs(broyden_beta)) .* shifti .+ abs(broyden_beta) .* new_data[3]
+                new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, fermi_level, wgCoulomb)
+                shifti = (1.0 - beta_mix) .* shiftip .+ beta_mix .* new_data[3]
 
-            elseif cDOS_flag == 1
+            else
                 new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, deltaip, muc_ME, wgCoulomb)
             end
 
-            znormi = (1.0 - abs(broyden_beta)) .* znormi .+ abs(broyden_beta) .* new_data[1]
-            deltai = (1.0 - abs(broyden_beta)) .* deltai .+ abs(broyden_beta) .* new_data[2]
+            znormi = (1.0 - beta_mix) .* znormip .+ beta_mix .* new_data[1]
+            deltai = (1.0 - beta_mix) .* deltaip .+ beta_mix .* new_data[2]
 
             rel_delta = sum(abs.(deltai - deltaip))
             abs_delta = sum(abs.(deltai))
@@ -233,12 +228,12 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             ### Console Output ###
             if cDOS_flag == 0
                 # Console output
-                outputVec = [i_it, znormi[1], shifti[1], -muintr, deltai[1], err_delta]
+                outputVec = [i_it, znormi[1], shifti[1], -fermi_level, deltai[1], err_delta]
 
                 # data for return
-                data = [znormi[1], deltai[1], shifti[1], -muintr]
+                data = [znormi[1], deltai[1], shifti[1], -fermi_level]
 
-            elseif cDOS_flag == 1
+            else
                 # Console output
                 outputVec = [i_it, znormi[1], deltai[1], err_delta]
 
@@ -251,44 +246,42 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
 
 
         ##### Print to console #####
-        outputVec, strConsole, format = formatTableRow(outputVec, console["width"], console["precision"])
-        for i in axes(strConsole, 1)
-            Printf.format(stdout, Printf.Format(strConsole[i]), format[i, 1], " ", format[i, 2], format[i, 3], outputVec[i], format[i, 4], " ")
-        end
+        nan_state = any(isnan, outputVec)    # checked before formatTableRow overwrites outputVec
+        outputVec, strConsole, format = formatTableRow(outputVec, table.width, table.precision)
+        printTableRow(stdout, outputVec, strConsole, format)
 
         ### print to log file ###
-        for i in axes(strConsole, 1)
-           Printf.format(log_file, Printf.Format(strConsole[i]), format[i, 1], " ", format[i, 2], format[i, 3], outputVec[i], format[i, 4], " ")
-        end
-
+        printTableRow(log_file, outputVec, strConsole, format)
 
 
         ##### check convergence & termination criterion #####
         minIt = 15
         if err_delta < inp.conv_thr && i_it > maximum([minIt, inp.nItFullCoul+1])
-            println(replace(console["Hline"], "." => " "))
+            println(replace(table.Hline, "." => " "))
             printstyled("\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 
-            println(log_file, replace(console["Hline"], "." => " "))
+            println(log_file, replace(table.Hline, "." => " "))
             printstyled(log_file, "\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 
-            # save Z, Delta, chi, phi
+            # save + plot Z, Delta, chi, phi (.dat + .png)
             if inp.flag_writeSelfEnergy == 1
-                try 
+                try
                     if include_Weep == 1
                         if inp.cDOS_flag == 0
-                            saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi, epsilon=dos_en, chi=shifti, phiph=phiphi, phic=phici)
+                            saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi, fermi_level, epsilon=dos_en, chi=shifti, phiph=phiphi, phic=phici)
                         elseif inp.cDOS_flag == 1
-                            saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi, epsilon=dos_en, phiph=phiphi, phic=phici)
+                            saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi, fermi_level, epsilon=dos_en, phiph=phiphi, phic=phici)
                         end
                     elseif inp.include_Weep == 0
                         if inp.cDOS_flag == 0
-                            saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi, chi=shifti)                           
+                            saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi, fermi_level, chi=shifti)
                         elseif inp.cDOS_flag == 1
-                            saveSelfEnergyComponents(itemp, inp, wsi, deltai, znormi)                
+                            saveSelfEnergy_matsubara(itemp, inp, wsi, deltai, znormi, fermi_level)
                         end
                     end
                 catch ex
+                    ex isa InterruptException && rethrow(ex)
+
                     # crash file
                     writeToCrashFile(inp)
 
@@ -296,50 +289,76 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
                     printWarning("Error while saving self energy components.", log_file, ex=ex)
                 end
             end
-            
-            return data
+
+            ### Analytic Continuation ###
+            if flag_acon
+                try
+                    if cDOS_flag == 0
+                        acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file, shifti = shifti)
+                    else
+                        acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file)
+                    end
+                catch ex
+                    ex isa InterruptException && rethrow(ex)
+
+                    # crash file
+                    writeToCrashFile(inp)
+
+                    # console / log file
+                    printWarning("Error in analytic continuation.", log_file, ex=ex)
+                end
+            end 
+
+
             break
         end
 
         # Gap too small
         if data[2] < inp.minGap && i_it > maximum([minIt, inp.nItFullCoul+1])
-            println(replace(console["Hline"], "." => " "))
+            println(replace(table.Hline, "." => " "))
             printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than "*string(round(inp.minGap, digits=2))*" meV!\n\n"; bold=false)
 
-            println(log_file, replace(console["Hline"], "." => " "))
+            println(log_file, replace(table.Hline, "." => " "))
             printstyled(log_file, "\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than "*string(round(inp.minGap, digits=2))*" meV!\n\n"; bold=false)
 
             data[2] = NaN
-            return data
             break
         end
 
-        # max number iterations reached
-        if i_it == inp.N_it
-            println(replace(console["Hline"], "." => " "))
-            printstyled("\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"; bold=true)
+        # max number iterations reached, or the self energy turned NaN. Every component is
+        # built from sums over the whole Matsubara grid, so a single NaN entry contaminates
+        # all of them within one iteration and iterating on is pointless. Both cases return
+        # Δ = NaN, which makes the Tc search continue at a lower temperature.
+        if i_it == inp.N_it || nan_state
+            msg = nan_state ?
+                  "\nSelf energy became NaN at T = " * string(itemp) * " K, skipping this temperature!\n" :
+                  "\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"
+
+            println(replace(table.Hline, "." => " "))
+            printstyled(msg; bold=true)
             println("\n")
 
             # log file
-            println(log_file, replace(console["Hline"], "." => " "))
-            printstyled(log_file, "\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"; bold=true)
+            println(log_file, replace(table.Hline, "." => " "))
+            printstyled(log_file, msg; bold=true)
             println(log_file, "\n")
-    
+
 
             data[2] = NaN
-            return data
             break
         end
 
 
     end
+
+    return data
 end
 
  
 """
-    solve_eliashberg(inp, console, matval, ML_Tc, log_file)
+    findTc(inp, console, matval, ML_Tc, log_file)
 
-Start the Tc search mode or solve the eliashberg equations for each temperature
+Start the Tc search mode or solve the imaginary eliashberg equations for each temperature
 """
 function findTc(inp, console, matval, ML_Tc, log_file)
     inp.temps = sort(inp.temps)
@@ -352,7 +371,7 @@ function findTc(inp, console, matval, ML_Tc, log_file)
 
 
     if inp.temps == [-1]    # Tc search mode
-        # initial guess, Machine learning Tc           
+        # initial guess, Machine learning Tc
         itemp = maximum([1.0, round(ML_Tc)])
 
         # expansion of a + b*log(c-x) at x = 0, a=Delta(T2), b=1, c=Delta(T1)
@@ -433,8 +452,9 @@ function findTc(inp, console, matval, ML_Tc, log_file)
                     # find root
                     m2(x) = m(x, par)
                     itemp = floor(find_zero(m2, par[2]))
-   
-                catch                   
+
+                catch ex
+                    ex isa InterruptException && rethrow(ex)
                     # expansion to third order --> analytical formula for root (only one real root)
                     a=p0[1]
                     c=p0[3]
@@ -508,7 +528,7 @@ function findTc(inp, console, matval, ML_Tc, log_file)
 
     end
 
-    printTextCentered("Stopping now!", console["partingLine"], file = log_file, bold = true)
+    printTextCentered("Stopping now!", console.partingLine, file = log_file, bold = true)
 
     return Tc, inp.temps, Znorm0, Delta0, Shift0, EfMu
 
@@ -516,138 +536,60 @@ end
 
 
 """
-    EliashbergSolver(inp)
+    EliashbergSolver(inp::arguments)
 
-Main function. User has to pass the input arguments and it returns the Tc.
+Solve the isotropic Migdal-Eliashberg equations on the imaginary (Matsubara) frequency axis.
+
+`inp` carries every input; only `inp.a2f_file` is mandatory. The approximation follows from
+the flags `cDOS_flag` and `include_Weep`: cDOS+μ, vDOS+μ, vDOS+W (and cDOS+W, which is not
+recommended). With `temps = [-1.0]` the solver searches for `Tc`, otherwise it solves at the
+given temperatures. `flag_acon = true` additionally continues the converged solution to real
+frequencies with Padé approximants.
+
+Writes the log, the summary, the input overview and - if enabled - the figures and the
+self-energy components into `inp.outdir`. Returns the `Tc` bracket `[T_sc, T_nsc]` when
+`inp.returnTc` is set, and `nothing` otherwise.
 """
 function EliashbergSolver(inp::arguments)
 
-    dt = @elapsed begin
+    # placeholders: keep the error handler usable even if the run dies before the
+    # log file exists
+    log_file = IOBuffer()
+    errorLogger = SimpleLogger(log_file, Logging.Error)
+    Tc = [NaN, NaN]
 
-        strIsoME = printIsoME()
+    try
+        dt = @elapsed begin
 
-        ### Create directory
-        inp, log_file, errorLogger = createDirectory(inp, strIsoME)
-        
-        ### Check input
-        try
-            inp = checkInput(inp)
-        catch ex
-            # crash file
-            writeToCrashFile(inp)
+            strIsoME = printIsoME()
 
-            # console / log file
-            printError("in input structure. Stopping now!", ex, log_file, errorLogger)
- 
-            rethrow(ex)
+            ### Create directory
+            log_file, errorLogger = createDirectory!(inp, strIsoME)
+
+            ### solve
+            Tc = run_matsubara(inp, log_file)
         end
 
-        ### read inputs
-        matval = ()
-        ML_Tc = NaN
-        console = Dict()
-        try
-            inp, console, matval, ML_Tc = InputParser(inp, log_file)
-        catch ex
-            # crash file
-            writeToCrashFile(inp)
 
-            # console / log file
-            printError("while reading the inputs. Stopping now!", ex, log_file, errorLogger)
- 
-            rethrow(ex)
-        end
+        # print time elapsed
+        printTee(log_file, "\nTotal Runtime: " * string(round(dt, digits=2)) * " seconds\n")
 
-        ### Print to console ###
-        printFlagsAsText(inp, log_file)
+    catch ex
+        ### global error handler: the single place a fatal error is reported
+        handleFatalError(ex, catch_backtrace(), inp, log_file, errorLogger)
 
-        ########### start loop over temperatures ##########
-        Tc = [NaN, NaN] 
-        temps = Vector{Float64}()
-        Delta0 = Vector{Float64}()
-        Shift0 = Vector{Float64}()
-        Znorm0 = Vector{Float64}()
-        EfMu = Vector{Float64}()
-        try
-            Tc, temps, Znorm0, Delta0, Shift0, EfMu = findTc(inp, console, matval, ML_Tc, log_file)
-        catch ex
-            # crash file
-            writeToCrashFile(inp)
-
-            # console / log file
-            printError("while solving the Eliashberg equations. Stopping now!", ex, log_file, errorLogger)
-        end
-
-        ### write Tc to console
-        try
-            printSummary(inp, Tc, log_file)
-        catch ex
-            # crash file
-            writeToCrashFile(inp)
-
-            # console / log file
-            printWarning("Error while printing the summary.", log_file, ex=ex)
-        end
-
-        ### Outputs ###
-        if ~inp.testMode # no output in test mode
-            ### save inputs
-            try
-                createInfoFile(inp)
-            catch ex
-                # crash file
-                writeToCrashFile(inp)
-
-                # console / log file
-                printWarning("Error while creating the Info file.", log_file, ex=ex)
-            end
-
-
-            ### create Summary file
-            header = "# T/K  Δ(0)/meV  Z(0)/1"
-            out_vars = zeros(size(Delta0, 1), 3)
-            out_vars[:, 1] = temps
-            out_vars[:, 2] = Delta0
-            out_vars[:, 3] = Znorm0
-            if inp.cDOS_flag == 0
-                header = header * "  χ(0)/meV  ϵ_F-μ/meV"
-                out_vars = hcat(out_vars, Shift0, EfMu)
-            end
-            try
-                createSummaryFile(inp, Tc, out_vars, header)
-            catch ex
-                # crash file
-                writeToCrashFile(inp)
-
-                # console / log file
-                printWarning("Error while creating the Summary.dat file.", log_file, ex=ex)
-            end
-
-
-            ### figures
-            if inp.flag_figure == 1
-                try
-                    createFigures(inp, matval, Delta0, temps, Tc, log_file)
-                catch ex
-                    # crash file
-                    writeToCrashFile(inp)
-
-                    # console / log file
-                    printWarning("Error while plotting. Skipping plots.", log_file, ex=ex)
-                end
+        # the caller sees the original exception, not the IsoME wrapper
+        throw(ex isa IsoMEError ? ex.cause : ex)
+    finally
+        # close & save - also on the way out of an error. sigint is disabled so
+        # that an impatient second Ctrl+C can not interrupt the cleanup itself
+        if ~inp.testMode
+            # alias assigned once: capturing it below leaves `log_file` itself unboxed
+            lf = log_file
+            Base.disable_sigint() do
+                closeLog(lf)
             end
         end
-    end
-
-
-    # print time elapsed
-    print("\nTotal Runtime: ", round(dt, digits=2), " seconds\n")
-    # log file
-    print(log_file, "\nTotal Runtime: ", round(dt, digits=2), " seconds\n")
-
-    # close & save
-    if ~inp.testMode
-        close(log_file)
     end
 
     if inp.returnTc
@@ -656,6 +598,73 @@ function EliashbergSolver(inp::arguments)
 end
 
 
+"""
+    run_matsubara(inp, log_file) -> Tc
 
+Body of [`EliashbergSolver`](@ref), from the input check to the output files.
+
+Split off so that it runs with a concrete `log_file`: in `EliashbergSolver` the log stream
+starts as a placeholder and is replaced once the output directory exists, which costs it
+its type. Here it is an argument, so everything below this call stays inferrable.
+"""
+function run_matsubara(inp::arguments, log_file)
+
+    ### Check input
+    stage("in input structure") do
+        checkInput!(inp)
+    end
+
+    ### read inputs
+    console, matval, ML_Tc = stage("while reading the inputs") do
+        InputParser!(inp, log_file)
+    end
+
+    ### Print to console ###
+    printFlagsAsText(inp, log_file)
+
+    ########### start loop over temperatures ##########
+    Tc, temps, Znorm0, Delta0, Shift0, EfMu = stage("while solving the Eliashberg equations") do
+        findTc(inp, console, matval, ML_Tc, log_file)
+    end
+
+    ### write Tc to console
+    attempt(inp, log_file, "Error while printing the summary.") do
+        printSummary(inp, Tc, log_file)
+    end
+
+    ### Outputs ###
+    if ~inp.testMode # no output in test mode
+        ### save inputs
+        attempt(inp, log_file, "Error while creating the Info file.") do
+            createInfoFile(inp)
+        end
+
+
+        ### create Summary file
+        attempt(inp, log_file, "Error while creating the Summary.dat file.") do
+            header = "# T/K   Δ(0)/meV   Z(0)/1   "
+            out_vars = zeros(size(Delta0, 1), 3)
+            out_vars[:, 1] = temps
+            out_vars[:, 2] = Delta0
+            out_vars[:, 3] = Znorm0
+            if inp.cDOS_flag == 0
+                header = header * "χ(0)/meV   ϵ_F-μ/meV   "
+                out_vars = hcat(out_vars, Shift0, EfMu)
+            end
+            createSummaryFile(inp, Tc, out_vars, header)
+        end
+
+
+        ### figures
+        if inp.flag_figure == 1
+            attempt(inp, log_file, "Error while plotting. Skipping plots.") do
+                createFigures(inp, matval, Delta0, temps, Tc, log_file)
+            end
+        end
+    end
+
+    return Tc
+
+end
 
 

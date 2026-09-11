@@ -1,0 +1,486 @@
+"""
+    File containing the head/tail split of the ω'-integration grid for the
+    real-axis vDOS solver.
+
+    The grid is split at wp_max into
+        - head: pole-anchored Chebyshev clusters in (0, wp_max], rebuilt whenever
+                the integrand poles move (only the nodes; no kernel work)
+        - tail: fixed linear grid [wp_max, omega_c], kernels evaluated
+                once per temperature
+
+    Z, φ and χ share the single cutoff omega_c, so all three are solved on the
+    same ω-grid and the ω'-integration covers the same range for all of them.
+
+    The ω'-integration itself is done as a matrix-vector product with the
+    trapezoidal weights folded into the vector, so the (ω × ω') integrand
+    matrices are never materialized.
+"""
+
+
+# pole movement (as fraction of wp_max) that triggers a rebuild of the head grid
+const WPRIME_REFRESH_TOL = 1e-3
+
+
+"""
+    trapz_weights(x)
+
+Trapezoidal quadrature weights on the grid x, such that dot(w, y) == trapz(x, y).
+"""
+function trapz_weights(x::AbstractVector{<:Real})
+    n = length(x)
+    wgt = zeros(n)
+    @inbounds for i in 1:n-1
+        h = (x[i+1] - x[i]) / 2
+        wgt[i] += h
+        wgt[i+1] += h
+    end
+    return wgt
+end
+
+
+"""
+    cheb_halfgrid(m)
+
+m Chebyshev-type nodes in (0, 1), ascending, clustered towards 0.
+Same construction as the upper half of the grids in make_vDOS_wprime_grid.
+"""
+function cheb_halfgrid(m::Int)
+    j = m:(2*m-1)
+    x = 1 .+ cos.((2 .* j .+ 1) .* π ./ (4 * m))
+    return reverse(x)
+end
+
+
+"""
+    make_head_grid(poles, wp_max, pts_per_pole)
+
+Head part of the ω'-grid: one Chebyshev cluster of `pts_per_pole` points per pole,
+dense towards the pole from both sides and spanning up to the midpoints between
+neighbouring poles (0 and wp_max at the outer ends). The clusters tile the whole
+(0, wp_max] interval, so no separate background grid is needed.
+
+Returns `K * pts_per_pole` strictly increasing points (K = number of distinct
+poles inside the interval), with `pts[end] == wp_max` (the junction with the tail
+grid). The length therefore varies with the number of poles.
+"""
+function make_head_grid(poles::Vector{Float64}, wp_max::Float64, pts_per_pole::Int)
+    pts_per_pole >= 2 || error("pts_per_pole must be >= 2 (got $pts_per_pole)")
+
+    # keep only poles strictly inside (0, wp_max), merge near-duplicates
+    p_sorted = sort(filter(x -> isfinite(x) && 0 < x < wp_max, poles))
+    tol = max(1e-3 * wp_max, 5) # poles min 5 meV apart
+    p = [p_sorted[i] for i in eachindex(p_sorted) if i == 1 || p_sorted[i] - p_sorted[i-1] > tol]
+    if isempty(p)
+        p = [wp_max / 4]
+    end
+    K = length(p)
+
+    # cluster boundaries: midpoints between neighbouring poles, 0 and wp_max outside
+    bounds = [0.0; (p[1:end-1] .+ p[2:end]) ./ 2; wp_max]
+
+    pts = Vector{Float64}()
+    sizehint!(pts, K * pts_per_pole)
+    for k in 1:K
+        m_lo = pts_per_pole ÷ 2
+        m_hi = pts_per_pole - m_lo
+        h_lo = p[k] - bounds[k]
+        h_hi = bounds[k+1] - p[k]
+        append!(pts, p[k] .- h_lo .* reverse(cheb_halfgrid(m_lo)))   # (bounds[k], p), dense at p
+        append!(pts, p[k] .+ h_hi .* cheb_halfgrid(m_hi))            # (p, bounds[k+1]), dense at p
+    end
+
+    sort!(pts)
+    # enforce strictly increasing points (adjacent clusters touch at the boundaries)
+    eps_min = 1e-12 * wp_max
+    @inbounds for i in 2:length(pts)
+        if pts[i] - pts[i-1] < eps_min
+            pts[i] = pts[i-1] + eps_min
+        end
+    end
+    pts[end] = wp_max   # junction with the tail grid must be exact
+
+    @assert length(pts) == K * pts_per_pole
+    return pts
+end
+
+
+"""
+    grid_sign_roots(x, y)
+
+Roots of y(x) located by sign changes on the grid, refined by linear interpolation.
+"""
+function grid_sign_roots(x::AbstractVector{<:Real}, y::AbstractVector{<:Real})
+    roots = Float64[]
+    @inbounds for i in 1:length(y)-1
+        y1, y2 = y[i], y[i+1]
+        if isfinite(y1) && isfinite(y2) && ((y1 < 0) != (y2 < 0)) && y1 != y2
+            push!(roots, x[i] - y1 * (x[i+1] - x[i]) / (y2 - y1))
+        end
+    end
+    return roots
+end
+
+
+"""
+    find_integrand_poles(wp, w_static, znormip, deltaip, shiftip, fermi_level, gap0)
+
+Locate the poles of the ε-integrated ω'-integrand from the previous iteration's
+self-energy components:
+    - roots of Im(χ ± ε_p)  (collapsing Lorentzian widths)
+    - minimum of |ε_p|²     (branch point / gap edge)
+Returns a sorted, non-empty vector (falls back to gap0 if nothing is found).
+"""
+function find_integrand_poles(wp::Vector{Float64}, w_static,
+                              znormip::Vector{ComplexF64}, deltaip::Vector{ComplexF64},
+                              shiftip::Vector{ComplexF64}, fermi_level::Float64, gap0::Float64)
+
+    Z_ongrid = linear_interpolation(w_static, znormip, extrapolation_bc=Flat()).(wp)
+    phi_ongrid = linear_interpolation(w_static, deltaip .* znormip, extrapolation_bc=Flat()).(wp)
+    shift_ongrid = linear_interpolation(w_static, shiftip, extrapolation_bc=Flat()).(wp) .- fermi_level
+
+    ε_p = sqrt.(wp .^ 2 .* Z_ongrid .^ 2 .- phi_ongrid .^ 2)
+
+    poles = Float64[]
+    # println("Pole plus: ", grid_sign_roots(wp, imag.(shift_ongrid .+ ε_p)))
+    # println("Pole minus: ", grid_sign_roots(wp, imag.(shift_ongrid .- ε_p)))
+    #append!(poles, grid_sign_roots(wp, imag.(shift_ongrid .+ ε_p)))
+    #append!(poles, grid_sign_roots(wp, imag.(shift_ongrid .- ε_p)))
+    push!(poles, wp[argmin(abs2.(ε_p))])
+    #print(poles)
+
+    filter!(x -> isfinite(x) && x > 0, poles)
+    isempty(poles) && push!(poles, gap0)
+    sort!(poles)
+    return poles
+end
+
+
+"""
+    WPrimeWorkspace
+
+ω'-grids, trapezoidal weights and precomputed kernel data for the head/tail split.
+The junction point wp_max is contained in both head and tail, so
+trapz(wp_full) == trapz(head) + trapz(tail) exactly.
+
+The ω'-integral is done entirely through the 1-D kernel tables `ker` (𝒦 = A(x) + f(ω')·B(x)),
+so neither half ever materializes an O(N²) matrix:
+  * the head through its hat lattice `lat`, which turns the ω'-sum into a scatter onto
+    M ≈ ω'_max/domega lattice cells plus bare table lookups (see `HeadLattice`);
+  * the Fermi factors fp/fm = f(±ω') on the tail together with the Toeplitz/Hankel A,B samples
+    (`A_dif_tail`, …), which let the uniform tail be summed on the fly (A + f·B).
+Z, φ and χ all live on `w_static`, so one K⁺ block serves both the φ and the χ channel and
+every output row is common to all three - there is no second (wider) grid to index against.
+"""
+mutable struct WPrimeWorkspace
+    wp_max::Float64
+    n_head::Int
+    ns::Int                             # ω-grid length; difference offset of the tail arrays
+    wp_head::Vector{Float64}
+    wp_tail::Vector{Float64}
+    wp_full::Vector{Float64}
+    wgt_head::Vector{Float64}
+    wgt_tail::Vector{Float64}
+    lat::HeadLattice                    # hat lattice of the head grid
+    fp_tail::Vector{Float64}            # f(ω')  on wp_tail
+    fm_tail::Vector{Float64}            # f(-ω') on wp_tail
+    A_dif_tail::Vector{ComplexF64}      # A,B sampled on the tail difference/sum arguments
+    B_dif_tail::Vector{ComplexF64}      # (Toeplitz/Hankel, O(ns + n_tail)); tail lookup route
+    A_sum_tail::Vector{ComplexF64}
+    B_sum_tail::Vector{ComplexF64}
+    poles_prev::Vector{Float64}
+    ker::PhononKernel                   # 1-D difference-grid kernel (A(x), B(x))
+end
+
+function WPrimeWorkspace(wp_head::Vector{Float64}, wp_tail::Vector{Float64},
+                         w_static;
+                         poles::Vector{Float64}=[NaN], ker::PhononKernel)
+    wp_head[end] == wp_tail[1] || error("head and tail grids must share the junction point")
+    n_head = length(wp_head)
+    ns = length(w_static)
+
+    fp_tail, fm_tail = fermi_pm(ker.β, wp_tail)
+    A_dif_tail, B_dif_tail, A_sum_tail, B_sum_tail = precompute_tail_AB(ker, w_static, wp_tail)
+
+    lat = HeadLattice(ker, w_static, wp_head, ns)
+
+    return WPrimeWorkspace(wp_head[end], n_head, ns,
+                           wp_head, wp_tail, vcat(wp_head, wp_tail),
+                           trapz_weights(wp_head), trapz_weights(wp_tail),
+                           lat,
+                           fp_tail, fm_tail,
+                           A_dif_tail, B_dif_tail, A_sum_tail, B_sum_tail,
+                           copy(poles), ker)
+end
+
+
+"""
+    kernel_omega_integral(ws, w_static, g_z, g_phi)
+
+O(N)-memory ω'-integrals ∫K⁻g_z and ∫K⁺g_phi over the full (head+tail) grid,
+split into a head part and a tail part. The Chebyshev head is contracted over its nodes
+onto the hat lattice and then read off the A,B tables; the uniform tail uses the precomputed
+Toeplitz/Hankel A,B samples. Neither materializes the O(N²) matrix. Returns (Iz, Iphi).
+"""
+function kernel_omega_integral(ws::WPrimeWorkspace, w_static, g_z, g_phi)
+    nh = ws.n_head
+    ntot = length(g_z)
+    ns = length(w_static)
+    noff = ws.ns                    # ω-grid length = difference offset of the tail arrays
+
+    # head: contract over the ω'-nodes first (scatter), then over the lattice cells.
+    # The G buffers are M ≈ ω'_max/domega long (~10²), so allocating them per call is
+    # noise next to the O(ns·n_tail) tail that follows.
+    lat = ws.lat
+    G0z = Vector{Float64}(undef, lat.M); G1z = Vector{Float64}(undef, lat.M)
+    G0p = Vector{Float64}(undef, lat.M); G1p = Vector{Float64}(undef, lat.M)
+    head_scatter!(G0z, G1z, lat, ws.wgt_head, view(g_z, 1:nh))
+    head_scatter!(G0p, G1p, lat, ws.wgt_head, view(g_phi, 1:nh))
+    Iz = Vector{ComplexF64}(undef, ns)
+    Iphi = Vector{ComplexF64}(undef, ns)
+    head_accumulate!(Iz, Iphi, ws.ker, lat, G0z, G1z, G0p, G1p, ns)
+
+
+    # tail: precomputed Toeplitz/Hankel A,B lookups (no matrix), loop only the first ns rows
+    tail_accumulate!(Iz, Iphi, ws.A_dif_tail, ws.B_dif_tail, ws.A_sum_tail, ws.B_sum_tail,
+                         noff, ns, ws.wgt_tail, ws.fp_tail, ws.fm_tail,
+                         view(g_z, nh+1:ntot), view(g_phi, nh+1:ntot))
+
+    return Iz, Iphi
+end
+
+
+"""
+    kernel_omega_integral(ws, w_static, g_z, g_phi, g_chi)
+
+Three-channel form used by the vDOS routes: ∫K⁻g_z, ∫K⁺g_phi and ∫K⁺g_chi in **one** pass
+over the kernel tables. Since χ shares `w_static` (and hence every output row) with φ, and
+uses the same K⁺ combination, its A,B lookups are exactly the ones the φ channel already
+performs - so the second pass the old separate χ grid required is gone.
+Returns (Iz, Iphi, Ichi), each of length ns.
+"""
+function kernel_omega_integral(ws::WPrimeWorkspace, w_static, g_z, g_phi, g_chi)
+    nh = ws.n_head
+    ntot = length(g_z)
+    ns = length(w_static)
+    noff = ws.ns                    # ω-grid length = difference offset of the tail arrays
+
+    lat = ws.lat
+    G0z = Vector{Float64}(undef, lat.M); G1z = Vector{Float64}(undef, lat.M)
+    G0p = Vector{Float64}(undef, lat.M); G1p = Vector{Float64}(undef, lat.M)
+    G0c = Vector{Float64}(undef, lat.M); G1c = Vector{Float64}(undef, lat.M)
+    head_scatter!(G0z, G1z, lat, ws.wgt_head, view(g_z, 1:nh))
+    head_scatter!(G0p, G1p, lat, ws.wgt_head, view(g_phi, 1:nh))
+    head_scatter!(G0c, G1c, lat, ws.wgt_head, view(g_chi, 1:nh))
+
+    Iz   = Vector{ComplexF64}(undef, ns)
+    Iphi = Vector{ComplexF64}(undef, ns)
+    Ichi = Vector{ComplexF64}(undef, ns)
+    head_accumulate3!(Iz, Iphi, Ichi, ws.ker, lat, G0z, G1z, G0p, G1p, G0c, G1c, ns)
+
+    tail_accumulate3!(Iz, Iphi, Ichi, ws.A_dif_tail, ws.B_dif_tail, ws.A_sum_tail, ws.B_sum_tail,
+                      noff, ns, ws.wgt_tail, ws.fp_tail, ws.fm_tail,
+                      view(g_z, nh+1:ntot), view(g_phi, nh+1:ntot), view(g_chi, nh+1:ntot))
+
+    return Iz, Iphi, Ichi
+end
+
+
+"""
+    build_wprime_workspace(inp, realAxisParameter, gap0_start)
+
+Set up the vDOS workspace for one temperature. The head/tail split is at
+wp_max = 2·Δ(0) of the starting state (the cDOS solution / previous temperature),
+kept within [10·domega, omega_c/2].
+"""
+function build_wprime_workspace(inp::arguments, realAxisParameter, gap0_start::Float64)
+    (w_static, kernel) = realAxisParameter
+
+    gap0 = (isfinite(gap0_start) && gap0_start > 0) ? gap0_start : inp.minGap
+    wp_max = clamp(2 * gap0, 10 * inp.domega, inp.omega_c / 2)
+    pts_per_pole = inp.n_cheb    # Chebyshev points per pole in the head region
+
+    # tail on the domega grid (same step as w_static) -> all channels k=1
+    wp_tail = collect(wp_max:inp.domega:inp.omega_c)
+    wp_head = make_head_grid([gap0], wp_max, pts_per_pole)
+
+    return WPrimeWorkspace(wp_head, wp_tail, w_static; poles=[gap0], ker=kernel)
+end
+
+
+"""
+    find_integrand_poles_vDOSW(wp, w_static, znormip, phi_ph, phi_c, shiftip,
+                               fermi_level, dos_en, idx_ef, gap0)
+
+Poles of the ε-integrated ω'-integrand for the vDOS+W approximation, evaluated at the
+Fermi-level ε-interval [dos_en[idx_ef], dos_en[idx_ef+1]]. Unlike the vDOS+μ case the
+gap enters through the ε-dependent φ(ω,ε), so the pole positions follow the *modified*
+quantities χ_mod = S and ε_p_mod = P of `epsilon_helpers_vDOSW`:
+
+    S = (χ + Φ0·Φ1) / (1+Φ1²),   P = sqrt((ω²Z² − χ² − Φ0²)/(1+Φ1²) + S²)
+
+The poles are the roots of Im(S ± P) (collapsing Lorentzian widths) plus the minimum of
+|P|² (branch point). Returns a sorted, non-empty vector.
+"""
+function find_integrand_poles_vDOSW(wp::Vector{Float64}, w_static,
+                                    znormip::Vector{ComplexF64}, phi_ph::Vector{ComplexF64}, phi_c::Vector{ComplexF64},
+                                    shiftip::Vector{ComplexF64}, fermi_level::Float64,
+                                    dos_en::Vector{Float64}, idx_ef::Int, gap0::Float64)
+
+    Z_ong = linear_interpolation(w_static, znormip, extrapolation_bc=Flat()).(wp)
+    chi_ong = linear_interpolation(w_static, shiftip, extrapolation_bc=Flat()).(wp) .- fermi_level
+
+    # φ(ω,ε) = φ_ph(ω) + φ_c(ε): at the Fermi-level ε-interval the affine coefficients are
+    # Φ1 = φ_c'(ε) (a scalar, ω-independent) and Φ0(ω) = φ_ph(ω) + φ_c(ε_j) − ε_j·Φ1.
+    phi_ph_ong = linear_interpolation(w_static, phi_ph, extrapolation_bc=Flat()).(wp)
+    j = clamp(idx_ef, 1, length(phi_c) - 1)
+    dε = dos_en[j+1] - dos_en[j]
+    Φ1 = dε == 0 ? zero(ComplexF64) : (phi_c[j+1] - phi_c[j]) / dε
+    Φ0 = phi_ph_ong .+ phi_c[j] .- dos_en[j] .* Φ1
+
+    scale = 1 + Φ1^2
+    wZ = wp .* Z_ong
+    S = (chi_ong .+ Φ0 .* Φ1) ./ scale
+    P = sqrt.((wZ .^ 2 .- chi_ong .^ 2 .- Φ0 .^ 2) ./ scale .+ S .^ 2)
+
+    poles = Float64[]
+    #append!(poles, grid_sign_roots(wp, imag.(S .+ P)))
+    #append!(poles, grid_sign_roots(wp, imag.(S .- P)))
+    push!(poles, wp[argmin(abs2.(P))])
+
+    #println("Poles: ", poles)
+
+    filter!(x -> isfinite(x) && x > 0, poles)
+    isempty(poles) && push!(poles, gap0)
+    sort!(poles)
+    return poles
+end
+
+
+"""
+    find_cDOS_pole(w_static, deltaip, gap0)
+
+Pole of the cDOS+μ ω'-integrand: the root of Θ(ω') = ω' − Re Δ(ω') (the gap edge where
+ω'² = Δ(ω')²). Falls back to gap0 if no root is found.
+"""
+function find_cDOS_pole(w_static, deltaip::Vector{ComplexF64}, gap0::Float64)
+    # Θ(ω') = ω' − ReΔ(ω') is piecewise linear on w_static, because ReΔ is taken from a
+    # linear interpolation of deltaip over the same nodes. Its roots can therefore be
+    # located exactly: look for sign changes of Θ between neighbouring nodes and solve
+    # the single linear segment, instead of iterating a general root finder once per
+    # self-consistency step. Of several roots the one closest to gap0 is returned, which
+    # is the root the previous point-based search started from.
+    root = NaN
+    dist = Inf
+
+    # eachindex(w_static, deltaip) instead of 2:length(w_static): it does not assume
+    # 1-based indexing and it throws DimensionMismatch if the two do not share axes,
+    # which the @inbounds loop below would otherwise turn into an out-of-bounds read.
+    idx = eachindex(w_static, deltaip)
+    i1 = first(idx)
+    theta_prev = w_static[i1] - real(deltaip[i1])
+
+    @inbounds for i in (i1+1):last(idx)
+        theta = w_static[i] - real(deltaip[i])
+
+        if theta_prev * theta <= 0
+            denom = theta_prev - theta
+            r = denom == 0 ? w_static[i-1] :
+                w_static[i-1] + theta_prev / denom * (w_static[i] - w_static[i-1])
+            d = abs(r - gap0)
+            if d < dist
+                dist = d
+                root = r
+            end
+        end
+
+        theta_prev = theta
+    end
+
+    #printWarning("Couldn't find the root of x-Δ(x). Shfiting chebyshev grid to BCS gap instead.")
+    return isnan(root) ? gap0 : root
+end
+
+
+"""
+    spectral_gap(w_static, deltaip, gap_prev)
+
+Gap estimate for the ω'-grid, the pole anchor and the convergence ratio: the root of
+Θ(ω) = ω − ReΔ(ω), i.e. the gap edge, falling back to `gap_prev` if no root exists.
+
+Δ(w_static[1]) must **not** be used for this. At finite temperature the thermal
+quasiparticle scattering rate 2π∫α²F(ν)[n(ν)+f(ν)]dν is nonzero, so Z(ω) = 1 − Iz(ω)/ω
+diverges as 1/ω and Δ = φ/Z is suppressed at the first grid point by a factor that grows
+with temperature (|Z(0.1 meV)| ≈ 70 against 1+λ ≈ 3.3 for H3S at 180 K). Feeding that into
+the grid construction shrinks the head region, misplaces the Chebyshev cluster and inflates
+the convergence ratio - all of which get worse as T → Tc, and all of which are invisible at
+low temperature where the divergence is suppressed by exp(−Δ/kT).
+"""
+spectral_gap(w_static, deltaip::Vector{ComplexF64}, gap_prev::Float64) =
+    find_cDOS_pole(w_static, deltaip, gap_prev)
+
+
+"""
+    build_cDOS_wprime_workspace(inp, realAxisParameter, gap0_start)
+
+Head/tail ω'-workspace for the cDOS+μ approximation. The head/tail split is at
+wp_max = 2·gap0_start (kept within [10·domega, omega_c/2]); the head is a Chebyshev
+cluster around the pole of Θ(ω') and the tail is a static linear grid up to omega_c
+(step domega) whose kernels are built once. Only the Km/Kp channels are built (no χ channel).
+"""
+function build_cDOS_wprime_workspace(inp::arguments, realAxisParameter, gap0_start::Float64)
+    (w_static, kernel) = realAxisParameter
+
+    gap = (isfinite(gap0_start) && gap0_start > 0) ? gap0_start : inp.minGap
+    wp_max = clamp(2 * gap, 10 * inp.domega, inp.omega_c / 2)
+    pts_per_pole = inp.n_cheb    # Chebyshev points in the pole-anchored head region
+
+    wp_tail = collect(wp_max:inp.domega:inp.omega_c)     # static linear tail, kernels built once
+    wp_head = make_head_grid([gap], wp_max, pts_per_pole)  # Chebyshev cluster around the pole
+
+    return WPrimeWorkspace(wp_head, wp_tail, w_static; poles=[gap], ker=kernel)
+end
+
+
+"""
+    maybe_refresh_head!(ws, poles, w_static, pts_per_pole)
+
+Rebuild the head grid if the poles moved by more than WPRIME_REFRESH_TOL·wp_max since the
+last rebuild, or if their number changed. Each pole gets `pts_per_pole` Chebyshev points,
+so the head length varies with the number of poles. Only the nodes, their quadrature
+weights and the hat lattice are rebuilt - all O(n_head), with no kernel evaluation - so a
+moving pole is cheap. Returns true if rebuilt.
+"""
+function maybe_refresh_head!(ws::WPrimeWorkspace, poles::Vector{Float64},
+                             w_static, pts_per_pole::Int)
+    stale = length(poles) != length(ws.poles_prev) ||
+            any(!isfinite, ws.poles_prev) ||
+            maximum(abs.(poles .- ws.poles_prev)) > WPRIME_REFRESH_TOL * ws.wp_max
+    stale || return false
+
+    #println("Refresh head: ", length(ws.poles_prev)," --> ",length(poles))
+
+    ws.wp_head = make_head_grid(poles, ws.wp_max, pts_per_pole)
+    ws.n_head = length(ws.wp_head)
+    ws.wgt_head = trapz_weights(ws.wp_head)
+    ws.wp_full = vcat(ws.wp_head, ws.wp_tail)
+
+    # The hat lattice depends only on where the head *nodes* sit, not on the kernel, so this
+    # is O(n_head) and touches no kernel data - which is why a moving pole costs nothing.
+    ws.lat = HeadLattice(ws.ker, w_static, ws.wp_head, ws.ns)
+
+    ws.poles_prev = copy(poles)
+    return true
+end
+
+
+"""
+    wprime_trapz(ws, g)
+
+Scalar trapezoidal integral of g over the full ω'-grid of the workspace.
+"""
+function wprime_trapz(ws::WPrimeWorkspace, g::AbstractVector)
+    nh = ws.n_head
+    return dot(ws.wgt_head, view(g, 1:nh)) + dot(ws.wgt_tail, view(g, nh+1:length(g)))
+end
+
+

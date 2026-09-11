@@ -15,7 +15,7 @@ Piecewise interpolation for intervals in itpBounds with steps itpStepSize
 function interpolateInputs(itpDos, dos_en, itpStepSize, itpBounds, encut; itpWeep=nothing, Wen=nothing)
 
     if (length(itpStepSize)-1) != length(itpBounds)
-        error("Number of interpolation steps and interpolation bounds do not match!")
+        error("Number of interpolation steps (itpStepSize) and interpolation bounds (itpBounds) do not match: itpStepSize must have exactly one more entry than itpBounds. See the interpolation-grid section of the Troubleshooting page.")
     end
 
     # set up interval
@@ -28,7 +28,7 @@ function interpolateInputs(itpDos, dos_en, itpStepSize, itpBounds, encut; itpWee
         enStart = [Wen[findfirst(Wen .> dos_en[1])]]
         enEnd = [Wen[findlast(Wen .< dos_en[end])]]
     end
-    if encut != -1
+    if !isnothing(encut)
         enStart = [maximum(push!(enStart, -encut))]
         enEnd = [minimum(push!(enEnd, encut))]
     end
@@ -58,7 +58,8 @@ function interpolateInputs(itpDos, dos_en, itpStepSize, itpBounds, encut; itpWee
         # Calculate Weep at energy grid points
         Weep = itpWeep(epsilon, epsilon)
      else
-        Weep = nothing
+        # typed empty, not nothing, so that matval stays a single concrete tuple type
+        Weep = Matrix{Float64}(undef, 0, 0)
      end
  
      return epsilon, dos, Weep

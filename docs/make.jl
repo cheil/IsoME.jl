@@ -21,7 +21,10 @@ makedocs(
     pages = [
         "Home" => "index.md",
         "Input" => "Input.md",
+        "Matsubara Solver" => "MatsubaraSolver.md",
+        "Real Axis Solver" => "RealAxisSolver.md",
         "Best Practices" => "bestPractices.md",
+        "Troubleshooting" => "Troubleshooting.md",
         "FAQ"   => "FAQ.md",
     ],
     warnonly = false,

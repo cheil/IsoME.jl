@@ -6,7 +6,6 @@
 /userFcn/
 /docs/Manifest.toml
 /.vscode
-/devEnvIsoME/
-/testplot/
-*.png
+devEnvIsoME/
 .gitignore
+*.png

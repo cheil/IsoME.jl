@@ -51,7 +51,7 @@ To ensure correct behavior, the $\mu^*_{ME}$  value must therefore be reset as w
     inp = arguments(some input, muc_AD = 0.12)
     EliashbergSolver(inp)
     inp.muc_AD = 0.14
-    inp.muc_ME = -1
+    inp.muc_ME = NaN
     EliashbergSolver(inp)
     ```
 
@@ -64,7 +64,8 @@ The most convenient and recommended way to do this is just by overwriting the wh
     inp = arguments(some input, muc_AD = 0.14)
     EliashbergSolver(inp)
     ```
-Using this strategy makes it impossible to pass any unexpected input to `EliashbergSolver()`.
+By using this strategy, it is impossible to hand-over any unexpected input to the `EliashbergSolver()`.
+The same applies to `RealAxisSolver()`, which is driven by the same input structure.
 
 
 ## Convergence 
@@ -75,16 +76,18 @@ Accurate results can only be achieved through carefully conducted convergence te
 - **Convergence parameters in IsoME:**
 Considerable effort has been invested in selecting default parameters that, in most cases, ensure both computational efficiency and robust convergence.
 Nevertheless, convergence should always be checked.
-Convergence parameter include the Matsubara cutoff *omega_c* and the energy cutoff *encut*.
-In both cases, the ideal cutoff is bounded from above as the adaption formula of *muc_ME* breaks down for very large *omega_c* and an arbitrary high *encut* conflicts with the isotropic approximation.approximation.
+On the imaginary axis the convergence parameters are the frequency cutoff *omega_c* (the Matsubara cutoff here) and the energy cutoff *encut*.
+In both cases, the ideal cutoff is bounded from above as the adaption formula of *muc_ME* breaks down for very large *omega_c* and arbitrary high *encut*'s are incompatible with the isotropic approximation.
 
 Furthermore, the energy gird around the Fermi surface must be sufficiently dense. The steps and interpolation boundaries can be adapted through *itpStepSize* and *itpBounds*.
 
+The real-axis solver shares *omega_c* — there it is the cutoff of the ``\omega``-grid — and adds the frequency step *domega* (which also sets the resolution of the kernel) and, in vDOS calculations, the energy step *depsilon*.
+It reacts far more sensitively to these than the imaginary-axis solver does to its own — see [Real-axis grids and the kernel](@ref) and [The μ-update](@ref) on the [Troubleshooting](@ref) page for the symptoms of each.
+
 
 ## Ab-initio calculations with ``\mu^*``
-The choice of μ significantly influences the results. Traditionally, ``\mu^*`` is treated as an adjustable parameter and typically chosen within the range of 0.1 to 0.16 to fit experimental
-values.  
-For fully ab-initio calculations, ``\mu`` must be computed via
+The choice of μ significantly influences the results. Traditionally, ``\mu^*`` is treated as an adjustable parameter and typically chosen within the range of 0.1 to 0.16 to fit experimental values.  
+For fully ab-initio calculations, ``\mu`` must be computed from
 ```math
 \mu = N(\varepsilon_F)W(\varepsilon_F,\varepsilon_F)~,
 ```

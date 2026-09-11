@@ -18,21 +18,17 @@
 module IsoME
 
 
-export EliashbergSolver, arguments
+export EliashbergSolver, arguments, RealAxisSolver
 
 
-using DelimitedFiles        
-using Interpolations    
+using DelimitedFiles            # read in files   
+using Interpolations        
 using Plots, LaTeXStrings
-using Trapz                 
-using LinearAlgebra          
-using CSV, DataFrames       
-using Printf               
-using SparseIR              
-using LsqFit                
-using Roots                 
-using Term                 
-using Logging, LoggingExtras
+using Trapz                     # integration
+using LinearAlgebra             # 
+using Printf                    # Format console output, also imported by other packages
+using SparseIR                  # Intermediate basis, removable if we use a different approach for sparse sampling (Romans?)
+using Logging, LoggingExtras    # also imported by other packages
 using TOML
 
 
@@ -42,29 +38,34 @@ const Ry2meV = 13605.662285137
 const THz2meV = 4.13566553853599;
 const kb = 0.08617333262; # meV/K
 
+### input validation (defines @checked_kwdef, used by the struct below) ###
+include("InputValidation.jl")
+
 ### Define input struct ###
-@kwdef mutable struct arguments
+# inputs Eliashberg Solver
+@checked_kwdef mutable struct arguments
     # Parameters
-    temps::Vector{Number}   = [-1]        
-    muc_AD::Float64         = -1
-    omega_c::Float64        = 7000.0
-    muc_ME::Float64         = -1
-    mu::Float64             = -1  
-    ef::Float64             = -1
-    efW::Float64            = -1
-    mixing_beta::Number     = -1
-    nItFullCoul::Number     = 10
-    conv_thr::Float64       = 1e-4
-    minGap::Float64         = 0.1
-    N_it::Int64             = 5000   
-    encut::Float64           = 5000        # outer cutoff energies
-    shiftcut::Float64          = 2000      # cutoff shift & Ne
-    sparseSamplingTemp::Float64 = 2
-    typEl::Float64          = -1 
-    
+    temps::Vector{Float64}                  = [-1.0]        # concrete: Vector{Float64} is type-stable; Int entries auto-convert
+    muc_AD::Float64                         = NaN           # NaN == "not assigned" (isnan check); NaN never a valid μ*
+    omega_c::Float64                        = 7000.0        # frequency cutoff, shared by both solvers (Matsubara / real axis)
+    muc_ME::Float64                         = NaN
+    mu::Float64                             = NaN
+    ef::Float64                             = NaN           # NaN == "auto-extract from DOS file header"
+    efW::Float64                            = NaN           # NaN == "auto-extract from Weep file header"
+    mixing_beta::Float64                    = NaN
+    nItFullCoul::Int64                      = 10
+    conv_thr::Float64                       = 1e-4
+    minGap::Float64                         = 0.1
+    N_it::Int64                             = 5000
+    min_it::Int64                           = 10            # min iterations in eliashberg solver   
+    encut::Float64                          = 2000.0      # symmetric outer energy cutoff: window [-encut, encut]; also bounds χ & Nₑ
+    sparseSamplingTemp::Float64             = 2.0
+    typEl::Float64                          = NaN
+    flag_acon::Bool                         = false
+
     # interpolation
     itpStepSize::Vector{Int64}  = [1, 5, 50]
-    itpBounds::Vector{Float64}  = [100, 500]
+    itpBounds::Vector{Float64}  = [100.0, 500.0]
 
     # mode
     cDOS_flag::Int64    = 1
@@ -73,16 +74,18 @@ const kb = 0.08617333262; # meV/K
 
     # a2f input file
     a2f_file::String
-    ind_smear::Int64    = -1
+    ind_smear::Int64    = -1            # -1 == auto (all header/footer/smear indices: -1 == auto-detect)
     nsmear::Int64       = -1
     nheader_a2f::Int64  = -1
     nfooter_a2f::Int64  = -1
     a2f_unit::String    = ""
+    a2f_Nef::Float64    = NaN          # NaN == off; N(ε_F) used when α²F was computed. If set, α²F is
+                                       # rescaled by a2f_Nef/dosef (dosef read from the DOS file)
 
     # dos input file
     dos_file::String    = ""
-    nheader_dos::Number = -1
-    nfooter_dos::Number = -1
+    nheader_dos::Int64  = -1
+    nfooter_dos::Int64  = -1
     dos_unit::String    = ""
     spinDos::Int64      = 2
 
@@ -94,22 +97,31 @@ const kb = 0.08617333262; # meV/K
     Weep_col::Int64     = 3
     Wen_col::Int64      = 1
     Wen_file::String    = ""
-    nheader_Wen::Int64  = -1 
+    nheader_Wen::Int64  = -1
     nfooter_Wen::Int64  = -1
     Wen_unit::String    = ""
 
     # Output
-    outdir::String      = pwd() 
-    flag_figure::Int64  = 1
+    outdir::String              = pwd() 
+    flag_figure::Int64          = 1
     flag_writeSelfEnergy::Int64 = 0
-    material::String    = "Material"
-    returnTc::Bool      = false
-    testMode::Bool      = false
+    material::String            = "Material"
+    returnTc::Bool              = false
+    testMode::Bool              = false
+
+    # ----------- real axis inputs ----------- #
+    # linear ω-grid (cutoff: omega_c, see above)
+    domega::Float64             = 1.0       # ω-grid step size / meV; also the kernel table step
+    # ω'-chebyshev
+    n_cheb::Int64               = 1000      # number of chebyshev points around poles in ω'-integration
+    # ε-stepsize
+    depsilon:: Int64            = 10
 
 end
 
 
 ### include files ###
+include("CurveFit.jl")
 include("TcSearch.jl")
 include("ReadIn.jl")
 include("Interpolation.jl")
@@ -118,6 +130,20 @@ include("AllenDynes.jl")
 include("MuUpdate.jl")
 include("WriteOutput.jl")
 include("EliashbergEq.jl")
+include("Kernels.jl")
+include("wprimeGrid.jl")
+include("realAxisSolver.jl")
+include("realAxisEliashbergEq.jl")
+include("Acon.jl")
+
+
+### precompile workload ###
+# build a dummy input structure, so that the (single, non-specialising) code path of the
+# checked keyword constructor and of setproperty! ends up in the precompile cache
+let
+    inp = arguments(a2f_file = "")
+    inp.temps = [1.0]
+end
 
 
 end

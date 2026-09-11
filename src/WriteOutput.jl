@@ -100,7 +100,8 @@ end
 
 function printStartMessage(console::Console, inp, log_file; mode = 0)
 
-    strAuthors =  "  Authors: Christoph Heil, Dominik Spath, Eva Kogler\n\n"
+    strAuthors =  "  Authors: Christoph Heil, Dominik Spath, Eva Kogler\n"
+    strVersion = "  Version: $(get_current_package_version("IsoME"))\n\n"
 
     # parting line of each sub-table (empty table -> trivial line, never used)
     console.cDOS.partingLine = "-"^(sum(console.cDOS.width) + length(console.cDOS.width) + 1)
@@ -112,6 +113,7 @@ function printStartMessage(console::Console, inp, log_file; mode = 0)
     strMode = mode == 0 ? "Eliashberg Solver started" : "Real Axis Solver started"
 
     printTee(log_file, strAuthors)
+    printTee(log_file, strVersion)
     printTee(log_file, strLine)
 
     printTextCentered(strMode, strLine, file = log_file, bold = true)

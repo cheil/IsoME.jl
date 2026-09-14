@@ -1,6 +1,6 @@
 name = "IsoME"
 uuid = "5affe8ad-4ea4-4a13-a3c7-a7034cd8af9a"
-version = "1.1.0"
+version = "2.0.0"
 authors = ["Christoph Heil <christoph.heil@tugraz.at>", "Eva Kogler", "Dominik Spath"]
 
 [deps]

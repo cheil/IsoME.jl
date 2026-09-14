@@ -953,8 +953,7 @@ function createFigures(inp, matval, Delta0, temps, Tc, log_file)
         # Create a custom gradient
         my_gradient = cgrad(:RdBu, rev=true) 
         # Define gradient range
-        max_gradient_blue = 77               # Blue Gradient applies up to this value
-        max_gradient_red = 273               # Red Gradient applies up to this value
+        max_gradient_val = 77               # white (the gradient midpoint) sits at this temperature
         
         # normalize x: blue at 0 K, white at max_gradient_val, red at 2*max_gradient_val.
         # If the gap survives beyond 2*max_gradient_val the range is stretched to the

@@ -82,7 +82,6 @@ end
 
 Start message - Eliashberg Solver
 """
-
 function get_current_package_version(projectname::String = "IsoME")
     # Start from the parent of the file calling this function
     path = normpath(joinpath(@__DIR__, ".."))  # Go up from `src/` to package root

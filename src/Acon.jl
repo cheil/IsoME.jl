@@ -333,13 +333,12 @@ function Pade_separate(wsi, nsiw, real_c, gi)
     return g, ws
 end
 
-
+#=
 """
     NAC(wsi, real_c, g11i, gauxi)
 
 Use Nevanlinna package to analytically continue
 """
-#=
 function NAC(wsi, real_c, g11i, gauxi)
     """
     --------------------------------------------------------------------

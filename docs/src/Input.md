@@ -1,6 +1,6 @@
 # Input
 Input parameters are collected in the [composite type](https://docs.julialang.org/en/v1/manual/types/#Composite-Types) `arguments()`.
-Only the path to the ``\alpha^2F`` file is mandatory; everything else either has a default or is inferred during the run.
+Only the path to the ``\alpha^2F`` file is mandatory. Everything else either has a default or is inferred during the run.
 Fields that are meant to be inferred are left at a sentinel — `NaN` (real-valued fields), `-1` (integer fields such as line counts and column indices) or `""` (strings) — and are overwritten once their value is known.
 Because of this, we recommend creating a fresh `arguments()` instance for each call to `EliashbergSolver()` or `RealAxisSolver()` — see [Best practices](@ref).
 
@@ -328,6 +328,14 @@ If the *Weep_file* does not contain the energies, an additional *Wen_file* can b
     >
     > Column containing the ``W`` energy-grid values in `Weep_file` or `Wen_file`.
 
+
+
+## Docstring
+The same overview is available from the REPL through `?arguments`.
+
+```@docs
+arguments
+```
 
 
 # Version

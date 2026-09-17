@@ -1,23 +1,23 @@
 # IsoME
-IsoME solves the isotropic Eliashberg equations on either the imaginary or the real frequency axis.
-Both solvers collect their input parameters in the custom `arguments()` type, and both are driven by the same input files, so switching between them requires no more than calling a different function.
+IsoME solves the isotropic Eliashberg equations on the imaginary or the real frequency axis, by calling the [`EliashbergSolver()`](@ref "Matsubara Solver") or [`RealAxisSolver()`](@ref "Real Axis Solver") functions.
+Both solvers collect their input parameters in the custom `arguments()` type, and both are driven by the same input files.
 
 In its simplest form, IsoME requires only the Eliashberg spectral function ``\alpha^2 F`` to estimate the superconducting critical temperature ``T_c``.
-For more advanced calculations, input files containing the electronic density of states (DOS) and the screened Coulomb interaction ``W`` can be supplied.
-Depending on which of these are provided, the equations are solved within one of the following approximations:
+For more advanced calculations, input files containing the electronic density of states (DOS) and the screened Coulomb interaction ``W`` can be supplied, enabling to solve the Eliashberg equations in any of the following approximations:
 - cDOS``+\mu``: constant DOS with Morel-Anderson pseudopotential ``\mu^*``
 - vDOS``+\mu``: variable DOS with Morel-Anderson pseudopotential ``\mu^*``
 - vDOS``+W``: variable DOS with screened Coulomb interaction ``W(\varepsilon,\varepsilon')``
 
-In principle, a fourth level of approximation that combines the static Coulomb interaction ``W(\varepsilon,\varepsilon')`` with the constant DOS approximation exists.
+In principle, a fourth level of approximation that combines the static Coulomb interaction ``W(\varepsilon,\varepsilon')`` with the constant DOS approximation is implemented on the imaginary axis.
 However, this variant is not recommended, as it requires the same input data as the vDOS``+W`` approach while being less rigorous and offering no notable computational advantage.
+
 Alongside the Eliashberg results, estimates based on the Allen-Dynes and Allen-Dynes-McMillan formulas are always reported, and the self-energy components ``\Delta, Z, \chi, \phi`` can be saved at each temperature.
 
 ## The two solvers
 Imaginary-axis calculations are started with [`EliashbergSolver()`](@ref "Matsubara Solver"), which is based on the [IsoME](https://doi.org/10.1016/j.cpc.2025.109720) paper.
-On the imaginary axis all quantities are real and smooth, which makes this solver fast and robust — it is the natural choice for ``T_c`` searches, and its constant-DOS mode is fast enough for high-throughput calculations.
-Spectral quantities are not obtained directly, but the converged solution can be analytically continued to real frequencies with the implemented Padé approximation.
-This is usually the most convenient way to inspect real-frequency properties.
+The imaginary axis solver fast and robust and therefore the natural choice for ``T_c`` searches, and the constant-DOS mode is in particular suitable for high-throughput calculations.
+To obtain spectral quantities, the converged solution can be analytically continued to real frequencies with the implemented Padé approximation.
+
 
 Direct real-axis calculations are started with [`RealAxisSolver()`](@ref "Real Axis Solver"), which follows the real-axis formulation of [Simon](https://doi.org/10.48550/arXiv.2603.18199) and supports the same three approximations.
 It solves for the complex gap, renormalization and shift functions directly on a real-frequency grid, and is therefore the tool of choice whenever real-frequency self-energy components are needed without relying on an analytic continuation.
@@ -37,7 +37,7 @@ After adding the package to your environment it can be loaded via
 julia> using IsoME
 ```
 To search for ``T_c`` within the constant-DOS approximation using the Morel-Anderson pseudopotential, only the path to the ``\alpha^2F`` file has to be provided.
-We also recommend setting the output directory explicitly; otherwise, results are written to the current working directory.
+We also recommend setting the output directory explicitly; otherwise, results are written to the current working directory. If the output directory already exists, a consecutive number will be added to distinguish different runs.
 Inputs are collected by creating an instance of `arguments()`.
 ```julia-repl
 julia> inp = arguments(
@@ -94,7 +94,7 @@ If you have installed the package, you should be able to run `examples.jl` in an
 ```console
 ~ $ julia examples.jl
 ```
-If you have installed IsoME into a separate project environment, specify the path to the environment via
+If you have installed IsoME into a separate project environment, which is the recommended way, specify the path to the environment via
 ```console
 ~ $ julia --project=/path/to/environment/ examples.jl
 ```

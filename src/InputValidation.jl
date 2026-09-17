@@ -28,6 +28,10 @@ wrong field types are all reported by field name, see [`_construct`](@ref)).
 
 Defaults are re-evaluated on every call, so mutable defaults (e.g. `[-1.0]`) are not
 shared between instances.
+
+Like `Base.@kwdef`, a docstring written above the `@checked_kwdef` line documents the
+struct: the generated struct definition is marked with `Base.@__doc__`, which is what tells
+the doc system where in the macro output the docstring belongs.
 """
 macro checked_kwdef(expr)
     expr isa Expr && expr.head === :struct || error("@checked_kwdef needs a struct definition")
@@ -54,8 +58,12 @@ macro checked_kwdef(expr)
 
     defaults = Expr(:tuple, (Expr(:(=), n, d) for (n, d) in zip(fnames, fdefaults))...)
 
+    structdef = Expr(:struct, ismut, sname, newbody)
+
+    # `Base.@__doc__` marks the struct as the piece of this expansion a docstring above the
+    # macro call attaches to; without it `@doc` sees only the generated block and refuses.
     return esc(quote
-        $(Expr(:struct, ismut, sname, newbody))
+        Base.@__doc__ $structdef
 
         # defaults as a NamedTuple, freshly evaluated on every call
         _fielddefaults(::Type{$Tname}) = (; $defaults...)
@@ -64,6 +72,119 @@ macro checked_kwdef(expr)
         # `_construct` is compiled only once instead of once per set of keyword names
         $Tname(; kwargs...) = _construct($Tname, Pair{Symbol,Any}[k => v for (k, v) in kwargs])
     end)
+end
+
+
+"""
+    _removed
+
+Inputs of an earlier IsoME version that no longer exist, each with the line telling the
+user what replaces it. Consulted by [`_unknown_msg`](@ref), so that a script written
+against an older version fails with the migration step rather than with a bare "not a
+field". Add a row here whenever an input is removed or renamed.
+"""
+const _removed = Dict{Symbol,String}(
+    :shiftcut   => "removed in IsoME 2.0: `encut` is now the single ε-cutoff and bounds χ and Nₑ as well. Drop `shiftcut` and set `encut` to the value you used for it (the default moved from 5000 to 2000 meV accordingly)."
+)
+
+
+"""
+    _legacySentinel
+
+Fields whose "not set" sentinel changed from `-1` to `NaN` in IsoME 2.0. An explicit `-1`
+used to mean "infer this", and would now be taken at face value as a μ*, a mixing factor or
+an energy - a change of results with no error anywhere. These are rejected instead, see
+[`_check_legacy_sentinels`](@ref).
+"""
+const _legacySentinel = (:mu, :muc_AD, :muc_ME, :ef, :efW, :typEl, :mixing_beta)
+
+
+"""
+    _nonNegative
+
+Inputs that have no meaning below zero, each with the name used in the error message. A
+negative value here is always a typo or a leftover sentinel, and it would otherwise travel
+silently into the equations - a negative `muc_ME` flips the sign of the Coulomb term, a
+negative `N_it` skips the iteration loop entirely.
+
+`NaN` is not caught by this (every comparison with `NaN` is false), which is what keeps the
+"infer this during the run" sentinel of `mu`, `muc_AD`, `muc_ME` and `mixing_beta` working.
+"""
+const _nonNegative = (
+    mu          = "the Coulomb strength μ = N(ε_F)·W(ε_F,ε_F)",
+    muc_AD      = "the pseudopotential μ*_AD",
+    muc_ME      = "the pseudopotential μ*_ME",
+    mixing_beta = "the linear mixing factor",
+    conv_thr    = "the convergence threshold",
+    minGap      = "the gap threshold",
+    N_it        = "the maximum number of iterations",
+    min_it      = "the minimum number of iterations",
+)
+
+
+"""
+    _check_negative(fields)
+
+Reject a negative value on any input listed in [`_nonNegative`](@ref). `fields` is an
+iterable of `name => value` pairs, so that the same check serves the keyword constructor
+and [`checkInput!`](@ref), which re-runs it on the struct at the start of every solve to
+catch a field assigned after construction.
+
+Deliberately *not* hooked into `setproperty!`: `calcMucME` and `calcMucAD` assign a μ* that
+may come out negative and clamp it on the next line, which is a valid recovery, not a bad
+input.
+"""
+function _check_negative(fields)
+    bad = Pair{Symbol,Any}[]
+    for (k, v) in fields
+        haskey(_nonNegative, k) || continue
+        v isa Number && !(v isa Bool) && v < 0 && push!(bad, k => v)
+    end
+    isempty(bad) || _throw_negative(bad)
+    return nothing
+end
+
+
+@noinline function _throw_negative(bad::Vector{Pair{Symbol,Any}})
+    io = IOBuffer()
+    println(io, "invalid input to `arguments`:\n")
+    for (k, v) in bad
+        println(io, "  * ", k, " = ", v, "  - ", _nonNegative[k], " cannot be negative")
+    end
+    if any(first(p) in _legacySentinel for p in bad)
+        println(io, "\nTo have a value inferred during the run, leave the field out or pass NaN.")
+    end
+    throw(ArgumentError(String(take!(io))))
+end
+
+
+"""
+    _check_legacy_sentinels(kw)
+
+Reject an explicit `-1` on a field that used it as the "not set" sentinel before IsoME 2.0.
+"""
+function _check_legacy_sentinels(kw::Vector{Pair{Symbol,Any}})
+    hit = Symbol[]
+    for (k, v) in kw
+        k in _legacySentinel || continue
+        v isa Number && !(v isa Bool) && v == -1 && push!(hit, k)
+    end
+    isempty(hit) || _throw_legacy(hit)
+    return nothing
+end
+
+
+@noinline function _throw_legacy(hit::Vector{Symbol})
+    io = IOBuffer()
+    println(io, "outdated input value:\n")
+    for k in hit
+        println(io, "  * ", k, " = -1")
+    end
+    println(io, "\nBefore IsoME 2.0, -1 meant \"not set, infer this during the run\". The sentinel")
+    println(io, "is now NaN, so a -1 would be used as an actual value here.")
+    println(io, "\nTo have the value inferred, leave the field out (or pass NaN). If you really")
+    println(io, "mean -1, pass -1.0000001 or set the field after construction.")
+    throw(ArgumentError(String(take!(io))))
 end
 
 
@@ -80,6 +201,13 @@ function _construct(::Type{T}, kw::Vector{Pair{Symbol,Any}}) where {T}
     # unknown keyword arguments (e.g. fields renamed/removed since an older IsoME version)
     unknown = Symbol[k for (k, _) in kw if !(k in names)]
     isempty(unknown) || _throw_unknown(T, unknown)
+
+    # inputs that are still fields but whose sentinel value changed
+    _check_legacy_sentinels(kw)
+
+    # values outside the range an input can have (checked before the struct is built, so
+    # that the error points at the `arguments(...)` call rather than at the solve)
+    _check_negative(kw)
 
     defaults = _fielddefaults(T)
     vals = Vector{Any}(undef, length(names))
@@ -209,6 +337,12 @@ function _unknown_msg(@nospecialize(T), unknown)
     io = IOBuffer()
     println(io, "unknown input to `", nameof(T), "`:\n")
     for k in unknown
+        # a field that was removed in a past version gets its migration line instead of a
+        # guess: the replacement is rarely the nearest name
+        if haskey(_removed, k)
+            println(io, "  * ", k, " - ", _removed[k])
+            continue
+        end
         print(io, "  * ", k, " is not a field of `", nameof(T), "`")
         near = _closest(k, names)
         isempty(near) ? println(io) : println(io, " - did you mean ", join(near, ", "), "?")

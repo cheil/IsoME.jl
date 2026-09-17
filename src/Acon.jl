@@ -73,15 +73,7 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; shifti = Float64[
         saveACON(itemp, folder, ws_pade, delta_pade, "pade")
     end    
 
-    # ----- make plots -----
-    plot_font = "Computer Modern"
-    default(
-        fontfamily=plot_font,
-        linewidth=2,
-        framestyle=:box,
-        label=nothing,
-        grid=false
-    )
+    # ----- make plots ----- (style set once in setPlotDefaults)
 
     # NAC
     #=

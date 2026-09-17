@@ -25,8 +25,9 @@ function interpolateInputs(itpDos, dos_en, itpStepSize, itpBounds, encut; itpWee
         enStart = [dos_en[1]]
         enEnd = [dos_en[end]]
     else
-        enStart = [Wen[findfirst(Wen .> dos_en[1])]]
-        enEnd = [Wen[findlast(Wen .< dos_en[end])]]
+        wStart, wEnd = gridWindow(Wen, dos_en[1], dos_en[end], "W-energy")
+        enStart = [wStart]
+        enEnd = [wEnd]
     end
     if !isnothing(encut)
         enStart = [maximum(push!(enStart, -encut))]

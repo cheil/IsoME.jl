@@ -97,9 +97,9 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
 
     ### Interpolate remaining mat freg if sparse sampling ###
     if sparse_sampling_flag == 1
-        znormi_sparse = filter(!iszero, znormi)
-        phiphi_sparse = filter(!iszero, phiphi)
-        shifti_sparse = filter(!iszero, shifti)
+        znormi_sparse = znormi[ind_mat_freq]
+        phiphi_sparse = phiphi[ind_mat_freq]
+        shifti_sparse = shifti[ind_mat_freq]
 
         znormi_itp = linear_interpolation(wsi[ind_mat_freq], znormi_sparse, extrapolation_bc=Line())
         phiphi_itp = linear_interpolation(wsi[ind_mat_freq], phiphi_sparse, extrapolation_bc=Line())
@@ -174,8 +174,8 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
 
     # sparse sampling 
     if sparse_sampling_flag == 1
-        znormi_sparse = filter(!iszero, znormi)
-        phiphi_sparse = filter(!iszero, phiphi)
+        znormi_sparse = znormi[ind_mat_freq]
+        phiphi_sparse = phiphi[ind_mat_freq]
 
         znormi_itp = interpolate((wsi[ind_mat_freq],), znormi_sparse, Gridded(Linear()))
         phiphi_itp = interpolate((wsi[ind_mat_freq],), phiphi_sparse, Gridded(Linear()))
@@ -235,9 +235,9 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
 
     # sparse sampling
     if sparse_sampling_flag == 1
-        znormi_sparse = filter(!iszero, znormi)
-        deltai_sparse = filter(!iszero, deltai)
-        shifti_sparse = filter(!iszero, shifti)
+        znormi_sparse = znormi[ind_mat_freq]
+        deltai_sparse = deltai[ind_mat_freq]
+        shifti_sparse = shifti[ind_mat_freq]
 
         znormi_itp = linear_interpolation(wsi[ind_mat_freq], znormi_sparse, extrapolation_bc=Line())
         deltai_itp = linear_interpolation(wsi[ind_mat_freq], deltai_sparse, extrapolation_bc=Line())
@@ -293,8 +293,8 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
 
     # sparse sampling
     if sparse_sampling_flag == 1
-        znormi_sparse = filter(!iszero, znormi)
-        deltai_sparse = filter(!iszero, deltai)
+        znormi_sparse = znormi[ind_mat_freq]
+        deltai_sparse = deltai[ind_mat_freq]
 
         znormi_itp = linear_interpolation(wsi[ind_mat_freq], znormi_sparse, extrapolation_bc=Line())
         deltai_itp = linear_interpolation(wsi[ind_mat_freq], deltai_sparse, extrapolation_bc=Line())

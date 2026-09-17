@@ -31,13 +31,11 @@ self-energy components into `inp.outdir`. Returns the `Tc` bracket `[T_sc, T_nsc
 `inp.returnTc` is set, and `nothing` otherwise.
 """
 function RealAxisSolver(inp::arguments)
-    # do not show plots
-    default(show = false) 
-
     # placeholders: keep the error handler usable even if the run dies before the
     # log file exists
     log_file = IOBuffer()
     errorLogger = SimpleLogger(log_file, Logging.Error)
+    prevLogger = global_logger()
     Tc = [NaN, NaN]
 
     try
@@ -46,7 +44,7 @@ function RealAxisSolver(inp::arguments)
             strIsoME = printIsoME()
 
             ### Create directory
-            log_file, errorLogger = createDirectory!(inp, strIsoME)
+            log_file, errorLogger, prevLogger = createDirectory!(inp, strIsoME)
 
             ### solve
             Tc = run_realAxis(inp, log_file)
@@ -63,13 +61,15 @@ function RealAxisSolver(inp::arguments)
         # the caller sees the original exception, not the IsoME wrapper
         throw(ex isa IsoMEError ? ex.cause : ex)
     finally
-        # close & save - also on the way out of an error. sigint is disabled so
-        # that an impatient second Ctrl+C can not interrupt the cleanup itself
+        # close & save and hand the session's logger back - also on the way out of an
+        # error. sigint is disabled so that an impatient second Ctrl+C can not interrupt
+        # the cleanup itself
         if ~inp.testMode
-            # alias assigned once: capturing it below leaves `log_file` itself unboxed
+            # aliases assigned once: capturing them below leaves `log_file` itself unboxed
             lf = log_file
+            pl = prevLogger
             Base.disable_sigint() do
-                closeLog(lf)
+                finalizeLogging(lf, pl)
             end
         end
     end

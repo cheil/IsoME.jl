@@ -898,22 +898,12 @@ function createFigures(inp, matval, Delta0, temps, Tc, log_file)
     # values
     a2f_omega_fine, a2f_fine = matval
 
-    # defaults
-    plot_font = "Computer Modern"
-    default(
-        fontfamily=plot_font,
-        linewidth=2,
-        framestyle=:box,
-        label=nothing,
-        grid=false
-    )
-
-    # print a2F vs. energy
+    # print a2F vs. energy (style set once in setPlotDefaults)
     xlim_max = Int(round(maximum(a2f_omega_fine) / 10 * 1.01, RoundUp) * 10)
     xtick_val = 0:10:xlim_max
     ylim_max = Int(round(maximum(a2f_fine), RoundUp))
 
-    plot(a2f_omega_fine, a2f_fine,1)
+    plot(a2f_omega_fine, a2f_fine)
     xlims!(0, xlim_max)
     ylims!(0, ylim_max)
     if inp.material != "Material"

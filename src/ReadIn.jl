@@ -72,8 +72,7 @@ function InputParser!(inp::arguments, log_file; mode::Int64=0)
                 # interpolate dos/Weep on same grid
                 lowCut  = max(dos_en[1],   -inp.encut)
                 highCut = min(dos_en[end],  inp.encut)
-                enStart = Wen[findfirst(Wen .> lowCut)]
-                enEnd   = Wen[findlast( Wen .< highCut)]
+                enStart, enEnd = gridWindow(Wen, lowCut, highCut, "W-energy")
                 de = inp.depsilon
                 dos_en = collect(enStart:de:enEnd)
                 dos = itpDos(dos_en)
@@ -89,8 +88,7 @@ function InputParser!(inp::arguments, log_file; mode::Int64=0)
                 # interpolate 
                 dos_en, dos, Weep = interpolateInputs(itpDos, dos_en, inp.itpStepSize, inp.itpBounds, inp.encut)
             else 
-                enStart = dos_en[findfirst(dos_en .> -inp.encut)]
-                enEnd   = dos_en[findlast(dos_en .< inp.encut)]
+                enStart, enEnd = gridWindow(dos_en, -inp.encut, inp.encut, "DOS-energy")
                 de = inp.depsilon
                 dos_en = collect(enStart:de:enEnd)
                 dos = itpDos(dos_en)
@@ -232,6 +230,11 @@ Create directory.
 """
 function createDirectory!(inp::arguments, strIsoME::String)
 
+    # the logger in place before the run, handed back so that the solver can put it back
+    # when it is done (see `finalizeLogging`): IsoME must not leave a session logging into
+    # a closed log file of a finished run
+    prevLogger = global_logger()
+
     if inp.testMode # hidden outputs in test mode
         log_file = IOBuffer()
         errorLogger = SimpleLogger(log_file, Logging.Error)
@@ -243,7 +246,8 @@ function createDirectory!(inp::arguments, strIsoME::String)
             inp.outdir = inp.outdir * "/"
         end
 
-        # check if directory exists
+        # never write into an existing directory: append a run counter instead, so that
+        # consecutive runs into the same path land in <outdir>_1, <outdir>_2, ...
         idxDir = 1
         tempDir = inp.outdir[1:end-1]
         while isdir(inp.outdir)
@@ -276,8 +280,28 @@ function createDirectory!(inp::arguments, strIsoME::String)
         global_logger(tee_logger)
     end
 
-    return log_file, errorLogger
+    return log_file, errorLogger, prevLogger
 
+end
+
+
+"""
+    finalizeLogging(log_file, prevLogger)
+
+End of a run: flush and close the log file and put the logger that was active before the
+run back in place. Never throws.
+
+`createDirectory!` redirects `@warn`/`@info` into the run's log file through the global
+logger. Without this, that redirection would outlive the run and every later message of the
+session would be written to a log file that has since been closed.
+"""
+function finalizeLogging(log_file, prevLogger)
+    closeLog(log_file)
+    try
+        global_logger(prevLogger)
+    catch
+    end
+    return nothing
 end
 
 
@@ -288,6 +312,10 @@ Check which input files (a2f, dos, weep) exist.
 For real axis solver: Additionally check if cDOS+W mode has been chosen
 """
 function checkInput!(inp::arguments; realSolver::Bool=false)
+
+    # re-run the range check on the struct: the constructor already rejected a negative
+    # value, but the fields are mutable and may have been assigned since
+    _check_negative(k => getfield(inp, k) for k in keys(_nonNegative))
 
     # check input files / cDOS & Weep
     if ~isfile(inp.a2f_file)
@@ -480,7 +508,7 @@ function readIn_Dos(dos_file, ef::Float64=NaN, spin=2, unit="", nheader::Int=-1,
 
     ### Fermi energy
     if isnan(ef)
-        ef = extractFermiEnergy(header, unit, "Weep", outdir=outdir, logFile=logFile)
+        ef = extractFermiEnergy(header, unit, "Dos", outdir=outdir, logFile=logFile)
     end
 
     ### Convert
@@ -497,8 +525,10 @@ function readIn_Dos(dos_file, ef::Float64=NaN, spin=2, unit="", nheader::Int=-1,
         energies = energies .* Ry2meV
         dos = dos ./ Ry2meV
     elseif "Ha" == unit     # Hartree
-        energies = energies .* Ry2meV * 2
-        dos = dos ./ Ry2meV * 2
+        # the DOS is per unit energy, so it is divided by the *same* factor the energies
+        # are multiplied with: 1 Ha = 2 Ry
+        energies = energies .* (Ry2meV * 2)
+        dos = dos ./ (Ry2meV * 2)
     else
         error("Could not determine the unit of the DOS-file. Set it manually via dos_unit or check the file header (supported units: meV, eV, THz, Ry, Ha).")
     end
@@ -645,10 +675,12 @@ function extractFermiEnergy(header, unit, nameFile=nothing; outdir="./", logFile
             ef = ef
         elseif "eV" == unit     # eV
             ef = ef .* 1000
+        elseif "THz" == unit    # THz
+            ef = ef .* THz2meV
         elseif "Ry" == unit      # Ry
             ef = ef .* Ry2meV
         elseif "Ha" == unit     # Hartree
-            ef = ef .* Ry2meV * 2
+            ef = ef .* (Ry2meV * 2)
         else
             error("Could not determine the unit of the " * nameFile * "-file. Set it manually via " * nameFile * "_unit or check the file header (supported units: meV, eV, THz, Ry, Ha).")
         end
@@ -682,12 +714,54 @@ function getUnit(header, nameFile=nothing)
         end
     end
 
-    println("Auto-extraction of unit from " * nameFile * "-file failed! Please type the correct unit case sensitive into the console (it might be that you need to type it twice due to a bug in julia):")
-    unit = readline()
+    # No prompt here: the solver is routinely run non-interactively (batch queue, CI,
+    # notebook), where reading from stdin blocks forever or consumes unrelated input.
+    field = nameFile == "a2F"  ? "a2f_unit"  :
+            nameFile == "Dos"  ? "dos_unit"  :
+            nameFile == "Weep" ? "Weep_unit" : "the corresponding *_unit input"
+    error("Could not determine the unit of the " * string(nameFile) * "-file from its header.\n" *
+          "Set it manually via " * field * " (supported units: meV, eV, THz, Ry, Ha), " *
+          "or add the unit to the file header.\n\n")
+end
 
-    return unit
+
+"""
+    gridWindow(en, lowCut, highCut, nameGrid) -> enStart, enEnd
+
+First point of the grid `en` strictly above `lowCut` and last one strictly below `highCut`.
+
+Guarded: where the window and the grid do not overlap, `findfirst`/`findlast` return
+`nothing` and indexing with it would only surface as a `MethodError` further down. Here it
+gives a message naming both ranges instead.
+"""
+function gridWindow(en::AbstractVector, lowCut::Real, highCut::Real, nameGrid::AbstractString)
+    iLow  = findfirst(>(lowCut), en)
+    iHigh = findlast(<(highCut), en)
+
+    (isnothing(iLow) || isnothing(iHigh) || iLow > iHigh) && error(
+        "The " * nameGrid * " grid (" * string(round(first(en), sigdigits=5)) * " … " *
+        string(round(last(en), sigdigits=5)) * " meV) does not overlap the requested energy window [" *
+        string(round(lowCut, sigdigits=5)) * ", " * string(round(highCut, sigdigits=5)) *
+        "] meV. Check encut and the energy range of the input file.\n\n")
+
+    return en[iLow], en[iHigh]
+end
 
 
+"""
+    a2fSupportMax(a2f_omega, a2f) -> ω_max
+
+Largest frequency at which α²F rises above the 1e-2 support threshold, i.e. the
+characteristic phonon cutoff entering the μ* conversion formulas.
+
+Guarded: an α²F that stays below the threshold everywhere leaves the masked vector empty,
+and `maximum` of an empty collection would abort with an `ArgumentError` that names neither
+the file nor the smearing.
+"""
+function a2fSupportMax(a2f_omega, a2f)
+    ω = a2f_omega[a2f.>0.01]
+    isempty(ω) && error("α²F stays below 1e-2 over the whole frequency range, so no characteristic phonon frequency can be determined. Check the a2F-file and the selected smearing (ind_smear), or set μ* manually via muc_AD / muc_ME.\n\n")
+    return maximum(ω)
 end
 
 
@@ -716,7 +790,7 @@ Pellegrini, Ab initio methods for superconductivity
 DOI: 10.1038/s42254-024-00738-9
 """
 function calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
-    inp.muc_ME = inp.muc_AD / (1 + inp.muc_AD * log(maximum(a2f_omega[a2f.>0.01]) / phonon_cutoff))
+    inp.muc_ME = inp.muc_AD / (1 + inp.muc_AD * log(a2fSupportMax(a2f_omega, a2f) / phonon_cutoff))
 
     if inp.muc_ME < 0 || inp.muc_ME > 0.8 || inp.muc_ME > 3 * inp.muc_AD
         inp.muc_ME = minimum([3 * inp.muc_AD, 0.8])
@@ -728,7 +802,7 @@ function calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
         printWarning(text, log_file)
 
         wc_plot = range(min(100, floor(phonon_cutoff/2)), max(ceil(2*phonon_cutoff), 1e4), 500)
-        muc_ME_plot = inp.muc_AD ./ (1 .+ inp.muc_AD .* log.(maximum(a2f_omega[a2f.>0.01]) ./ wc_plot))
+        muc_ME_plot = inp.muc_AD ./ (1 .+ inp.muc_AD .* log.(a2fSupportMax(a2f_omega, a2f) ./ wc_plot))
 
         plot(wc_plot, muc_ME_plot)
         savefig(inp.outdir*"muc_ME.png")
@@ -744,7 +818,7 @@ Pellegrini, Ab initio methods for superconductivity
 DOI: 10.1038/s42254-024-00738-9
 """
 function calcMucAD(inp, a2f, a2f_omega, phonon_cutoff)
-    inp.muc_AD = inp.muc_ME / (1 - inp.muc_ME * log(maximum(a2f_omega[a2f.>0.01]) / phonon_cutoff))
+    inp.muc_AD = inp.muc_ME / (1 - inp.muc_ME * log(a2fSupportMax(a2f_omega, a2f) / phonon_cutoff))
 
     if inp.muc_AD < 0 || inp.muc_AD > 0.2
         inp.muc_AD = 0.12   # default
@@ -760,25 +834,68 @@ Pellegrini, Ab initio methods for superconductivity
 DOI: 10.1038/s42254-024-00738-9
 """
 function calcMucs(inp, ef, a2f, a2f_omega, phonon_cutoff, log_file)
+    inp.muc_AD = inp.mu / (1 + inp.mu * log(ef / a2fSupportMax(a2f_omega, a2f)))
+
     # μ*_ME < 4*μ
     if phonon_cutoff > ef * exp(3 / (4 * inp.mu))
         phonon_cutoff = ef * exp(3 / (4 * inp.mu))
 
         text = "Matsubara cutoff would lead to μ*_ME > 4*μ."
-        text *= "\nomega_c has been set to a smaller value."
+        text *= "\nA smaller cutoff has been used for the μ → μ*_ME conversion; omega_c itself is unchanged,"
+        text *= "\nso the solver still runs at omega_c = " * string(inp.omega_c) * " meV."
         text *= "\nCheck muc_ME.png and the typical electronic energy typEl!"
         text *= "\nSee the μ* conversion section of the Troubleshooting page and the pseudopotential section of the Input documentation."
         printWarning(text, log_file)
 
         wc_plot = range(min(100, floor(phonon_cutoff/2)), max(ceil(2*phonon_cutoff), 1e4), 500)
-        muc_ME_plot = inp.muc_AD ./ (1 .+ inp.muc_AD .* log.(maximum(a2f_omega[a2f.>0.01]) ./ wc_plot))
+        muc_ME_plot = inp.muc_AD ./ (1 .+ inp.muc_AD .* log.(a2fSupportMax(a2f_omega, a2f) ./ wc_plot))
 
         plot(wc_plot, muc_ME_plot)
         savefig(inp.outdir*"muc_ME.png")
     end
 
-    inp.muc_AD = inp.mu / (1 + inp.mu * log(ef / maximum(a2f_omega[a2f.>0.01])))
     if inp.include_Weep == 0
         inp.muc_ME = inp.mu / (1 + inp.mu * log(ef / phonon_cutoff))
     end
+
+    checkMucsFromMu(inp, ef, a2fSupportMax(a2f_omega, a2f), phonon_cutoff)
+end
+
+
+"""
+    checkMucsFromMu(inp, ef, omega_ph, phonon_cutoff)
+
+Reject a negative μ* produced by the μ → μ* conversion in [`calcMucs`](@ref).
+
+Unlike `calcMucME`/`calcMucAD`, which fall back to a sensible value, there is nothing to
+fall back to here: a negative μ* means the Morel-Anderson denominator `1 + μ·ln(ε_el/ω)`
+has gone through zero, so the conversion is outside its range of validity and any value it
+returns is meaningless. It would otherwise enter the equations as an *attractive* Coulomb
+interaction and raise `Tc` instead of lowering it.
+"""
+function checkMucsFromMu(inp, ef, omega_ph, phonon_cutoff)
+    bad = Pair{Symbol,Float64}[]
+    inp.muc_AD < 0 && push!(bad, :muc_AD => inp.muc_AD)
+    inp.muc_ME < 0 && push!(bad, :muc_ME => inp.muc_ME)
+    isempty(bad) && return nothing
+
+    sig(x) = string(round(x, sigdigits=5))
+
+    text = "The conversion from μ to μ* gave a negative pseudopotential:\n"
+    for (name, val) in bad
+        text *= "\n  * " * string(name) * " = " * sig(val)
+    end
+    text *= "\n\nμ* = μ / (1 + μ·ln(ε_el/ω)) is only meaningful while the denominator stays positive,"
+    text *= "\ni.e. while the typical electron energy ε_el is well above the cutoff frequency ω."
+    text *= "\nHere ε_el = " * sig(ef) * " meV against ω = " * sig(omega_ph) * " meV (μ*_AD)"
+    text *= " and ω = " * sig(phonon_cutoff) * " meV (μ*_ME).\n"
+    text *= "\nCheck, in this order:"
+    text *= "\n  * typEl = " * sig(inp.typEl) * " meV - the typical electron energy. It must be in meV;"
+    text *= "\n    a value left in eV or Ry is the most common cause. When typEl is unset, ef or efW is used."
+    text *= "\n  * omega_c = " * sig(inp.omega_c) * " meV - enters μ*_ME; too large a cutoff drives the denominator negative."
+    text *= "\n  * mu = " * sig(inp.mu) * " - the Coulomb strength N(ε_F)·W(ε_F,ε_F)."
+    text *= "\n\nSetting muc_AD (and muc_ME) directly skips the conversion."
+    text *= "\nSee the μ* conversion section of the Troubleshooting page and the pseudopotential section of the Input documentation.\n\n"
+
+    error(text)
 end

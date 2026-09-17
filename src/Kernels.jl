@@ -794,9 +794,16 @@ function kernel_progress_interval(total_steps, progress_state)
     return max(1, cld(total_steps, progress_state.target))
 end
 
+# The in-place bar redraws itself with "\r", which only blanks the line on a real terminal.
+# With stdout redirected (batch job, CI log, `julia run.jl > out.txt`) every frame would
+# instead be appended, so the bar is drawn only on a TTY. The completed bar written to the
+# log file by `finish_kernel_progress` is unaffected.
+isProgressTTY() = stdout isa Base.TTY
+
 function redraw_kernel_progress(progress_state)
     spinner = raw"-\|/"[mod(progress_state.spinner[], 4) + 1]
     progress_state.spinner[] += 1
+    isProgressTTY() || return
     done = progress_state.printed[]
     remaining = progress_state.target - done
     print("\r" * progress_state.prefix * string(spinner) * "" *  "="^done * " "^remaining * "|")
@@ -813,6 +820,8 @@ function finish_kernel_progress(log_file, progress_state)
     progress_state.printed[] = progress_state.target
     progress_state.spinner[] = 2
     redraw_kernel_progress(progress_state)
+    # off a TTY nothing was drawn, so print the finished bar once instead of a bare newline
+    isProgressTTY() || print(progress_state.prefix * "|" * "="^progress_state.target * "|")
     print("\n")
     if !isnothing(log_file)
         print(log_file, progress_state.prefix * "|" *  "="^progress_state.target * "|\n")

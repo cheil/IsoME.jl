@@ -410,10 +410,10 @@ uuid = "92d709cd-6900-40b7-9082-c6be49f344b6"
 version = "0.2.6"
 
 [[deps.IsoME]]
-deps = ["DelimitedFiles", "Interpolations", "LaTeXStrings", "LinearAlgebra", "Logging", "LoggingExtras", "Plots", "Printf", "SparseIR", "Trapz"]
+deps = ["DelimitedFiles", "Interpolations", "LaTeXStrings", "LinearAlgebra", "Logging", "LoggingExtras", "Plots", "Printf", "SparseIR", "TOML", "Trapz"]
 path = "/itp/MooseFS/spathd/Codes/IsoME/IsoME_Dev"
 uuid = "5affe8ad-4ea4-4a13-a3c7-a7034cd8af9a"
-version = "1.1.0"
+version = "2.0.0"
 
 [[deps.JLFzf]]
 deps = ["REPL", "Random", "fzf_jll"]

@@ -23,7 +23,7 @@ Solve the eliashberg eq. self-consistently for a fixed temperature
 function solve_eliashberg(itemp, inp, console, matval, log_file)
     # destruct inputs
     (a2f_omega_fine, a2f_fine, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap) = matval
-    (; cDOS_flag, include_Weep, omega_c, nItFullCoul, muc_ME, mu_flag, outdir, sparseSamplingTemp, flag_acon) = inp
+    (; cDOS_flag, include_Weep, omega_c, nItFullCoul, muc_ME, mu_flag, outdir, sparseSamplingTemp, flag_acon, min_it) = inp
 
     # active output table (mode 0 populates cDOS or vDOS by cDOS_flag)
     table = cDOS_flag == 1 ? console.cDOS : console.vDOS
@@ -255,8 +255,8 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
 
 
         ##### check convergence & termination criterion #####
-        minIt = 15
-        if err_delta < inp.conv_thr && i_it > maximum([minIt, inp.nItFullCoul+1])
+        # both solvers honour min_it; the Coulomb ramp still has to have finished
+        if err_delta < inp.conv_thr && i_it > maximum([min_it, inp.nItFullCoul+1])
             println(replace(table.Hline, "." => " "))
             printstyled("\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 
@@ -314,7 +314,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
         end
 
         # Gap too small
-        if data[2] < inp.minGap && i_it > maximum([minIt, inp.nItFullCoul+1])
+        if data[2] < inp.minGap && i_it > maximum([min_it, inp.nItFullCoul+1])
             println(replace(table.Hline, "." => " "))
             printstyled("\nTemperature (T = " * string(itemp) * " K) too high, gap value already smaller than "*string(round(inp.minGap, digits=2))*" meV!\n\n"; bold=false)
 

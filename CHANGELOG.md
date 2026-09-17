@@ -37,6 +37,8 @@ message.
 - **`RealAxisSolver`**, which solves the Eliashberg equations directly on the real frequency
   axis in cDOS+μ, vDOS+μ and vDOS+W. Same `arguments`, same input files as
   `EliashbergSolver`. New inputs: `domega`, `n_cheb`, `depsilon`, `min_it`.
+- `min_it` is honoured by both solvers. The imaginary-axis solver previously used a fixed
+  minimum of 15 iterations, so with the default `min_it = 10` it may now converge earlier.
 - `flag_acon`: Padé continuation of the converged imaginary-axis solution to real
   frequencies, written to `outdir/ACON/`.
 - `a2f_Nef`: rescales α²F to the N(ε_F) of the DOS file when the two were computed with

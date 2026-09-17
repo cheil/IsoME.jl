@@ -83,13 +83,13 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     shiwp = trapz(dos_en, shkernel')
 
     for iw in ind_mat_freq # loop over omega
-        # Eq. (4.4) in Picket, PRB 26, 1186 (1982)
+        # Eq. (4.4) in Pickett, PRB 26, 1186 (1982)
         tmp1 = lambdai[abs.(iw .- nsiw_vec).+1] 
         tmp2 = lambdai[iw.+nsiw_vec]
         lambdam = tmp1 .- tmp2
         lambdap = tmp1 .+ tmp2
 
-        # Eqs. (4.1-4.3) in Picket, PRB 26, 1186 (1982) for FBW
+        # Eqs. (4.1-4.3) in Pickett, PRB 26, 1186 (1982) for FBW
         znormi[iw] = znormi[iw] + dot(ziwp, lambdam)
         phiphi[iw] = phiphi[iw] + dot(phiwp, lambdap)
         shifti[iw] = shifti[iw] + dot(shiwp, lambdap)
@@ -162,7 +162,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
     phici = -trapz(dos_en, ckernel)
 
     for iw in ind_mat_freq 
-        # Eq. (4.4) in Picket, PRB 26, 1186 (1982)
+        # Eq. (4.4) in Pickett, PRB 26, 1186 (1982)
         tmp1 = lambdai[abs.(iw .- nsiw_vec).+1] 
         tmp2 = lambdai[iw.+nsiw_vec]
         lambdam = tmp1 .- tmp2
@@ -184,7 +184,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
         phiphi = phiphi_itp[wsi[1:nsiw]]
     end 
 
-    # Eqs. (14)-(18) in Pellegrini, Phys- Mater. 5 024007(2022) 
+    # Eqs. (14)-(18) in Pellegrini, Heid & Sanna, J. Phys. Mater. 5, 024007 (2022)
     znormi = 1.0 .+ π * kb * itemp .* znormi ./ wsi
     phiphi = π * kb * itemp .* phiphi
 
@@ -227,7 +227,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
         tmp2 = lambdai[iw.+nsiw_vec]
         lambdam = tmp1 .- tmp2
         lambdap = tmp1 .+ tmp2
-        # Eqs. (4.1-4.3) in Picket, PRB 26, 1186 (1982) for FBW
+        # Eqs. (4.1-4.3) in Pickett, PRB 26, 1186 (1982) for FBW
         znormi[iw] = znormi[iw] + dot(ziwp, lambdam)
         deltai[iw] = deltai[iw] + dot(deiwp, lambdap .- 2 * wgCoulomb * muc)
         shifti[iw] = shifti[iw] + dot(shiwp, lambdap)
@@ -285,7 +285,7 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
         lambdam = tmp1 .- tmp2
         lambdap = tmp1 .+ tmp2
 
-        # Eqs. (4.1-4.3) in Picket, PRB 26, 1186 (1982) for FBW
+        # Eqs. (4.1-4.3) in Pickett, PRB 26, 1186 (1982) for FBW
         znormi[iw] = znormi[iw] + dot(ziwp, lambdam)
         deltai[iw] = deltai[iw] + dot(deiwp, lambdap .- 2 * wgCoulomb * muc)
     end 

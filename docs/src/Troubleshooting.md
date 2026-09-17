@@ -18,8 +18,8 @@ IsoME distinguishes two kinds of messages:
   produced.
 
 Some checks also drop diagnostic artifacts into the output directory: `muError.png` / `muError.dat`
-for a failed [μ-update](@ref "The μ-update"), and `muc_ME.png` for the
-[μ\* conversion](@ref "μ* conversion").
+and `muError_shift.png` / `muError_shift.dat` for a failed [μ-update](@ref "The μ-update"), and
+`muc_ME.png` for the [μ\* conversion](@ref "μ* conversion").
 
 ### The output directory contains only a log.txt
 
@@ -30,7 +30,7 @@ files are written at different times, which is what makes the state readable:
 | File | Written |
 |------|---------|
 | `log.txt` | opened when the run starts, appended to throughout |
-| `CRASH` | only when a **fatal error** was caught — never for anything else |
+| `CRASH` | whenever an exception was caught — a fatal error, or an optional step that failed (see [Optional output steps failed](@ref)) |
 | `Info.txt`, `Summary.dat`, figures | only after the equations are solved, at the very end of a successful run |
 
 So a lone `log.txt` means the run neither finished nor hit a handled error. The log itself cannot
@@ -64,39 +64,47 @@ formats, and the [FAQ](@ref) for the assumed column layout.
 
 | Message | Cause | What to do |
 |---------|-------|------------|
-| `Invalid path to a2f-file!` | *a2f_file* does not point to an existing file | Check the path; use an absolute path if in doubt. |
-| `Invalid path to Dos-file!` | *dos_file* missing, but required (`cDOS_flag = 0` or `include_Weep = 1`) | Provide a DOS file, or switch to `cDOS_flag = 1` if a constant DOS is intended. |
-| `Invalid path to Weep or Wen-file!` | `include_Weep = 1` but *Weep_file* (or *Wen_file*) is missing | Provide the file, or set `include_Weep = 0` to use the μ approximation. |
-| `Invalid cDOS_flag value. …` | *cDOS_flag* is not 0 or 1 | Use `0` (vDOS) or `1` (cDOS). |
-| `Invalid include_Weep value. …` | *include_Weep* is not 0 or 1 | Use `0` (μ approximation) or `1` (W(ε, ε′)). |
+| `Invalid path to a2f-file!` | `a2f_file` does not point to an existing file | Check the path; use an absolute path if in doubt. |
+| `Invalid path to Dos-file!` | `dos_file` missing, but required (`cDOS_flag = 0` or `include_Weep = 1`) | Provide a DOS file, or switch to `cDOS_flag = 1` if a constant DOS is intended. |
+| `Invalid path to Weep or Wen-file!` | `include_Weep = 1` but `Weep_file` (or `Wen_file`) is missing | Provide the file, or set `include_Weep = 0` to use the μ approximation. |
+| `Invalid cDOS_flag value. …` | `cDOS_flag` is not 0 or 1 | Use `0` (vDOS) or `1` (cDOS). |
+| `Invalid include_Weep value. …` | `include_Weep` is not 0 or 1 | Use `0` (μ approximation) or `1` (W(ε, ε′)). |
 | `The real-axis solver only supports the vDOS+W approximation …` | `RealAxisSolver` called with `include_Weep = 1` and `cDOS_flag = 1` | Set `cDOS_flag = 0`. The real-axis solver has no cDOS+W mode. |
-| `Unknown mode! …` | *cDOS_flag* / *include_Weep* combination is not a supported mode | Check both flags against the modes in the [Input](@ref) page. |
-| `Couldn't write into <outdir>! …` | *outdir* is not writable or does not exist | Fix the path or the permissions; the parent directory must exist. |
-| `Could not determine the unit of the <file>-file. …` | The unit in the file header was not recognized | Units are case-sensitive; supported are **meV, eV, THz, Ry, Ha**. Set it manually via the matching `*_unit` flag (*a2f_unit*, *dos_unit*, *Weep_unit*, *Wen_unit*). See [FAQ Q1](@ref "FAQ"). |
-| `Error while reading the fermi energy from the <file>-file.` | The header line for the Fermi energy could not be parsed | Set it manually via *ef* / *efW*, or check the file header. |
+| `Unknown mode! …` | `cDOS_flag` / `include_Weep` combination is not a supported mode | Check both flags against the modes in the [Input](@ref) page. |
+| `Couldn't write into <outdir>! …` | `outdir` is not writable, or the path is invalid | Fix the path or the permissions. Missing parent directories are created automatically. |
+| `Could not determine the unit of the <file>-file. …` | The unit in the file header was not recognized | Units are case-sensitive; supported are **meV, eV, THz, Ry, Ha**. Set it manually via the matching `*_unit` flag (`a2f_unit`, `dos_unit`, `Weep_unit`, `Wen_unit`). See [FAQ Q1](@ref "FAQ"). |
+| `Error while reading the fermi energy from the <file>-file.` | The header line for the Fermi energy could not be parsed | Set it manually via `ef` / `efW`, or check the file header. |
 | `Could not extract the Fermi energy from the <file>-file.` | Parsing ran but matched no Fermi-energy value | Same as above. |
 | `The first column of the <file>-file holds no numeric entry …` | Header/footer auto-detection found no numbers in the first column | Check the column layout of the file, or set the header/footer size manually via `nheader_*` / `nfooter_*`. |
-| `α²F stays below 1e-2 over the whole frequency range …` | The selected ``\alpha^2F`` column is (almost) zero everywhere | Check the ``\alpha^2F`` file and the selected smearing column *ind_smear*; the unit conversion may also have scaled the values away. |
-| `The a2F frequency grid does not reach 2·domega = …` | *domega* is larger than half the first phonon frequency of the ``\alpha^2F`` grid | Reduce *domega*, or check that the ``\alpha^2F`` file and its unit are read correctly. |
-| `The density of states is zero over the whole energy range.` | The column read as the DOS contains only zeros | Check *dos_file*, its column layout and *spinDos*. |
-| `a2f_Nef must be positive (got …).` | *a2f_Nef* was set to a non-positive value | Pass the ``N(\varepsilon_F)`` used for the ``\alpha^2F`` calculation, or leave it at `NaN` to disable the rescaling. |
+| `α²F stays below 1e-2 over the whole frequency range …` | The selected ``\alpha^2F`` column is (almost) zero everywhere | Check the ``\alpha^2F`` file and the selected smearing column `ind_smear`; the unit conversion may also have scaled the values away. |
+| `The a2F frequency grid does not reach 2·domega = …` | `domega` is larger than half the highest frequency of the ``\alpha^2F`` grid | Reduce `domega`, or check that the ``\alpha^2F`` file and its unit are read correctly. |
+| `The density of states is zero over the whole energy range.` | The column read as the DOS contains only zeros | Check `dos_file`, its column layout and `spinDos`. |
+| `a2f_Nef must be positive (got …).` | `a2f_Nef` was set to a non-positive value | Pass the ``N(\varepsilon_F)`` used for the ``\alpha^2F`` calculation, or leave it at `NaN` to disable the rescaling. |
 
 ### Errors from `arguments()` itself
 
-The fields of `arguments` are concretely typed, so a wrong keyword is caught when the input structure
-is built — before any solver runs. Two messages come from there:
+The keywords of `arguments` are checked against the field names and the fields are concretely typed,
+so a wrong input is caught when the input structure is built — before any solver runs. Four messages
+come from there:
 
 - *unknown input to `arguments`* — the keyword is not a field. Every offending name is listed with a
-  "did you mean …?" suggestion, which is what a renamed or misspelled field looks like.
-- *invalid input to `arguments`* — a required keyword (*a2f_file*) is missing, or a value cannot be
+  "did you mean …?" suggestion, which is what a renamed or misspelled field looks like. An input that
+  was removed in 2.0 (e.g. `shiftcut`) instead gets a line naming what replaces it.
+- *invalid input to `arguments`* — a required keyword (`a2f_file`) is missing, or a value cannot be
   converted to the declared type. All offending fields are reported at once, each with its expected
   type and a hint (e.g. *pass a vector, e.g. temps = [10.0]*).
+- *invalid input to `arguments`*, reporting a negative value — `mu`, `muc_AD`, `muc_ME`,
+  `mixing_beta`, `conv_thr`, `minGap`, `N_it` and `min_it` have no meaning below zero and are
+  rejected here, and again at the start of a solve in case the field was assigned afterwards.
+- *outdated input value* — an explicit `-1` on `mu`, `muc_AD`, `muc_ME`, `ef`, `efW`, `typEl` or
+  `mixing_beta`. Before IsoME 2.0 these used `-1` as the "not set" sentinel; it is now `NaN`, so a
+  `-1` would be taken at face value. Leave the field out, or pass `NaN`.
 
 `?arguments` lists every field with its type.
 
 ## The μ-update
 
-In the vDOS and vDOS+W approximations the chemical potential ``\mu`` is fixed at every temperature
+In the vDOS+μ and vDOS+W approximations the chemical potential ``\mu`` is fixed at every temperature
 by charge neutrality: the electron number in the superconducting state must match the normal state.
 IsoME solves this by finding the root of ``N_e^{\text{nsc}}(\mu) - N_e^{\text{sc}}(\mu)``. Two fatal
 errors come from this root find, both raised `while solving the Eliashberg equations`:
@@ -115,39 +123,39 @@ Both write two diagnostics to the output directory:
   grid. ``N_e`` is obtained from an ``\omega``-integral of ``\chi``, so if ``\chi`` has **not decayed
   to ``\approx 0`` at the edge of its grid** the integral is truncated and the update cannot
   converge. This is the direct symptom of a too-small cutoff (real axis: increase
-  *omega_c*, see below).
+  `omega_c`, see below).
 
 On the **real axis**, the electron number is obtained from an ``\omega``-integral of the shift
 channel, and the accuracy of the μ-update is governed by two convergence parameters:
 
-- **The μ-update diverges — increase *omega_c*.**
+- **The μ-update diverges — increase `omega_c`.**
   The shift ``\chi(\omega)`` decays more slowly than ``\Delta(\omega)`` or ``Z(\omega)``, so it is
-  usually ``\chi`` that dictates how large the cutoff has to be. If *omega_c* is too small, the
+  usually ``\chi`` that dictates how large the cutoff has to be. If `omega_c` is too small, the
   tail of the integral is truncated, the electron number is systematically wrong, and the root
   finder walks ``\mu`` away from the Fermi level. The *ef-mu* column in the console then grows from
   iteration to iteration instead of settling.
-  **Fix:** increase *omega_c* until ``\mu`` settles, and check `muError_shift.png` to confirm that
+  **Fix:** increase `omega_c` until ``\mu`` settles, and check `muError_shift.png` to confirm that
   ``\chi`` has decayed to ``\approx 0`` at the edge of the grid. ``Z``, ``\Delta`` and ``\chi`` share
-  the single cutoff *omega_c*, so there is no separate knob for the shift channel.
+  the single cutoff `omega_c`, so there is no separate knob for the shift channel.
 
-- **``\mu \to 0`` — decrease *depsilon*.**
+- **``\mu \to 0`` — decrease `depsilon`.**
   The ``\varepsilon``-integrals are evaluated analytically on a piecewise-linear DOS on a uniform
-  grid of step *depsilon*. Charge neutrality is a difference of two nearly equal electron numbers,
+  grid of step `depsilon`. Charge neutrality is a difference of two nearly equal electron numbers,
   so it is only as accurate as the DOS near ``\varepsilon_F``. If the grid is too sparse, that
   difference collapses and the root finder returns ``\mu \approx 0`` regardless of temperature.
-  **Fix:** decrease *depsilon* until the shift stabilizes (this is the real-axis counterpart of the
-  *itpStepSize* / *itpBounds* convergence test on the imaginary axis).
+  **Fix:** decrease `depsilon` until the shift stabilizes (this is the real-axis counterpart of the
+  `itpStepSize` / `itpBounds` convergence test on the imaginary axis).
 
 On the **imaginary axis** the same charge-neutrality root find is solved, but from a Matsubara sum
 rather than an ``\omega``-integral. Its convergence likewise depends on the Matsubara cutoff and on
-the ``\varepsilon``-grid (the interpolated DOS grid set by *itpBounds* / *itpStepSize*): too small a
+the ``\varepsilon``-grid (the interpolated DOS grid set by `itpBounds` / `itpStepSize`): too small a
 cutoff or too coarse a grid can prevent the μ-update from settling. The `muError_shift.png` plot
 (here ``\chi`` against the Matsubara frequencies) is written in the same way and is the first thing
 to check.
 
-Imag Axis: f(mu) oscillates "around" monotonic function -->  epsilon grid too coarse; omega_c vs encut unclear
+<!-- Imag Axis: f(mu) oscillates "around" monotonic function epsilon grid too coarse; omega_c vs encut unclear -->
 
-### ``\omega`` must be sufficiently larger than ``\varepsilon`` (real axis, vDOS)
+### ``\omega`` must be sufficiently larger than ``\varepsilon`` (vDOS)
 
 The μ-update and the shift ``\chi(\omega)`` are built from ``\omega'``-integrals over the
 ``\varepsilon``-resolved kernels. Their correct limiting behaviour — the ``\omega'``-integral
@@ -159,19 +167,19 @@ crosses over towards ``0`` for the outermost energies, and both the electron num
 
 The crossover is gradual, so no sharp ratio ``\omega/\varepsilon`` can be derived at which
 ``J_\omega`` goes from ``1`` to ``0``. IsoME therefore requires that the ``\varepsilon``-window stay
-inside the ``\omega``-cutoff: in the vDOS case of the real-axis solver *encut* must not exceed
-*omega_c*, which bounds the ``\omega'``-integration. If it does, the run prints
+inside the frequency cutoff: in vDOS calculations `encut` must not exceed `omega_c`, on the
+imaginary axis as well as on the real one. If it does, the run prints
 
 ```
-encut = … exceeds omega_c = …; the ε-integration has to stay inside the ω-cutoff.
+encut = … exceeds omega_c = …; the ε-integration has to stay inside the frequency cutoff.
 Setting encut = …
 ```
 
-and continues with the reduced ``\varepsilon``-window. If you need the larger *encut*, do **not**
-work around the warning by shrinking the energy window — raise *omega_c* instead (a larger cutoff
+and continues with the reduced ``\varepsilon``-window. If you need the larger `encut`, do **not**
+work around the warning by shrinking the energy window — raise `omega_c` instead (a larger cutoff
 is beneficial for the μ-update anyway, see above). Note that ``J_\omega`` is only fully recovered
-for ``\omega \gg \varepsilon``, so *encut* close to *omega_c* still leaves a systematic error at
-the outermost energies; treat *encut* as a convergence parameter rather than pushing it to the
+for ``\omega \gg \varepsilon``, so `encut` close to `omega_c` still leaves a systematic error at
+the outermost energies; treat `encut` as a convergence parameter rather than pushing it to the
 limit.
 
 
@@ -181,8 +189,7 @@ limit.
 <!-- encut only sensible up to moderate values (2 eV?: Too much energy dependence is neglected in the equations. E.g. a2F is assumed to be constant wrt epsilon. If chi gets huge, most certainly the encut is too large.  -->
 <!-- Give LaBH8 as example where larger encut makes results worse -> because of a2F =/= a2F(epsilon) -->
 
-## ToDo: Add further information derived from the convergence tests
-<!-- For all convergence parameter: domega, reOmgega_c, encut, depsilon give examples when they are diverging.  -->
+<!-- For all convergence parameter: domega, omega_c, encut, depsilon give examples when they are diverging.  -->
 
 ## μ\* conversion
 
@@ -194,12 +201,18 @@ warnings flag a fallback in that conversion — the run continues with the subst
 
 | Warning | Meaning | React by |
 |---------|---------|----------|
-| `Unable to calculate μ* from μ without a typical electron energy!` | ``\mu \to \mu^*_{AD}`` needs a typical electronic energy, but none was available | Set *typEl* (or *ef* / *efW*). Otherwise `μ*_AD = 0.12` is used. |
+| `Unable to calculate μ* from μ without a typical electron energy!` | ``\mu \to \mu^*_{AD}`` needs a typical electronic energy, but none was available | Set `typEl` (or `ef` / `efW`). Otherwise `μ*_AD = 0.12` is used. |
 | `Couldn't calculate a reasonable μ*_ME from μ*_AD.` | The derived ``\mu^*_{ME}`` fell outside a physical range | Check `muc_ME.png`; set ``\mu^*`` manually or change the Matsubara cutoff. `μ*_ME = min(3·μ*_AD, 0.8)` is used. |
-| `Matsubara cutoff would lead to μ*_ME > 4*μ.` | The requested cutoff drives ``\mu^*_{ME}`` above ``4\mu`` | *omega_c* is reduced automatically; check `muc_ME.png` and the typical electronic energy *typEl*. |
+| `Matsubara cutoff would lead to μ*_ME > 4*μ.` | The requested cutoff drives ``\mu^*_{ME}`` above ``4\mu`` | A smaller cutoff is used for the μ → ``\mu^*_{ME}`` conversion only; `omega_c` itself is unchanged and the solver still runs at it. Check `muc_ME.png` and the typical electronic energy `typEl`. |
 
 `muc_ME.png` shows ``\mu^*_{ME}`` as a function of the Matsubara cutoff, which is the quickest way to
 judge whether the substituted value is sensible.
+
+One **fatal** error comes from the same conversion:
+
+| Error | Meaning | React by |
+|-------|---------|----------|
+| `The conversion from μ to μ* gave a negative pseudopotential:` | The Morel-Anderson denominator ``1+\mu\ln(\varepsilon_{el}/\omega)`` has passed through zero, so the resulting ``\mu^*`` is meaningless and would act as an *attractive* Coulomb interaction | Check `typEl` first — it has to be in meV, and a value left in eV is the usual cause — then `omega_c` and `mu`. Setting `muc_AD` / `muc_ME` directly skips the conversion. |
 
 <!-- TODO(user): additional μ* conversion guidance to be provided — see open question. -->
 
@@ -207,18 +220,17 @@ judge whether the substituted value is sensible.
 
 The real-axis solver is far more sensitive to its grids than the imaginary-axis solver: its
 integrands are complex, sharply peaked, and their poles move during the iteration. Besides the
-μ-update parameters above, the kernel resolution matters:
+μ-update parameters above, the ``\omega``-grid as a whole — its cutoff `omega_c` and its step
+`domega` — can be at fault:
 
-- **No ``T_c`` is found although one is expected — decrease *domega*.**
-  The kernel is not evaluated pair by pair; the ``\Omega``-integrals over ``\alpha^2F`` are tabulated
-  on a uniform grid of step *domega* — the same step the ``\omega``- and ``\omega'``-grids use — and
-  the kernel is reconstructed from these tables. If *domega* is too coarse, sharp phonon peaks are
-  smeared out, the coupling is underestimated, and the gap is suppressed. The solver then reports a
-  gap below *minGap* even at low temperature and the ``T_c`` search ends without a transition,
-  although the Allen-Dynes ``T_c`` printed at the start of the run is finite. An Allen-Dynes ``T_c``
-  orders of magnitude above the solver's ``T_c`` is a good indicator. **Fix:** decrease *domega*,
-  especially for materials with narrow phonon peaks. Building the kernel dominates the setup cost of
-  each temperature, so converge it on a single temperature rather than during a full ``T_c`` search.
+- **No ``\mathrm{T}_C`` is found although one is expected — check the ``\omega``-grid.**
+  The gap comes out below `minGap` even at low temperature and the ``\mathrm{T}_C`` search ends without a
+  transition, although the Allen-Dynes ``\mathrm{T}_C`` printed at the start of the run is finite; a large
+  gap between the two is the indicator. Too small an `omega_c` truncates the ``\omega'``-integration,
+  and too coarse a `domega` smears the sharp features of ``\alpha^2F`` and underestimates the
+  coupling, since the kernel tables share the `domega` lattice with the ``\omega``- and
+  ``\omega'``-grids. **Fix:** raise `omega_c` and/or decrease  `domega`. Building the kernel dominates the setup cost of each temperature, so converge on a
+  single temperature rather than during a full ``\mathrm{T}_C`` search.
 
 A fuller description of where each of these parameters enters is on the
 [Real Axis Solver](@ref) page.
@@ -226,17 +238,17 @@ A fuller description of where each of these parameters enters is on the
 ## The interpolation grid (imaginary axis)
 
 The imaginary-axis solver interpolates the DOS (and ``W``) onto a piecewise-uniform energy grid
-before solving, controlled by *itpBounds* and *itpStepSize*. *itpBounds* lists the boundaries of the
-regions around the Fermi level, and *itpStepSize* the step used in each region — so *itpStepSize*
-must have **exactly one more entry than** *itpBounds*: one step per region, plus one for the range
+before solving, controlled by `itpBounds` and `itpStepSize`. `itpBounds` lists the boundaries of the
+regions around the Fermi level, and `itpStepSize` the step used in each region — so `itpStepSize`
+must have **exactly one more entry than** `itpBounds`: one step per region, plus one for the range
 beyond the outermost bound.
 
 | Message | Cause | Fix |
 |---------|-------|-----|
-| `Number of interpolation steps (itpStepSize) and interpolation bounds (itpBounds) do not match` | `length(itpStepSize) != length(itpBounds) + 1` | Add or remove a step so *itpStepSize* has one more entry than *itpBounds*. |
+| `Number of interpolation steps (itpStepSize) and interpolation bounds (itpBounds) do not match` | `length(itpStepSize) != length(itpBounds) + 1` | Add or remove a step so `itpStepSize` has one more entry than `itpBounds`. |
 
 With the defaults, the grid uses a 1 meV step within ``\pm 100`` meV of ``\varepsilon_F``, 5 meV up
-to ``\pm 500`` meV, and 50 meV out to *encut* (three step sizes, two bounds). See the
+to ``\pm 500`` meV, and 50 meV out to `encut` (three step sizes, two bounds). See the
 [Input](@ref) page (Interpolation of the energy grid) for the convergence test.
 
 ## Optional output steps failed

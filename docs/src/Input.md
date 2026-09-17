@@ -1,15 +1,17 @@
 # Input
-Input parameters are collected in the [composite type](https://docs.julialang.org/en/v1/manual/types/#Composite-Types) `arguments()`.
+Input parameters are collected in the [composite type](https://docs.julialang.org/en/v1/manual/types/#Composite-Types) `arguments`.
 Only the path to the ``\alpha^2F`` file is mandatory. Everything else either has a default or is inferred during the run.
 Fields that are meant to be inferred are left at a sentinel — `NaN` (real-valued fields), `-1` (integer fields such as line counts and column indices) or `""` (strings) — and are overwritten once their value is known.
-Because of this, we recommend creating a fresh `arguments()` instance for each call to `EliashbergSolver()` or `RealAxisSolver()` — see [Best practices](@ref).
+Before IsoME 2.0 the real-valued fields used `-1` for this, so passing `-1` to one of them is now rejected with a message pointing at `NaN`.
+`mu`, `muc_AD`, `muc_ME`, `mixing_beta`, `conv_thr`, `minGap`, `N_it` and `min_it` are likewise rejected if given a negative value, both when the struct is built and again at the start of a solve.
+Because of this, we recommend creating a fresh `arguments` instance for each call to `EliashbergSolver()` or `RealAxisSolver()` — see [Best practices](@ref).
 
 All energies are handled internally in meV.
 If an input file uses another supported unit, IsoME tries to extract the unit from the file header and convert the data automatically.
 Should the automatic detection fail, check the header of the input file or set the corresponding unit parameter manually.
 
 The inputs are grouped below into general inputs, inputs specific to the imaginary-axis solver, and inputs specific to the real-axis solver.
-How the latter two act on the respective solvers is described on the [Matsubara Solver](@ref) and [Real Axis Solver](@ref) pages.
+The last two groups are described in detail on the [Matsubara Solver](@ref) and [Real Axis Solver](@ref) pages.
 The formats of the input files themselves are documented in the [Read-In](@ref) section further down.
 
 ## General inputs
@@ -17,7 +19,7 @@ These inputs are shared by both solvers unless noted otherwise.
 
 | Name    |      Type      |   Default   | Description | Comment  |
 |:--------|:---------------|:------------|:------------|:---------|
-| temps   | Vector{Float64} |  [-1.0] | Temperatures considered in the calculation | `[-1.0]`: search for ``T_c``; otherwise solve at the specified temperatures |
+| temps   | Vector{Float64} |  [-1.0] | Temperatures considered in the calculation | `[-1.0]`: search for ``\mathrm{T}_C``; otherwise solve at the specified temperatures |
 | a2f_file    | String   |  -  | Path to the ``\alpha^2F`` file | The only mandatory input |
 | ind_smear   | Int64 |  -1 | Smearing column used from the ``\alpha^2F`` file | `-1`: the middle column is used |
 | cDOS_flag | Int64 |  1   | Selects constant or variable DOS mode | 0: variable DOS; 1: constant DOS |
@@ -32,19 +34,19 @@ These inputs are shared by both solvers unless noted otherwise.
 | ef        | Float64 |  NaN | Fermi energy of the DOS | In meV; `NaN`: extracted from the DOS-file header |
 | efW       | Float64 |  NaN | Fermi energy of the ``W`` grid | In meV; `NaN`: extracted from the ``W``-file header |
 | omega_c | Float64 | 7000.0 | Frequency cutoff ``\omega_c`` | In meV; the Matsubara cutoff on the imaginary axis and the ``\omega``-grid cutoff on the real axis |
-| encut  | Float64 |  2000.0  | Symmetric energy cutoff of the ``\varepsilon``-grid | In meV; the grid spans ``\pm`` `encut` and bounds every ``\varepsilon``-integration, including ``\chi`` and the charge neutrality condition. In real-axis vDOS runs it is clamped to `omega_c` |
+| encut  | Float64 |  2000.0  | Symmetric energy cutoff of the ``\varepsilon``-grid | In meV; the grid spans ``\pm`` `encut` and bounds every ``\varepsilon``-integration, including ``\chi`` and the charge neutrality condition. In vDOS runs it is clamped to `omega_c`, on the imaginary and the real axis alike |
 | mu_flag    | Int64 | 1   | Update the chemical potential in vDOS calculations | 0: no; 1: yes, recommended |
 | mixing_beta | Float64 | NaN | Linear mixing factor | `NaN`: use the default iteration-dependent schedule. Both solvers mix linearly |
 | nItFullCoul | Int64 |  10    | Number of iterations used to ramp up the Coulomb contribution | Helps stabilize the initial iterations |
 | conv_thr | Float64 | ``10^{-4}`` | Convergence threshold | Applied to the gap update |
 | minGap   | Float64 | 0.1  | Lower gap threshold | In meV; the temperature is treated as normal conducting if the gap drops below `minGap` |
 | N_it | Int64 | 5000 | Maximum number of iterations | - |
-| min_it | Int64 | 10 | Minimum number of iterations before convergence is accepted | Real-axis solver only; the imaginary-axis solver uses a fixed minimum of 15 |
-| outdir | String |  pwd() | Path to the output directory | |
+| min_it | Int64 | 10 | Minimum number of iterations before convergence is accepted | Used by both solvers; the Coulomb ramp (`nItFullCoul`) must have finished as well |
+| outdir | String | `joinpath(pwd(), "IsoME")` | Path to the output directory | An existing directory is never written into: a run counter is appended, so repeated runs land in `IsoME_1/`, `IsoME_2/`, and so on |
 | flag_figure | Int64 |  1 | Plot the gap and ``\alpha^2F`` values | 0: no; 1: yes |
 | flag_writeSelfEnergy | Int64 | 0  | Save **and** plot the self-energy components (`.dat` + `.png`) | 0: no; 1: yes. Works for both solvers and all modes; files are written to `outdir/SelfEnergy/`. The first header line of each `.dat` carries the converged chemical potential as `mu_F = … meV` (relative to the ``\varepsilon_F`` of the DOS input), which any ``\varepsilon``-resolved post-processing needs |
 | material | String | "Material" | Name of the compound | Used in plots and summaries |
-| returnTc | Bool | false | Return the estimated ``T_c`` interval | Mainly useful for scripts and tests |
+| returnTc | Bool | false | Return the estimated ``\mathrm{T}_C`` interval | Mainly useful for scripts and tests |
 | testMode | Bool | false | Suppress all file output | Used by the test suite |
 
 
@@ -62,7 +64,7 @@ These inputs control the imaginary-axis solver `EliashbergSolver()` and its post
 These inputs control the direct real-axis solver `RealAxisSolver()`, which supports cDOS``+\mu``, vDOS``+\mu`` and vDOS``+W``.
 Note that `include_Weep = 1` requires `cDOS_flag = 0` here.
 The ``\varepsilon``-grid of the real-axis solver is uniform (step `depsilon`) and does not use `itpBounds`/`itpStepSize`.
-The cutoff of the ``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` grids — which also bounds the ``\omega'``-integration — is the shared `omega_c` listed under the general inputs; `encut` is clamped to at most that value in vDOS.
+The cutoff of the ``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` grids — which also bounds the ``\omega'``-integration — is the shared `omega_c` listed under the general inputs; in vDOS, `encut` is clamped to at most that value, on this axis and on the imaginary one alike.
 
 | Name    |      Type      |   Default   | Description | Comment  |
 |:--------|:---------------|:------------|:------------|:---------|
@@ -76,16 +78,16 @@ The kernel tables are only ever sampled at multiples of `domega`, which is why t
 
 
 ### Pseudopotentials ``\mu,~\mu^*_{AD}~\&~\mu^*_{ME}``
-``\mu`` measures the strength of the Coulomb interaction at the Fermi surface: ``\mu=W(\varepsilon_F,\varepsilon_F)``.
+``\mu`` measures the strength of the Coulomb interaction at the Fermi surface: ``\mu=N(\varepsilon_F)W(\varepsilon_F,\varepsilon_F)``.
 It is connected to the pseudopotentials via:
 ```math
-\mu^*_{AD}=\frac{\mu}{1+\mu \text{ ln}\left(\frac{\varepsilon_{el}}{\hbar \omega_{ph}}\right)}
+\mu^*_{AD}=\frac{\mu}{1+\mu \ln\left(\frac{\varepsilon_{el}}{\omega_{ph}}\right)}
 ```
 where ``\omega_{ph}`` is a characteristic cutoff frequency for the phonon-induced interaction and ``\varepsilon_{el}`` is a characteristic electronic energy scale.
-The typical electronic energy can be specified explicitly through *typEl*; otherwise, the Fermi energy (*ef* or *efW*) will be used.
-For the characteristic phonon cutoff, the maximum given phonon frequency is used for AD, while ME uses the frequency cutoff *omega_c*, which is shared by both solvers.
+The typical electronic energy can be specified explicitly through `typEl`; otherwise, the Fermi energy (`ef` or `efW`) will be used.
+For the characteristic phonon cutoff, AD uses the largest frequency at which ``\alpha^2F`` rises above ``10^{-2}`` (not the largest frequency in the file), while ME uses the frequency cutoff `omega_c`, which is shared by both solvers.
 
-By default, the ``\mu`` and ``\mu^*`` values are unset (`NaN`), which means that *muc_AD* = 0.12 is used. This also fixes *muc_ME* through
+By default, the ``\mu`` and ``\mu^*`` values are unset (`NaN`), which means that `muc_AD` = 0.12 is used. This also fixes `muc_ME` through
 ```math
 \mu^*_{ME}= \frac{\mu^*_{AD}}{(1 + \mu^*_{AD} \ln(\frac{\omega_{ph}}{\omega_c}))}~.
 ```
@@ -94,28 +96,31 @@ Furthermore, if neither ``\mu`` nor ``\mu^*`` is specified but a `Weep_file` is 
 
 
 ### Interpolation of the energy grid
-Since the electronic structure close to the Fermi level drives the results, the imaginary-axis solver interpolates the DOS (and ``W``) onto a piecewise-uniform energy grid defined by *itpBounds* and *itpStepSize*.
-The bounds define regions around the Fermi level, and each region uses the corresponding step size from *itpStepSize*; the first step size is used within the first region around the Fermi level, the last one beyond the outermost bound.
-With the defaults, the grid uses a 1 meV step within ``\pm 100`` meV of ``\varepsilon_F``, 5 meV up to ``\pm 500`` meV, and 50 meV out to *encut*.
+Since the electronic structure close to the Fermi level drives the results, the imaginary-axis solver interpolates the DOS (and ``W``) onto a piecewise-uniform energy grid defined by `itpBounds` and `itpStepSize`.
+The bounds define regions around the Fermi level, and each region uses the corresponding step size from `itpStepSize`; the first step size is used within the first region around the Fermi level, the last one beyond the outermost bound.
+With the defaults, the grid uses a 1 meV step within ``\pm 100`` meV of ``\varepsilon_F``, 5 meV up to ``\pm 500`` meV, and 50 meV out to `encut`.
 
-The real-axis solver instead uses a uniform grid of step *depsilon* over the whole *encut* range, because its ``\varepsilon``-integrals are evaluated analytically on a piecewise-linear DOS.
+The real-axis solver instead uses a uniform grid of step `depsilon` over the whole `encut` range, because its ``\varepsilon``-integrals are evaluated analytically on a piecewise-linear DOS.
 
 
 ## Read-In
-IsoME automatically recognizes the formatting of ``\textsc{QE/EPW/BerkeleyGW}`` files.
-Compatibility with other DFT/DFPT/GW packages is currently under development. However, the read-in function has been designed to rely on as little formatting as possible and will often work for different formattings as well. If the auto-recognition fails, either adapt the formatting of the input files or manually set it through the dedicated flags. For details please refer to the dedicated section for each input file.
+IsoME automatically recognizes the format of QE, EPW and BerkeleyGW files.
+Compatibility with other DFT/DFPT/GW packages is currently under development.
+However, the read-in function has been designed to rely on as little formatting as possible and will often work for other formats as well.
+If the auto-recognition fails, either adapt the format of the input files or set it manually through the dedicated flags.
+For details please refer to the dedicated section for each input file.
 Possible sources of errors are the number of header/footer lines, the Fermi energy, or the units.
 
-In its auto-recognition mode, IsoME interprets non-numerical rows at the beginning and end of the file as the header and footer, respectively. From the header, the unit (currently supported: meV, eV, THz, Ry, Ha) and, for DOS or ``W`` files, the Fermi energy are extracted.
+In its auto-recognition mode, IsoME interprets non-numeric rows at the beginning and end of the file as the header and footer, respectively. From the header, the unit (currently supported: meV, eV, THz, Ry, Ha) and, for DOS or ``W`` files, the Fermi energy are extracted.
 
 
 ### ``\alpha^2F``
 The Eliashberg spectral function ``\alpha^2F(\omega)`` is required for all calculations.
-The ``\alpha^2F(\omega)`` -file can contain an arbitrary amount of columns, but the first column must contain the energies and the remaining columns are interpreted as ``\alpha^2F(\omega)`` -values for different smearings. If the user does not specify the smearing column via *ind_smear*, the column in the middle will be used.
+The ``\alpha^2F(\omega)`` -file can contain an arbitrary number of columns, but the first column must contain the energies and the remaining columns are interpreted as ``\alpha^2F(\omega)`` -values for different smearings. If the user does not specify the smearing column via `ind_smear`, the column in the middle will be used.
 
 
 #### Summary formatting:
-- **header:** Non-numeric rows at the beginning of the document. If the header contains the unit (meV, eV, THz, Ry, Ha), it is extracted automatically; otherwise, set the unit via *a2f_unit*.
+- **header:** Non-numeric rows at the beginning of the document. If the header contains the unit (meV, eV, THz, Ry, Ha), it is extracted automatically; otherwise, set the unit via `a2f_unit`.
 - **footer:** Non-numeric rows at the end of the document.
 - **first column:** energies
 - **second column onwards:** ``\alpha^2F`` values for different smearings. By default, the smearing in the middle is used.
@@ -188,25 +193,25 @@ The number of header/footer lines and smearing values should be recognized autom
     > cDOS+``\mu`` runs ``N(\varepsilon_F)`` is read from `dos_file` if one is given. If no DOS file is
     > available the rescaling is skipped with a warning.
     >
-    > **Unit convention:** `a2f_Nef` must be given in the same convention as the DOS file produces
-    > internally (per meV, both spins by default — see *spinDos*). Check the printed factor: it should
-    > be of order 1.
+    > **Unit convention:** `a2f_Nef` must be given in the same convention the DOS file is reduced to
+    > internally: per meV and per spin, i.e. after the division by `spinDos`. Check the printed factor:
+    > it should be of order 1.
 
 
 ### ``N(\epsilon)``
 For vDOS calculations a DOS file is required.
-The first and second columns of the DOS file are interpreted as the energies and DOS values, respectively. All other columns are ignored. The DOS values are divided by two to remove double counting due to spin. If this is not desired, set the *spinDos* flag to 1.
+The first and second columns of the DOS file are interpreted as the energies and DOS values, respectively. All other columns are ignored. The DOS values are divided by `spinDos` (2 by default) to remove the double counting from spin degeneracy. If this is not desired, set `spinDos` to 1.
 
 #### Summary formatting:
-- **header:** Non-numeric rows at the beginning of the document. If the header contains the unit (meV, eV, THz, Ry, Ha), it is extracted automatically; otherwise, set the unit via *dos_unit*. If the header contains only one numeric value, this is interpreted as the Fermi energy. If there are several numerical values, IsoME checks for a keyword (`ef`, `efermi`, ...) indicating the Fermi energy. If extraction fails, adapt the header or set the Fermi energy via *ef*.
+- **header:** Non-numeric rows at the beginning of the document. If the header contains the unit (meV, eV, THz, Ry, Ha), it is extracted automatically; otherwise, set the unit via `dos_unit`. If the header contains only one numeric value, this is interpreted as the Fermi energy. If there are several numerical values, IsoME checks for a keyword (`ef`, `efermi`, ...) indicating the Fermi energy. If extraction fails, adapt the header or set the Fermi energy via `ef`.
 - **footer:** Non-numeric rows at the end of the document.
 - **first column:** energies
 - **second column:** dos values
 
 |     Name     |  Type  |  Default  |          Description          |                Comment              |
 |--------------|--------|:---------:|---------------------------|-----------------------------------------|
-| spinDos      | Int64  |     2     | Whether the DOS includes spin degeneracy | 1 = spin not considered ``\\`` 2 = spin considered |
-| dos_unit     | String |    ""     | Unit in the DOS file | Extracted from the header if not set ``\\`` Currently supported: meV, eV, THz, Ry, Ha |
+| spinDos      | Int64  |     2     | Whether the DOS includes spin degeneracy | 1 = spin not considered <br> 2 = spin considered |
+| dos_unit     | String |    ""     | Unit in the DOS file | Extracted from the header if not set <br> Currently supported: meV, eV, THz, Ry, Ha |
 | nheader_dos  | Int64  |    -1     | Number of header lines in the DOS file | Auto-recognition if unset |
 | nfooter_dos  | Int64  |    -1     | Number of footer lines in the DOS file | Auto-recognition if unset |
 
@@ -256,26 +261,26 @@ The first and second columns of the DOS file are interpreted as the energies and
 
 
 ### Weep
-The *Weep_file* is required for ``W`` calculations.
+The `Weep_file` is required for ``W`` calculations.
 By default, IsoME assumes that the third column contains the ``W(\varepsilon,\varepsilon')`` values and that the first and second columns contain the corresponding energy-grid coordinates.
-The columns can be changed via *Weep_col* and *Wen_col*.
-If the row and column identifiers are consecutive indices rather than energies, provide an additional *Wen_file* containing the ``W`` energy-grid points.
+The columns can be changed via `Weep_col` and `Wen_col`.
+If the row and column identifiers are consecutive indices rather than energies, provide an additional `Wen_file` containing the ``W`` energy-grid points.
 #### Summary formatting:
-- **header:** Non-numeric rows at the beginning of the document. If the header contains the unit (meV, eV, THz, Ry, Ha), it is extracted automatically; otherwise, set the unit via *Weep_unit*. If the header contains only one numeric value, it is interpreted as the Fermi energy. If there are several numerical values, IsoME checks for a keyword (`ef`, `efermi`, ...) indicating the Fermi energy. If extraction fails, adapt the header or set the Fermi energy via *efW*.
+- **header:** Non-numeric rows at the beginning of the document. If the header contains the unit (meV, eV, THz, Ry, Ha), it is extracted automatically; otherwise, set the unit via `Weep_unit`. If the header contains only one numeric value, it is interpreted as the Fermi energy. If there are several numerical values, IsoME checks for a keyword (`ef`, `efermi`, ...) indicating the Fermi energy. If extraction fails, adapt the header or set the Fermi energy via `efW`.
 - **footer:** Non-numeric rows at the end of the document.
-- **columns:** energy-grid points are assumed to be in the first and second columns, and the first column is used by default (*Wen_col* = 1). The ``W`` values are assumed to be in the third column by default (*Weep_col* = 3).
+- **columns:** energy-grid points are assumed to be in the first and second columns, and the first column is used by default (`Wen_col` = 1). The ``W`` values are assumed to be in the third column by default (`Weep_col` = 3).
 
 
-If the *Weep_file* does not contain the energies, an additional *Wen_file* can be specified.
-- **header:** Non-numeric rows at the beginning of the document. It is assumed that the header contains the unit. If not, the unit has to be specified via *Wen_unit*.
+If the `Weep_file` does not contain the energies, an additional `Wen_file` can be specified.
+- **header:** Non-numeric rows at the beginning of the document. It is assumed that the header contains the unit. If not, the unit has to be specified via `Wen_unit`.
 - **footer:** Non-numeric rows at the end of the document.
-- **first column:** energy grid points ``\epsilon`` of ``W(\epsilon, \epsilon')``. The column containing the energies can be changed via *Wen_col*.
+- **first column:** energy grid points ``\epsilon`` of ``W(\epsilon, \epsilon')``. The column containing the energies can be changed via `Wen_col`.
 
 
 |     Name     |  Type  |  Default  |          Description          |                Comment              |
 |--------------|--------|:---------:|---------------------------|-----------------------------------------|
-| Weep_unit    | String |     ""    | Unit of ``W``             | Extracted from the header of `Weep_file` if not set ``\\`` Currently supported: meV, eV, THz, Ry, Ha |
-| Wen_unit     | String |     ""    | Unit of the ``W`` energies    | Extracted from the header of `Wen_file` if not set ``\\`` Currently supported: meV, eV, THz, Ry, Ha |
+| Weep_unit    | String |     ""    | Unit of ``W``             | Extracted from the header of `Weep_file` if not set <br> Currently supported: meV, eV, THz, Ry, Ha |
+| Wen_unit     | String |     ""    | Unit of the ``W`` energies    | Extracted from the header of `Wen_file` if not set <br> Currently supported: meV, eV, THz, Ry, Ha |
 | Weep_col     | Int64  |     3     | Column containing the ``W`` values in `Weep_file` | |
 | Wen_col      | Int64  |     1     | Column containing the ``W`` energy grid in `Weep_file` or `Wen_file` | |
 | nheader_Weep | Int64  |    -1     | Number of header lines in `Weep_file` | Auto-recognition if unset |
@@ -338,5 +343,5 @@ arguments
 ```
 
 
-# Version
-Julia 1.10 or higher is required
+## Version
+Julia 1.10 or higher is required.

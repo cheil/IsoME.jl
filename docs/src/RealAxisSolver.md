@@ -1,12 +1,13 @@
 # Real Axis Solver
 
-`RealAxisSolver()` solves the isotropic Eliashberg equations directly on the real frequency axis, following the formulation of [Simon](https://doi.org/10.48550/arXiv.2603.18199).
-Unlike the imaginary-axis solver it yields the complex self-energy components ``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` without an analytic continuation, at the price of a considerably more involved numerical treatment: every quantity is complex, the integrands carry poles and branch points close to the real axis, and the kernel has to be rebuilt at every temperature.
+`RealAxisSolver()` solves the isotropic Eliashberg equations directly on the real frequency axis, following the formulation of [Simon *et al.*](https://doi.org/10.48550/arXiv.2603.18199).
+Unlike the imaginary-axis solver it yields the complex self-energy components ``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` without an analytic continuation.
+That comes at the cost of a considerably more involved numerical treatment: every quantity is complex, the integrands carry poles and branch points close to the real axis, and the kernel has to be rebuilt at every temperature.
 
 The solver supports the same approximations as the imaginary-axis code, selected through `cDOS_flag` and `include_Weep`: cDOS``+\mu``, vDOS``+\mu`` and vDOS``+W``.
 
 ## Structure of a calculation
-For each temperature the solver performs the following steps:
+For each temperature the solver goes through three steps:
 
 1. **Kernel setup** (once per temperature). The electron-phonon kernel is assembled from ``\alpha^2F`` by carrying out the ``\Omega``-integration. This is the only step that involves the phonons and by far the most expensive part of the setup.
 2. **Self-consistency loop**. Starting from a BCS-like guess (or from the converged solution of the previous temperature), each iteration
@@ -15,7 +16,7 @@ For each temperature the solver performs the following steps:
    - performs the ``\varepsilon``-integration, which reduces the ``(\omega',\varepsilon)``-integrand to a pure function of ``\omega'``,
    - performs the ``\omega'``-integration against the kernel, giving the new ``Z``, ``\phi`` and ``\chi``,
    - mixes the new and old solutions and checks convergence.
-3. **Termination**. A temperature counts as converged once the relative change of the gap, ``\sum_\omega |\Delta^{i}-\Delta^{i-1}| / \sum_\omega |\Delta^{i}|``, drops below `conv_thr` and at least `min_it` iterations have passed. If the gap falls below `minGap`, the temperature is counted as normal conducting, which is what brackets ``T_c`` in ``T_c``-search mode.
+3. **Termination**. A temperature counts as converged once the relative change of the gap, ``\sum_\omega |\Delta^{i}-\Delta^{i-1}| / \sum_\omega |\Delta^{i}|``, drops below `conv_thr` and at least `min_it` iterations — and one more than `nItFullCoul` — have passed. If the gap falls below `minGap`, the temperature is counted as normal conducting, which is what brackets ``\mathrm{T}_C`` in ``\mathrm{T}_C``-search mode.
 
 Throughout the loop the primary variables are ``Z``, ``\chi`` and the order parameter ``\phi``; the gap is derived as ``\Delta = \phi/Z`` after mixing.
 This matters in the vDOS``+W`` case, where ``\phi`` is split into a phononic part ``\phi_{ph}(\omega)`` and an energy-dependent Coulomb part ``\phi_c(\varepsilon)``, and the gap follows as ``\Delta(\omega) = [\phi_{ph}(\omega)+\phi_c(\varepsilon_F)]/Z(\omega)``.
@@ -23,7 +24,7 @@ This matters in the vDOS``+W`` case, where ``\phi`` is split into a phononic par
 The frequency grids on which the self-energy is stored are uniform and fixed for the whole run.
 ``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` all live on the same grid of step `domega` up to `omega_c`, and the ``\omega'``-integration covers the same range.
 The grid deliberately does not start at ``0``, but at the smallest multiple of `domega` that is at least ``0.1`` meV: several integrands behave like ``1/\omega``, which makes the result sensitive to the first grid point.
-For the same reason the gap reported in the console, in `Summary.dat` and to the ``T_c`` search is read off at the **gap edge** ``\omega_g`` — the root of ``\omega - \mathrm{Re}\,\Delta(\omega)`` — and not at the first grid point, where ``Z`` diverges and ``\Delta = \phi/Z`` is suppressed.
+The gap reported in the console, in `Summary.dat` and to the ``\mathrm{T}_C`` search is read off at the **gap edge** ``\omega_g`` — the root of ``\omega - \mathrm{Re}\,\Delta(\omega)``.
 
 ## Kernel
 The electron-phonon interaction enters the equations through the kernels ``K^{\pm}(\omega,\omega')`` (supplemental eq. (47) of the reference).
@@ -38,7 +39,7 @@ I_1(x) = \mathcal{P}\!\int \! d\Omega \, \frac{G(\Omega)}{\Omega-x}~,\qquad
 I_2(x) = \mathcal{P}\!\int \! d\Omega \, \frac{G(\Omega)\, n(\Omega)}{\Omega-x}~,
 ```
 where ``G`` is the interpolated ``\alpha^2F`` and ``n`` the Bose function.
-``G`` is nonzero only between the first and the last frequency at which ``\alpha^2F`` exceeds ``10^{-2}``; outside this window the integrands vanish identically, which bounds the ``\Omega``-integration range.
+The support of ``G`` reaches up to the last frequency at which ``\alpha^2F`` exceeds ``10^{-2}``, and starts at the smaller of the first such frequency and the first grid point above ``2\,``​`domega`; outside this window the integrands vanish identically, which bounds the ``\Omega``-integration range.
 
 The ``\Omega``-axis is composed of a Chebyshev grid inside a ``\pm 3`` meV window around the ``1/\Omega`` singularity, where the integrand varies rapidly and the principal value has to be resolved, and of linear grids out to the width over which ``G`` is nonzero, where the integrand is smooth (300 points each).
 The integration itself is performed with the trapezoidal rule.
@@ -82,6 +83,7 @@ Summing these interval moments, weighted with ``M_0`` and ``M_1``, over all inte
 The only remaining approximation is the piecewise-linear representation of the DOS itself, so the ``\varepsilon``-grid has to resolve the DOS, but not the Lorentzians.
 
 The ``\varepsilon``-grid is uniform with step `depsilon` and spans the range set by `encut` (or the extent of the DOS file, whichever is smaller).
+In vDOS runs `encut` has to stay inside `omega_c`: a larger value is clamped down to it with a warning, so raise `omega_c` if you need a wider ``\varepsilon``-window.
 This differs from the imaginary-axis solver, which uses the piecewise interpolation controlled by `itpBounds` and `itpStepSize`.
 
 Two cases are treated separately:
@@ -102,7 +104,7 @@ After the ``\varepsilon``-integration the remaining task is
 I_Z(\omega) = \int \! d\omega' \, K^{-}(\omega,\omega')\, g_Z(\omega')~, \qquad
 I_\phi(\omega) = \int \! d\omega' \, K^{+}(\omega,\omega')\, g_\phi(\omega')~,
 ```
-and analogously for ``\chi`` on the larger frequency grid.
+and analogously for ``\chi``, on the same frequency grid.
 These integrands are sharply peaked: the ``\varepsilon``-integration leaves poles wherever a Lorentzian width collapses, i.e. at the roots of ``\mathrm{Im}(\chi \pm \varepsilon_p)``, plus a branch point at the gap edge, where ``|\varepsilon_p|^2`` becomes minimal.
 Their positions move from iteration to iteration as the self-energy changes, so a fixed grid would either be inaccurate or prohibitively dense.
 
@@ -123,18 +125,19 @@ Since ``Z``, ``\phi`` and ``\chi`` share `omega_c`, one ``K^{+}`` pass serves bo
 ## Chemical potential
 In the vDOS approximations the transition to the superconducting state shifts the chemical potential.
 With `mu_flag = 1` (the default), IsoME determines ``\mu`` in every iteration by requiring that the electron number in the superconducting state matches the one in the normal state.
-The root of ``N_e^{\text{nsc}}(\mu) - N_e^{\text{sc}}(\mu)`` is located with a Regula-Falsi method, starting from a ``\pm 50`` meV window around the current Fermi level that is widened in steps of 50 meV until it brackets a sign change.
-Only the ``Z``- and the ``\chi``-branch of the ``\varepsilon``-integral are needed for this, so the update is considerably cheaper than a full iteration — in particular, ``W`` never enters charge conservation.
+The root of ``N_e^{\text{nsc}}(\mu) - N_e^{\text{sc}}(\mu)`` is located with a Regula-Falsi method, starting from a ``\pm 50`` meV window around the current Fermi level that is shifted up or down in 50 meV steps until it brackets a sign change.
+Only the ``Z``- and the ``\chi``-branch of the ``\varepsilon``-integral are needed for this, so the update is considerably cheaper than a full iteration: the ``W`` matrix product is never evaluated, although ``\phi_c`` still enters through the Lorentzian centres.
 
 The ``\mu``-update is the part of the real-axis solver that reacts most sensitively to the grids and cutoffs; the [FAQ](@ref) lists the typical failure modes and how to recognize them.
 
 ## Self-consistency and convergence
-The mixing is linear with an iteration-dependent factor that ramps from ``1`` down to ``0.5``, applied to the primary variables ``Z``, ``\chi``, ``\phi_{ph}`` and ``\phi_c``.
+The mixing is linear with an iteration-dependent factor — it starts at ``1``, decreases by ``0.05`` per iteration and settles at ``0.6`` from the ninth iteration on — applied to the primary variables ``Z``, ``\chi``, ``\phi_{ph}`` and ``\phi_c``.
 A fixed factor can be enforced through `mixing_beta`.
 The Coulomb contribution is ramped up over the first `nItFullCoul` iterations, which stabilizes the early iterations.
 
 vDOS calculations are never started from scratch: the first temperature is seeded with a cDOS solution at the same temperature, and every subsequent temperature starts from the converged solution of the previous one.
-``T_c``-search mode uses the same bisection-and-fit strategy as the imaginary-axis solver, so ``T_c`` ends up bracketed by the highest temperature with ``\Delta(0) >`` `minGap` and the lowest one without a solution.
+``\mathrm{T}_C``-search mode uses the same bisection-and-fit strategy as the imaginary-axis solver, so ``\mathrm{T}_C`` ends up bracketed by the highest temperature whose gap edge stays above `minGap` and the lowest one without a solution.
+Temperatures are stepped in whole kelvin, so the result is a 1 K bracket ``[T_{sc}, T_{nsc}]`` rather than a single number.
 
 ## Relevant input parameters
 | Parameter | Role |
@@ -143,6 +146,11 @@ vDOS calculations are never started from scratch: the first temperature is seede
 | `n_cheb` | Chebyshev points per pole in the head region of the ``\omega'``-grid |
 | `depsilon` | Step of the ``\varepsilon``-grid (vDOS) |
 | `encut` | Range of the ``\varepsilon``-integration |
+| `mu_flag` | Whether the chemical potential is updated (vDOS only) |
+| `mixing_beta` | Fixes the linear mixing factor instead of the default schedule |
+| `nItFullCoul` | Iterations over which the Coulomb contribution is ramped up |
+| `conv_thr`, `min_it` | Convergence threshold and minimum number of iterations |
+| `minGap` | Gap below which a temperature counts as normal conducting |
 
 See [Input](@ref) for defaults and types, and the [FAQ](@ref) for the practical consequences of these choices.
 

@@ -306,9 +306,10 @@ end
 
 
 """
-    checkInput!(inp)
+    checkInput!(inp; realSolver=false)
 
-Check which input files (a2f, dos, weep) exist.
+Check which input files (a2f, dos, weep) exist, that the mode flags are valid, and that
+`encut` stays inside `omega_c`.
 For real axis solver: Additionally check if cDOS+W mode has been chosen
 """
 function checkInput!(inp::arguments; realSolver::Bool=false)
@@ -339,18 +340,18 @@ function checkInput!(inp::arguments; realSolver::Bool=false)
         error("Invalid include_Weep value. Use 0 for the μ approximation or 1 for the W(ε, ε′) interaction.")
     end
 
-    if realSolver
-        if inp.include_Weep == 1 && inp.cDOS_flag == 1
-            error("The real-axis solver only supports the vDOS+W approximation (include_Weep = 1 requires cDOS_flag = 0). Set cDOS_flag = 0.\n\n")
-        end
+    if realSolver && inp.include_Weep == 1 && inp.cDOS_flag == 1
+        error("The real-axis solver only supports the vDOS+W approximation (include_Weep = 1 requires cDOS_flag = 0). Set cDOS_flag = 0.\n\n")
+    end
 
-        # vDOS: the ω-integrals of the μ-update and of χ(ω) only show their correct limiting
-        # behaviour as long as ω reaches at least as far as ε, so the ε-window must stay inside
-        # the ω-cutoff. Require encut ≤ omega_c and clamp encut down.
-        if inp.cDOS_flag == 0 && inp.encut > inp.omega_c
-            @warn "encut = $(inp.encut) exceeds omega_c = $(inp.omega_c); the ε-integration has to stay inside the ω-cutoff. Setting encut = $(inp.omega_c). Increase omega_c to keep the larger ε-window. See the μ-update section of the Troubleshooting page."
-            inp.encut = inp.omega_c
-        end
+    # vDOS, both axes: the frequency sum/integral of the μ-update and of χ only shows its
+    # correct limiting behaviour as long as the frequency reaches at least as far as ε, so
+    # the ε-window must stay inside the frequency cutoff. Require encut ≤ omega_c and clamp
+    # encut down. On the imaginary axis omega_c is the Matsubara cutoff, on the real axis
+    # the cutoff of the ω-grid; the requirement is the same in both cases.
+    if inp.cDOS_flag == 0 && inp.encut > inp.omega_c
+        @warn "encut = $(inp.encut) exceeds omega_c = $(inp.omega_c); the ε-integration has to stay inside the frequency cutoff. Setting encut = $(inp.omega_c). Increase omega_c to keep the larger ε-window. See the μ-update section of the Troubleshooting page."
+        inp.encut = inp.omega_c
     end
 
     return nothing

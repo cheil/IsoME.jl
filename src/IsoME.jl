@@ -122,7 +122,7 @@ See also [`EliashbergSolver`](@ref), [`RealAxisSolver`](@ref).
     conv_thr::Float64                       = 1e-4
     minGap::Float64                         = 0.1
     N_it::Int64                             = 5000
-    min_it::Int64                           = 10            # min iterations in eliashberg solver   
+    min_it::Int64                           = 10            # min iterations, both solvers
     encut::Float64                          = 2000.0        # symmetric outer energy cutoff: window [-encut, encut]
     sparseSamplingTemp::Float64             = 2.0
     typEl::Float64                          = NaN

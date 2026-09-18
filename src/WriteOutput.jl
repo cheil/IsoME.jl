@@ -233,7 +233,10 @@ function printSummary(inp, Tc, log_file)
         text = text * "\n - Tc > " * string(Tc[1]) * " K"
     else
         text = text * "\n - " * inp.material * " is a superconductor"
-        text = text * "\n - Tc = " * string(round((Tc[2]+Tc[1])/2, digits=2)) * " (±"* string(round((Tc[2]-Tc[1])/2, digits=2)) *")" * " K"
+        # digits follow Tc_tol: two are plenty for the default 1 K bracket, but a refined
+        # search must not report its uncertainty as (±0.0)
+        nd = max(2, ceil(Int, -log10(max(inp.Tc_tol, 1e-6))) + 1)
+        text = text * "\n - Tc = " * string(round((Tc[2]+Tc[1])/2, digits=nd)) * " (±"* string(round((Tc[2]-Tc[1])/2, digits=nd)) *")" * " K"
     end
 
     printstyled("\nSummary:", bold=true)
@@ -491,11 +494,12 @@ end
 
 
 """
-    printFlagsAsText()
+    printFlagsAsText(inp, matval, log_file; mode="Matsubara")
 
-Print the flag values as text to the console
+Print the flag values as text to the console. `matval` is needed for the typical phonon
+frequency, which is derived from α²F rather than given as an input.
 """
-function printFlagsAsText(inp, log_file; mode ="Matsubara")
+function printFlagsAsText(inp, matval, log_file; mode ="Matsubara")
     text = ""
     if inp.material != "Material"
         text *=  " - Material: "*inp.material*" \n"
@@ -519,6 +523,17 @@ function printFlagsAsText(inp, log_file; mode ="Matsubara")
     elseif mode == "realFreq"
         text *= " - Frequency cutoff: "*string(inp.omega_c)*" meV\n"
         text *= " - Frequency grid step: "*string(inp.domega)*" meV\n"
+    end
+
+    # typical phonon frequency entering the μ* conversion: derived from the α²F support
+    # threshold rather than given as an input, so it is otherwise invisible when a
+    # converted μ* looks wrong. strict=false - a run whose μ* needed no conversion never
+    # calls a2fSupportMax, and must not start failing over this line; the value is then
+    # NaN and simply omitted, as for the other optional entries above.
+    (a2f_omega, a2f) = matval
+    omega_ph_max = a2fSupportMax(a2f_omega, a2f; strict=false)
+    if !isnan(omega_ph_max)
+        text *= " - Typical phonon frequency: "*string(round(omega_ph_max, digits=3))*" meV\n"
     end
 
     # cDos
@@ -828,11 +843,11 @@ end
 """
     writeInputFlags(Tc ,inp, out_vars, header)
 
-Save results of each iteration and input parameters in a file Info.txt
+Save results of each iteration and input parameters in a file Input.txt
 """
 function createInfoFile(inp)
     # write to output file
-    name = "Info.txt"
+    name = "Input.txt"
 
     if isfile(inp.outdir*name)
         rm(inp.outdir*name)

@@ -117,9 +117,21 @@ const _nonNegative = (
     mixing_beta = "the linear mixing factor",
     conv_thr    = "the convergence threshold",
     minGap      = "the gap threshold",
+    Tc_tol      = "the Tc-search tolerance",
     N_it        = "the maximum number of iterations",
     min_it      = "the minimum number of iterations",
 )
+
+
+"""
+    _strictlyPositive
+
+Fields of [`_nonNegative`](@ref) that additionally reject `0` and `NaN`. `Tc_tol` is the
+width the Tc-search bracket is closed to, so zero would bisect until the 500-temperature
+cap, and `NaN` makes every bracket test false, which has the same effect. Neither has an
+"infer this during the run" meaning, unlike the `NaN` sentinels of `mu` or `mixing_beta`.
+"""
+const _strictlyPositive = (:Tc_tol,)
 
 
 """
@@ -138,7 +150,10 @@ function _check_negative(fields)
     bad = Pair{Symbol,Any}[]
     for (k, v) in fields
         haskey(_nonNegative, k) || continue
-        v isa Number && !(v isa Bool) && v < 0 && push!(bad, k => v)
+        (v isa Number && !(v isa Bool)) || continue
+        if v < 0 || (k in _strictlyPositive && (v == 0 || isnan(v)))
+            push!(bad, k => v)
+        end
     end
     isempty(bad) || _throw_negative(bad)
     return nothing
@@ -149,7 +164,8 @@ end
     io = IOBuffer()
     println(io, "invalid input to `arguments`:\n")
     for (k, v) in bad
-        println(io, "  * ", k, " = ", v, "  - ", _nonNegative[k], " cannot be negative")
+        reason = k in _strictlyPositive ? " must be greater than zero" : " cannot be negative"
+        println(io, "  * ", k, " = ", v, "  - ", _nonNegative[k], reason)
     end
     if any(first(p) in _legacySentinel for p in bad)
         println(io, "\nTo have a value inferred during the run, leave the field out or pass NaN.")

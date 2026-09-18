@@ -103,7 +103,7 @@ function run_realAxis(inp::arguments, log_file)
     end
 
     ### Print to console ###
-    printFlagsAsText(inp, log_file, mode="realFreq")
+    printFlagsAsText(inp, matval, log_file, mode="realFreq")
 
     ########### start loop over temperatures ##########
     Tc, temps, Znorm0, Delta0, Shift0 = stage("while solving the Eliashberg equations") do
@@ -216,7 +216,9 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
 
 
             # Escape
-            if itemp < 1 && isnan(Delta0[end])
+            # `all(isnan)` guard: during refinement a probe below 1 K can come back NaN while a
+            # lower temperature has already converged - that is a closing bracket, not a floor.
+            if itemp < 1 && isnan(Delta0[end]) && all(isnan.(Delta0))
                 # log file
                 text = "Lowest temperature of Tc search mode reached. To search at lower temperatures, set them manually.\n"
                 print(log_file, text)
@@ -234,12 +236,26 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
             end
 
             order = sortperm(inp.temps)
-            if length(Delta0) >= 2 && any(diff(inp.temps[order]) .<= 1 .& (.~isnan.(Delta0[order][1:end-1]) .& isnan.(Delta0[order][2:end])))
-                # converged and sort
-                inp.temps = inp.temps[order]
-                Delta0 = Delta0[order]
-                Tc = [maximum(inp.temps[.~isnan.(Delta0)]), minimum(inp.temps[isnan.(Delta0)])]
-                break
+            # Convergence
+            gate = max(1.0, inp.Tc_tol)
+            if length(Delta0) >= 2 && any((diff(inp.temps[order]) .<= gate) .&
+                                          .~isnan.(Delta0[order][1:end-1]) .&
+                                          isnan.(Delta0[order][2:end]))
+                Tc_lo = maximum(inp.temps[.~isnan.(Delta0)])
+                Tc_hi = minimum(inp.temps[isnan.(Delta0)])
+
+                # Refinement phase to Tc_tol
+                nstep = floor(Int, (Tc_hi - Tc_lo) / inp.Tc_tol + 1e-9)
+
+                if nstep >= 2
+                    itemp = round(Tc_lo + div(nstep, 2) * inp.Tc_tol, digits=12)
+                else
+                    # converged and sort
+                    inp.temps = inp.temps[order]
+                    Delta0 = Delta0[order]
+                    Tc = [Tc_lo, Tc_hi]
+                    break
+                end
 
             elseif all(isnan.(Delta0))
                 # temperature too high
@@ -429,7 +445,6 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
         # has to be folded away before it is used as a mixing weight
         beta_mix = mixing_parameter(inp, i_it)
 
-        gap0 = spectral_gap(w_static, delta_prev, gap0)
         pole = gap0
         if pole >= ws_ht.wp_max
             ws_ht = build_cDOS_wprime_workspace(inp, realAxisParameter, pole)
@@ -445,6 +460,7 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
         Z_new = (1.0 - beta_mix) .* Z_prev .+ beta_mix .* Z_new
         delta_new = (1.0 - beta_mix) .* delta_prev .+ beta_mix .* delta_new
 
+        gap0 = spectral_gap(w_static, delta_new, gap0)
 
         rel_delta = sum(abs.(delta_new - delta_prev))
         abs_delta = sum(abs.(delta_new))
@@ -479,6 +495,11 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
                 state.delta = delta_new
                 state.phi_ph = delta_new .* Z_new
             end
+
+            plot(w_static[1:idx_gapEdge+15], real(delta_new[1:idx_gapEdge+15]), label="real")
+            plot!(w_static[1:idx_gapEdge+15], imag(delta_new[1:idx_gapEdge+15]), label="imag")
+            vline!([w_static[idx_gapEdge]])
+            savefig(inp.outdir*"Hallo.png")
 
             return data, state
         end
@@ -586,7 +607,6 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         # abs() once here: mixing_beta comes straight from the input, so a negative value
         # has to be folded away before it is used as a mixing weight
         beta_mix = mixing_parameter(inp, i_it)
-        gap0 = spectral_gap(w_static, delta_prev, gap0)
 
         # locate the ω'-integrand poles (vDOS+W: from the modified S/P quantities)
         if inp.include_Weep == 1
@@ -627,10 +647,13 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         phi_ef = inp.include_Weep == 1 ? phi_ph_new .+ phi_c_new[idx_ef] : phi_ph_new
         delta_new = phi_ef ./ Z_new
 
+        gap0 = spectral_gap(w_static, delta_new, gap0)
+
         # same measure as the cDOS branch: relative change of Δ over the whole ω-grid
         rel_delta = sum(abs.(delta_new - delta_prev))
         abs_delta = sum(abs.(delta_new))
         convergence = rel_delta / abs_delta
+
         # Z, Δ and χ are taken at the gap edge, not at w_static[1] - see `gap_edge_index`
         idx_gapEdge = gap_edge_index(w_static, gap0)
         data = [Z_new[idx_gapEdge], delta_new[idx_gapEdge], chi_new[idx_gapEdge]]

@@ -396,7 +396,9 @@ function findTc(inp, console, matval, ML_Tc, log_file)
 
 
             # Escape
-            if itemp < 1 && isnan(Delta0[end])
+            # `all(isnan)` guard: during refinement a probe below 1 K can come back NaN while a
+            # lower temperature has already converged - that is a closing bracket, not a floor.
+            if itemp < 1 && isnan(Delta0[end]) && all(isnan.(Delta0))
                 # log file
                 print(log_file, "Lowest temperature of Tc search mode reached. If you want to search at even lower temperatures consider setting them manually!\n")
 
@@ -414,12 +416,26 @@ function findTc(inp, console, matval, ML_Tc, log_file)
             end
 
             order = sortperm(inp.temps)
-            if length(Delta0) >= 2 && any(diff(inp.temps[order]) .<= 1 .& (.~isnan.(Delta0[order][1:end-1]) .& isnan.(Delta0[order][2:end])))
-                # converged and sort
-                inp.temps = inp.temps[order]
-                Delta0 = Delta0[order]
-                Tc = [maximum(inp.temps[.~isnan.(Delta0)]), minimum(inp.temps[isnan.(Delta0)])]
-                break
+            # Convergence
+            gate = max(1.0, inp.Tc_tol)
+            if length(Delta0) >= 2 && any((diff(inp.temps[order]) .<= gate) .&
+                                          .~isnan.(Delta0[order][1:end-1]) .&
+                                          isnan.(Delta0[order][2:end]))
+                Tc_lo = maximum(inp.temps[.~isnan.(Delta0)])
+                Tc_hi = minimum(inp.temps[isnan.(Delta0)])
+
+                nstep = floor(Int, (Tc_hi - Tc_lo) / inp.Tc_tol + 1e-9)
+
+                # Refinment to Tc_tol
+                if nstep >= 2
+                    itemp = round(Tc_lo + div(nstep, 2) * inp.Tc_tol, digits=12)
+                else
+                    # converged and sort
+                    inp.temps = inp.temps[order]
+                    Delta0 = Delta0[order]
+                    Tc = [Tc_lo, Tc_hi]
+                    break
+                end
 
             elseif all(isnan.(Delta0))
                 # temperature too high
@@ -623,7 +639,7 @@ function run_matsubara(inp::arguments, log_file)
     end
 
     ### Print to console ###
-    printFlagsAsText(inp, log_file)
+    printFlagsAsText(inp, matval, log_file)
 
     ########### start loop over temperatures ##########
     Tc, temps, Znorm0, Delta0, Shift0, EfMu = stage("while solving the Eliashberg equations") do

@@ -23,6 +23,9 @@ message.
 
 ### Changed
 
+- **`Info.txt` renamed to `Input.txt`.** The file lists the input parameters of the run;
+  the new name says so. Scripts that collect `Info.txt` from an output directory need to
+  be updated.
 - **Output directory.** `outdir` now defaults to `IsoME/` inside the current working
   directory instead of the working directory itself. An existing directory is never written
   into: a run counter is appended, so repeated runs land in `IsoME_1/`, `IsoME_2/`, and so on.
@@ -43,6 +46,16 @@ message.
   frequencies, written to `outdir/ACON/`.
 - `a2f_Nef`: rescales α²F to the N(ε_F) of the DOS file when the two were computed with
   different values.
+- **`Tc_tol`**: the resolution the Tc search is carried to, in K. The default `1.0` is the
+  previous behaviour. The coarse phase is unchanged and still visits whole Kelvin; once it
+  has closed the bracket to 1 K, a smaller `Tc_tol` resumes the search on the `Tc_tol`
+  lattice inside that bracket, bisecting it by always taking the middle lattice point. The
+  temperatures therefore stay readable — `Tc_tol = 0.2` visits 9.2, 9.4, 9.6 rather than
+  9.5, 9.25, 9.125. A value above 1 instead stops the search earlier, at that resolution.
+  Every lattice interval is `Tc_tol` wide except the one at either end of the bracket when
+  `Tc_tol` does not divide it evenly, which can be up to `2·Tc_tol`. Each extra step is one
+  more solve close to Tc, where convergence is slowest. Honoured by both solvers, and
+  rejected when zero, negative or `NaN`.
 - A docstring for `arguments`, listing every input group (`?arguments`).
 
 ## v1.0.5 and earlier

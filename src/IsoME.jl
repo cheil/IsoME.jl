@@ -69,7 +69,7 @@ page of the documentation lists each one with its meaning and its default.
     `typEl`, `ef`, `efW`
   * **Mode** — `cDOS_flag`, `include_Weep`, `mu_flag`
   * **Convergence** — `conv_thr`, `N_it`, `min_it`, `minGap`, `mixing_beta`,
-    `nItFullCoul`, `sparseSamplingTemp`
+    `nItFullCoul`, `sparseSamplingTemp`, `Tc_tol`
   * **Input files** — `a2f_file`, `dos_file`, `Weep_file`, `Wen_file`, together with their
     `nheader_*` / `nfooter_*` / `*_unit` / `*_col` fields, `ind_smear`, `nsmear`,
     `spinDos` and `a2f_Nef`
@@ -84,7 +84,7 @@ so repeated runs land in `IsoME_1/`, `IsoME_2/` and so on.
 
 A wrong keyword name or a value of the wrong type is reported by field name, with a
 suggestion, before the run starts. `mu`, `muc_AD`, `muc_ME`, `mixing_beta`, `conv_thr`,
-`minGap`, `N_it` and `min_it` are additionally rejected when negative; `NaN` is unaffected,
+`minGap`, `Tc_tol`, `N_it` and `min_it` are additionally rejected when negative; `NaN` is unaffected,
 so the "infer this during the run" sentinel keeps working.
 
 # Examples
@@ -121,6 +121,7 @@ See also [`EliashbergSolver`](@ref), [`RealAxisSolver`](@ref).
     nItFullCoul::Int64                      = 10
     conv_thr::Float64                       = 1e-4
     minGap::Float64                         = 0.1
+    Tc_tol::Float64                         = 1.0           # Tc-search resolution in K; refinement probes sit on this lattice
     N_it::Int64                             = 5000
     min_it::Int64                           = 10            # min iterations, both solvers
     encut::Float64                          = 2000.0        # symmetric outer energy cutoff: window [-encut, encut]

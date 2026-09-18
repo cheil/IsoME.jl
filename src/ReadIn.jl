@@ -758,10 +758,17 @@ characteristic phonon cutoff entering the μ* conversion formulas.
 Guarded: an α²F that stays below the threshold everywhere leaves the masked vector empty,
 and `maximum` of an empty collection would abort with an `ArgumentError` that names neither
 the file nor the smearing.
+
+`strict=false` returns `NaN` instead of raising in that case. It is used for the log line
+only: reporting the cutoff must not abort a run whose μ* needs no conversion, and which
+would therefore never have called this.
 """
-function a2fSupportMax(a2f_omega, a2f)
+function a2fSupportMax(a2f_omega, a2f; strict::Bool=true)
     ω = a2f_omega[a2f.>0.01]
-    isempty(ω) && error("α²F stays below 1e-2 over the whole frequency range, so no characteristic phonon frequency can be determined. Check the a2F-file and the selected smearing (ind_smear), or set μ* manually via muc_AD / muc_ME.\n\n")
+    if isempty(ω)
+        strict && error("α²F stays below 1e-2 over the whole frequency range. Check the unit in the a2F-file and the selected smearing (ind_smear).\n\n")
+        return NaN
+    end
     return maximum(ω)
 end
 

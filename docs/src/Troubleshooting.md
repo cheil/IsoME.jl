@@ -31,14 +31,14 @@ files are written at different times, which is what makes the state readable:
 |------|---------|
 | `log.txt` | opened when the run starts, appended to throughout |
 | `CRASH` | whenever an exception was caught — a fatal error, or an optional step that failed (see [Optional output steps failed](@ref)) |
-| `Info.txt`, `Summary.dat`, figures | only after the equations are solved, at the very end of a successful run |
+| `Input.txt`, `Summary.dat`, figures | only after the equations are solved, at the very end of a successful run |
 
 So a lone `log.txt` means the run neither finished nor hit a handled error. The log itself cannot
 tell you which: a run that is still working and a run that was stopped leave the same partially
 written file, both ending in the middle of a temperature step. **Check whether the calculation is
 still running** — `ps`/`htop` for a local run, `condor_q` or the equivalent for a batch job:
 
-- **It is still running.** Nothing is wrong. `Info.txt`, `Summary.dat` and the figures are written
+- **It is still running.** Nothing is wrong. `Input.txt`, `Summary.dat` and the figures are written
   in one go after the equations are solved, so their absence says nothing about progress while the
   temperature loop is still printing. This is the normal state of every output folder of a batch
   that has not drained yet.
@@ -52,7 +52,7 @@ still running** — `ps`/`htop` for a local run, `condor_q` or the equivalent fo
     either. Check the scheduler's own files (for HTCondor the `.log` / `.err` of the job) for the
     reason, and resubmit — with more memory if the job was killed for its size.
 
-The same reasoning applies to a partially written output directory (`Info.txt` present,
+The same reasoning applies to a partially written output directory (`Input.txt` present,
 `Summary.dat` missing): everything up to the point of the interruption was written, everything
 after it was not.
 

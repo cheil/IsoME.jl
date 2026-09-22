@@ -378,6 +378,7 @@ function findTc(inp, console, matval, ML_Tc, log_file)
         m(x, p) = p[1] + log(p[3]) .- p[2] * x ./ p[3] .- p[2] * x .^ 2 / (2 * p[3]^2) .- p[2] * x .^ 3 / (3 * p[3]^3) .- p[2] * x .^ 4 / (4 * p[3]^4) .- p[2] * x .^ 5 / (5 * p[3]^5)
         inp.temps = Vector{Float64}()
         fitFlag = true
+        Tc_grid = Float64[]   # Tc_tol lattice, built once in the refinement branch
         while true
             # save iterations
             inp.temps = push!(inp.temps, itemp)
@@ -424,11 +425,18 @@ function findTc(inp, console, matval, ML_Tc, log_file)
                 Tc_lo = maximum(inp.temps[.~isnan.(Delta0)])
                 Tc_hi = minimum(inp.temps[isnan.(Delta0)])
 
-                nstep = floor(Int, (Tc_hi - Tc_lo) / inp.Tc_tol + 1e-9)
+                # Refinement to Tc_tol
+                if isempty(Tc_grid)
+                    npts = ceil(Int, (Tc_hi - Tc_lo) / inp.Tc_tol - 1e-9) - 1
+                    if npts >= 1
+                        margin = ((Tc_hi - Tc_lo) - (npts - 1) * inp.Tc_tol) / 2
+                        Tc_grid = [round(Tc_lo + margin + k * inp.Tc_tol, digits=12) for k in 0:npts-1]
+                    end
+                end
+                Tc_cand = filter(T -> Tc_lo < T < Tc_hi, Tc_grid)
 
-                # Refinment to Tc_tol
-                if nstep >= 2
-                    itemp = round(Tc_lo + div(nstep, 2) * inp.Tc_tol, digits=12)
+                if !isempty(Tc_cand)
+                    itemp = Tc_cand[cld(length(Tc_cand), 2)]
                 else
                     # converged and sort
                     inp.temps = inp.temps[order]

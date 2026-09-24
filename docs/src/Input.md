@@ -3,7 +3,7 @@ Input parameters are collected in the [composite type](https://docs.julialang.or
 Only the path to the ``\alpha^2F`` file is mandatory. Everything else either has a default or is inferred during the run.
 Fields that are meant to be inferred are left at a sentinel — `NaN` (real-valued fields), `-1` (integer fields such as line counts and column indices) or `""` (strings) — and are overwritten once their value is known.
 Before IsoME 2.0 the real-valued fields used `-1` for this, so passing `-1` to one of them is now rejected with a message pointing at `NaN`.
-`mu`, `muc_AD`, `muc_ME`, `mixing_beta`, `conv_thr`, `minGap`, `N_it` and `min_it` are likewise rejected if given a negative value, both when the struct is built and again at the start of a solve.
+`mu`, `muc_AD`, `muc_ME`, `mixing_beta`, `conv_thr`, `minGap`, `N_it` and `min_it` are likewise rejected if given a negative value, both when the struct is built and again at the start of a solve. `Tc_tol` must be strictly positive, and `N_it` strictly positive and at least `min_it`.
 Because of this, we recommend creating a fresh `arguments` instance for each call to `EliashbergSolver()` or `RealAxisSolver()` — see [Best practices](@ref).
 
 All energies are handled internally in meV.
@@ -42,6 +42,7 @@ These inputs are shared by both solvers unless noted otherwise.
 | minGap   | Float64 | 0.1  | Lower gap threshold | In meV; the temperature is treated as normal conducting if the gap drops below `minGap` |
 | N_it | Int64 | 5000 | Maximum number of iterations | - |
 | min_it | Int64 | 10 | Minimum number of iterations before convergence is accepted | Used by both solvers; the Coulomb ramp (`nItFullCoul`) must have finished as well |
+| Tc_tol | Float64 | 1.0 | Resolution the ``\mathrm{T}_C`` search is carried to | In K; must be strictly positive. Once the search brackets ``\mathrm{T}_C``, it refines on a lattice of this spacing until the bracket is `Tc_tol` wide, so the reported ``\mathrm{T}_C`` carries an uncertainty of ``\pm`` `Tc_tol`/2. Smaller values cost additional temperatures; ignored when `temps` is given explicitly |
 | outdir | String | `joinpath(pwd(), "IsoME")` | Path to the output directory | An existing directory is never written into: a run counter is appended, so repeated runs land in `IsoME_1/`, `IsoME_2/`, and so on |
 | flag_figure | Int64 |  1 | Plot the gap and ``\alpha^2F`` values | 0: no; 1: yes |
 | flag_writeSelfEnergy | Int64 | 0  | Save **and** plot the self-energy components (`.dat` + `.png`) | 0: no; 1: yes. Works for both solvers and all modes; files are written to `outdir/SelfEnergy/`. The first header line of each `.dat` carries the converged chemical potential as `mu_F = … meV` (relative to the ``\varepsilon_F`` of the DOS input), which any ``\varepsilon``-resolved post-processing needs |

@@ -121,9 +121,9 @@ See also [`EliashbergSolver`](@ref), [`RealAxisSolver`](@ref).
     nItFullCoul::Int64                      = 10
     conv_thr::Float64                       = 1e-4
     minGap::Float64                         = 0.1
-    Tc_tol::Float64                         = 1.0           # Tc-search resolution in K; refinement probes sit on this lattice
+    Tc_tol::Float64                         = 1.0           # Tc-search resolution in K
     N_it::Int64                             = 5000
-    min_it::Int64                           = 10            # min iterations, both solvers
+    min_it::Int64                           = 10            # min iterations
     encut::Float64                          = 2000.0        # symmetric outer energy cutoff: window [-encut, encut]
     sparseSamplingTemp::Float64             = 2.0
     typEl::Float64                          = NaN

@@ -250,10 +250,13 @@ function createDirectory!(inp::arguments, strIsoME::String)
         # consecutive runs into the same path land in <outdir>_1, <outdir>_2, ...
         idxDir = 1
         tempDir = inp.outdir[1:end-1]
+        requestedDir = inp.outdir          # what the user asked for, for the warning below
         while isdir(inp.outdir)
             inp.outdir = tempDir * "_" * string(idxDir) * "/"
             idxDir += 1
         end
+        # one warning for the whole search, not one per counter that was tried
+        dirRenamed = inp.outdir != requestedDir
 
         try
             mkpath(inp.outdir)
@@ -278,6 +281,14 @@ function createDirectory!(inp::arguments, strIsoME::String)
         file_logger = SimpleLogger(log_file)
         tee_logger = TeeLogger(ConsoleLogger(), file_logger)
         global_logger(tee_logger)
+
+        # issued here rather than inside the loop above: the logger only exists from this
+        # point on, so this is the first place the message reaches both console and log.txt
+        if dirRenamed
+            printWarning("Output directory " * requestedDir * " already exists. Writing to " *
+                         inp.outdir * " instead. Previous results are left untouched; remove " *
+                         "or rename the old directory to keep the original name.", log_file)
+        end
     end
 
     return log_file, errorLogger, prevLogger
@@ -330,6 +341,13 @@ function checkInput!(inp::arguments; realSolver::Bool=false)
         text = "Invalid path to Weep or Wen-file!\n\n"
         error(text)
 
+    end
+
+    # N_it is the iteration cap, min_it the number of iterations that has to be completed
+    # before convergence is accepted. With N_it < min_it the convergence test can never
+    # fire, so every temperature would run the full N_it iterations and come back Δ = NaN.
+    if inp.N_it < inp.min_it
+        error("N_it = " * string(inp.N_it) * " is smaller than min_it = " * string(inp.min_it) * ". The maximum number of iterations has to be at least the minimum number, otherwise convergence can never be accepted.\n\n")
     end
 
     if inp.cDOS_flag ∉ (0,1)
@@ -441,6 +459,15 @@ function readIn_a2f(a2f_file, indSmear::Int=-1, unit="", nheader::Int=-1, nfoote
     (nsmear >= 0)   || (nsmear = (length(a2f_data[nheader+1, isa.(a2f_data[nheader+1, :], Number)]) - 1)::Int)
     (indSmear >= 0) || (indSmear = Int64(ceil(nsmear / 2)))
 
+    # `ind_smear` counts the α²F columns only - the frequency column is not one of them,
+    # so ind_smear = 1 is the first α²F column, i.e. column 2 of the file. Checked here
+    # because both numbers index into the raw data below, where a value out of range
+    # would only surface as a bare BoundsError.
+    ncol = size(a2f_data, 2)
+    nsmear >= 1 || error("nsmear = " * string(nsmear) * ": the a2F-file needs at least one α²F column next to the frequency column. Check the file and its column layout.\n\n")
+    nsmear + 1 <= ncol || error("nsmear = " * string(nsmear) * " needs " * string(nsmear + 1) * " columns (frequencies + α²F), but the a2F-file has " * string(ncol) * ". Check nsmear and the column layout of the file.\n\n")
+    1 <= indSmear <= nsmear || error("ind_smear = " * string(indSmear) * " is out of range: the a2F-file holds " * string(nsmear) * " smearing column(s), so ind_smear must be between 1 and " * string(nsmear) * ". It counts the α²F columns only - the frequency column is not counted, so ind_smear = 1 selects the first α²F column.\n\n")
+
     ### Remove header & footer
     header = join(a2f_data[1:nheader, :], " ")
     # type-assert to a concrete Matrix{Float64}: readdlm infers as Any, so without this
@@ -467,7 +494,7 @@ function readIn_a2f(a2f_file, indSmear::Int=-1, unit="", nheader::Int=-1, nfoote
     ### a2f for one smearing ###
     a2f_raw = a2f_data[:, indSmear+1]
 
-    ### interpolate a2F on 10x finer grid ###
+    ### resample a2F onto a grid starting just above zero ###
     omega = range(1e-2, stop=omega_raw[end], length=size(omega_raw)[1])   
     a2f_itp = linear_interpolation(omega_raw, a2f_raw, extrapolation_bc=0)     
     a2f = a2f_itp(omega)
@@ -809,11 +836,15 @@ function calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
         text *= "\nSee the μ* conversion section of the Troubleshooting page and the pseudopotential section of the Input documentation."
         printWarning(text, log_file)
 
-        wc_plot = range(min(100, floor(phonon_cutoff/2)), max(ceil(2*phonon_cutoff), 1e4), 500)
-        muc_ME_plot = inp.muc_AD ./ (1 .+ inp.muc_AD .* log.(a2fSupportMax(a2f_omega, a2f) ./ wc_plot))
+        # diagnostic plot: written whenever it is warned about, independent of
+        # flag_figure, but never in test mode - there `outdir` is not even created
+        if ~inp.testMode
+            wc_plot = range(min(100, floor(phonon_cutoff/2)), max(ceil(2*phonon_cutoff), 1e4), 500)
+            muc_ME_plot = inp.muc_AD ./ (1 .+ inp.muc_AD .* log.(a2fSupportMax(a2f_omega, a2f) ./ wc_plot))
 
-        plot(wc_plot, muc_ME_plot)
-        savefig(inp.outdir*"muc_ME.png")
+            plot(wc_plot, muc_ME_plot)
+            savefig(inp.outdir*"muc_ME.png")
+        end
     end
 end
 
@@ -855,11 +886,15 @@ function calcMucs(inp, ef, a2f, a2f_omega, phonon_cutoff, log_file)
         text *= "\nSee the μ* conversion section of the Troubleshooting page and the pseudopotential section of the Input documentation."
         printWarning(text, log_file)
 
-        wc_plot = range(min(100, floor(phonon_cutoff/2)), max(ceil(2*phonon_cutoff), 1e4), 500)
-        muc_ME_plot = inp.muc_AD ./ (1 .+ inp.muc_AD .* log.(a2fSupportMax(a2f_omega, a2f) ./ wc_plot))
+        # diagnostic plot: written whenever it is warned about, independent of
+        # flag_figure, but never in test mode - there `outdir` is not even created
+        if ~inp.testMode
+            wc_plot = range(min(100, floor(phonon_cutoff/2)), max(ceil(2*phonon_cutoff), 1e4), 500)
+            muc_ME_plot = inp.muc_AD ./ (1 .+ inp.muc_AD .* log.(a2fSupportMax(a2f_omega, a2f) ./ wc_plot))
 
-        plot(wc_plot, muc_ME_plot)
-        savefig(inp.outdir*"muc_ME.png")
+            plot(wc_plot, muc_ME_plot)
+            savefig(inp.outdir*"muc_ME.png")
+        end
     end
 
     if inp.include_Weep == 0

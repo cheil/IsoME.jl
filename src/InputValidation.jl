@@ -128,10 +128,15 @@ const _nonNegative = (
 
 Fields of [`_nonNegative`](@ref) that additionally reject `0` and `NaN`. `Tc_tol` is the
 width the Tc-search bracket is closed to, so zero would bisect until the 500-temperature
-cap, and `NaN` makes every bracket test false, which has the same effect. Neither has an
-"infer this during the run" meaning, unlike the `NaN` sentinels of `mu` or `mixing_beta`.
+cap, and `NaN` makes every bracket test false, which has the same effect. `N_it = 0` skips
+the iteration loop of every solver, which leaves the result vectors empty on the imaginary
+axis and returns `nothing` on the real one. Neither has an "infer this during the run"
+meaning, unlike the `NaN` sentinels of `mu` or `mixing_beta`.
+
+`N_it` additionally has to be at least `min_it`; that pair is checked in [`checkInput!`](@ref),
+which sees the whole struct.
 """
-const _strictlyPositive = (:Tc_tol,)
+const _strictlyPositive = (:Tc_tol, :N_it)
 
 
 """

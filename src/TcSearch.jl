@@ -161,7 +161,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             if cDOS_flag == 0
                 ### mu update 
                 if mu_flag == 1 && i_it > 1
-                    fermi_level = update_mu_own(itemp, wsi, dos_en, dos, znormip, phiphip, phicip, shiftip, fermi_level, outdir)
+                    fermi_level = update_mu_own(itemp, wsi, dos_en, dos, znormip, phiphip, phicip, shiftip, fermi_level, outdir, testMode = inp.testMode)
                 end
 
                 new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dosef, ndos, dos_en, dos, Weep, znormip, phiphip, phicip, shiftip, wgCoulomb, fermi_level)
@@ -207,7 +207,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             if cDOS_flag == 0
                 ### mu update
                 if mu_flag == 1 && i_it > 1
-                    fermi_level = update_mu_own(itemp, wsi, dos_en, dos, znormip, znormip .* deltaip, Float64[], shiftip, fermi_level, outdir)
+                    fermi_level = update_mu_own(itemp, wsi, dos_en, dos, znormip, znormip .* deltaip, Float64[], shiftip, fermi_level, outdir, testMode = inp.testMode)
                 end
 
                 new_data = eliashberg_eqn(itemp, nsiw, wsi, ind_mat_freq, sparse_sampling_flag, lambdai, dos_en, dos, dosef, znormip, deltaip, shiftip, muc_ME, fermi_level, wgCoulomb)
@@ -419,11 +419,21 @@ function findTc(inp, console, matval, ML_Tc, log_file)
             order = sortperm(inp.temps)
             # Convergence
             gate = max(1.0, inp.Tc_tol)
-            if length(Delta0) >= 2 && any((diff(inp.temps[order]) .<= gate) .&
-                                          .~isnan.(Delta0[order][1:end-1]) .&
-                                          isnan.(Delta0[order][2:end]))
-                Tc_lo = maximum(inp.temps[.~isnan.(Delta0)])
-                Tc_hi = minimum(inp.temps[isnan.(Delta0)])
+            # The bracket is the *highest* pair of neighbouring temperatures that goes from
+            # a gap to no gap. Taking maximum(sc)/minimum(nsc) over the whole list instead
+            # crosses over as soon as a low temperature comes back NaN: NaN marks both
+            # "normal conducting" and "did not converge", so a single convergence failure
+            # below Tc used to yield Tc_lo > Tc_hi and a summary line like "Tc = 7.5 (±-1.5) K".
+            # Reading the pair off the sorted list also keeps the gate test and the bracket
+            # describing the same two temperatures.
+            Ts_sorted = inp.temps[order]
+            isSc = .~isnan.(Delta0[order])
+            iTrans = length(Delta0) >= 2 ?
+                     findlast(i -> isSc[i] && !isSc[i+1], 1:length(isSc)-1) : nothing
+
+            if !isnothing(iTrans) && (Ts_sorted[iTrans+1] - Ts_sorted[iTrans]) <= gate
+                Tc_lo = Ts_sorted[iTrans]
+                Tc_hi = Ts_sorted[iTrans+1]
 
                 # Refinement to Tc_tol
                 if isempty(Tc_grid)
@@ -438,9 +448,16 @@ function findTc(inp, console, matval, ML_Tc, log_file)
                 if !isempty(Tc_cand)
                     itemp = Tc_cand[cld(length(Tc_cand), 2)]
                 else
-                    # converged and sort
+                    # converged and sort. Every result vector has to follow the *same*
+                    # permutation as `temps`: they become the columns of Summary.dat, so a
+                    # vector left in visit order lands on the wrong temperature there
                     inp.temps = inp.temps[order]
                     Delta0 = Delta0[order]
+                    Znorm0 = Znorm0[order]
+                    if inp.cDOS_flag == 0
+                        Shift0 = Shift0[order]
+                        EfMu   = EfMu[order]
+                    end
                     Tc = [Tc_lo, Tc_hi]
                     break
                 end

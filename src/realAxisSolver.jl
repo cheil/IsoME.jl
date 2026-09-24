@@ -106,7 +106,7 @@ function run_realAxis(inp::arguments, log_file)
     printFlagsAsText(inp, matval, log_file, mode="realFreq")
 
     ########### start loop over temperatures ##########
-    Tc, temps, Znorm0, Delta0, Shift0 = stage("while solving the Eliashberg equations") do
+    Tc, temps, Znorm0, Delta0, Shift0, EfMu = stage("while solving the Eliashberg equations") do
         findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
     end
 
@@ -135,7 +135,7 @@ function run_realAxis(inp::arguments, log_file)
             out_vars[:, 5] = imag(Znorm0)
             if inp.cDOS_flag == 0   # for later when vDOS is implemented
                 header = header * "Re{χ(ω_g)}/meV   Im{χ(ω_g)}/meV   ϵ_F-μ/meV   "
-                out_vars = hcat(out_vars, real(Shift0), imag(Shift0))
+                out_vars = hcat(out_vars, real(Shift0), imag(Shift0), EfMu)
             end
             createSummaryFile(inp, Tc, out_vars, header)
         end
@@ -169,6 +169,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
     Delta0 = Vector{ComplexF64}()
     Shift0 = Vector{ComplexF64}()
     Znorm0 = Vector{ComplexF64}()
+    EfMu = Vector{Float64}()
     Tc = [NaN, NaN]
 
     realAxisState = nothing
@@ -210,6 +211,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
                 Shift0 = push!(Shift0, data[3])
+                EfMu   = push!(EfMu, real(data[4]))
             elseif inp.cDOS_flag == 1
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
@@ -237,13 +239,19 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
             end
 
             order = sortperm(inp.temps)
-            # Convergence
+
+            # T tolerance
             gate = max(1.0, inp.Tc_tol)
-            if length(Delta0) >= 2 && any((diff(inp.temps[order]) .<= gate) .&
-                                          .~isnan.(Delta0[order][1:end-1]) .&
-                                          isnan.(Delta0[order][2:end]))
-                Tc_lo = maximum(inp.temps[.~isnan.(Delta0)])
-                Tc_hi = minimum(inp.temps[isnan.(Delta0)])
+
+            # Convergence criterion
+            Ts_sorted = inp.temps[order]
+            isSc = .~isnan.(Delta0[order])
+            iTrans = length(Delta0) >= 2 ?
+                     findlast(i -> isSc[i] && !isSc[i+1], 1:length(isSc)-1) : nothing
+            # Convergence
+            if !isnothing(iTrans) && (Ts_sorted[iTrans+1] - Ts_sorted[iTrans]) <= gate
+                Tc_lo = Ts_sorted[iTrans]
+                Tc_hi = Ts_sorted[iTrans+1]
 
                 # Refinement to Tc_tol
                 if isempty(Tc_grid)
@@ -261,6 +269,11 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
                     # converged and sort
                     inp.temps = inp.temps[order]
                     Delta0 = Delta0[order]
+                    Znorm0 = Znorm0[order]
+                    if inp.cDOS_flag == 0
+                        Shift0 = Shift0[order]
+                        EfMu   = EfMu[order]
+                    end
                     Tc = [Tc_lo, Tc_hi]
                     break
                 end
@@ -366,6 +379,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
                 Shift0 = push!(Shift0, data[3])
+                EfMu   = push!(EfMu, real(data[4]))
             elseif inp.cDOS_flag == 1
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
@@ -392,7 +406,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
 
     printTextCentered("Stopping now!", console.partingLine, file=log_file, bold=true)
 
-    return Tc, inp.temps, Znorm0, Delta0, Shift0
+    return Tc, inp.temps, Znorm0, Delta0, Shift0, EfMu
 
 end
 
@@ -504,18 +518,10 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
                 state.phi_ph = delta_new .* Z_new
             end
 
-            plot(w_static[1:idx_gapEdge+15], real(delta_new[1:idx_gapEdge+15]), label="real")
-            plot!(w_static[1:idx_gapEdge+15], imag(delta_new[1:idx_gapEdge+15]), label="imag")
-            vline!([w_static[idx_gapEdge]])
-            savefig(inp.outdir*"Hallo.png")
-
             return data, state
         end
 
-        # A NaN anywhere in the console row abandons this temperature. Every self-energy
-        # component is built from sums over the whole ω'-grid, so a single NaN entry
-        # contaminates all of them within one iteration and iterating on is pointless.
-        # Handled like the N_it case (Δ = NaN), so the Tc search continues at lower T.
+        # max iter 
         if i_it == N_it || nan_state
             nan_state ? print_real_axis_nan(itemp, console, log_file) :
                         print_real_axis_not_converged(inp, console, log_file)
@@ -590,11 +596,12 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
 
     # print console table; sampled at the gap edge, like the iteration rows
     ig0 = gap_edge_index(w_static, spectral_gap(w_static, state.delta, BCS_gap))
-    initValues = [0 real(state.Z[ig0]) imag(state.Z[ig0]) real(state.chi[ig0]) imag(state.chi[ig0]) state.fermi_level real(state.delta[ig0]) imag(state.delta[ig0]) nothing]
+    initValues = [0 real(state.Z[ig0]) imag(state.Z[ig0]) real(state.chi[ig0]) imag(state.chi[ig0]) -state.fermi_level real(state.delta[ig0]) imag(state.delta[ig0]) nothing]
     printTableHeader(console, initValues, log_file)
 
     β = 1 / (kb * itemp)
-    data = [state.Z[ig0], state.delta[ig0], state.chi[ig0]]
+    # 4th entry is ϵ_F-μ, carried to the Summary file alongside Z, Δ and χ
+    data = [state.Z[ig0], state.delta[ig0], state.chi[ig0], -state.fermi_level]
 
     # ------ integration grid and kernels ----- #
     # head/tail split (vDOS): tail kernels are computed once per temperature,
@@ -635,7 +642,7 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
 
         # Add mu thermalization: start mu-update only after a few iterations
         if mu_flag == 1 # && i_it > maximum([min_it, nItFullCoul + 1]) -1
-            fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_prime, electronic_spec, dos_en, dos, Z_prev, phi_ph_prev, phi_c_prev, chi_prev, inp.outdir)
+            fermi_level = mu_update_real_axis(itemp, fermi_level, w_static, w_prime, electronic_spec, dos_en, dos, Z_prev, phi_ph_prev, phi_c_prev, chi_prev, inp.outdir, testMode = inp.testMode)
         end
 
         if inp.include_Weep == 1
@@ -664,8 +671,8 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
 
         # Z, Δ and χ are taken at the gap edge, not at w_static[1] - see `gap_edge_index`
         idx_gapEdge = gap_edge_index(w_static, gap0)
-        data = [Z_new[idx_gapEdge], delta_new[idx_gapEdge], chi_new[idx_gapEdge]]
-        outputVec = real_axis_vDOS_output(i_it, Z_new, delta_new, chi_new, fermi_level, convergence, idx_gapEdge)
+        data = [Z_new[idx_gapEdge], delta_new[idx_gapEdge], chi_new[idx_gapEdge], -fermi_level]
+        outputVec = real_axis_vDOS_output(i_it, Z_new, delta_new, chi_new, -fermi_level, convergence, idx_gapEdge)
         nan_state = any(isnan, outputVec)
         print_real_axis_iteration(outputVec, console, log_file)
 
@@ -861,14 +868,14 @@ end
 
 
 """
-    real_axis_vDOS_output(i_it, Z_new, delta_new, chi_new, fermi_level, convergence, ig)
+    real_axis_vDOS_output(i_it, Z_new, delta_new, chi_new, ef_minus_mu, convergence, ig)
 
 vDOS console output. Z, χ and Δ are reported at the gap-edge index `ig` (see `gap_edge_index`),
 the same point the solver uses for its own gap check, and the error column is the quantity
 that is tested against `conv_thr`.
 """
-function real_axis_vDOS_output(i_it, Z_new, delta_new, chi_new, fermi_level, convergence, ig)
-    return [i_it, real(Z_new[ig]), imag(Z_new[ig]), real(chi_new[ig]), imag(chi_new[ig]), fermi_level,
+function real_axis_vDOS_output(i_it, Z_new, delta_new, chi_new, ef_minus_mu, convergence, ig)
+    return [i_it, real(Z_new[ig]), imag(Z_new[ig]), real(chi_new[ig]), imag(chi_new[ig]), ef_minus_mu,
             real(delta_new[ig]), imag(delta_new[ig]), abs(convergence)]
 end
 
@@ -904,27 +911,4 @@ end
 
 
 
-"""
 
-Extract numbers from string
-"""
-function numbersFromString(str::String)
-    nums = []
-    current_number = ""
-
-    for char in str
-        if isdigit(char) || char == '.'  # Check if the character is a digit or decimal point
-            current_number *= char      # Build the number string
-        elseif current_number != ""     # If we encounter a non-digit and have a number built
-            push!(nums, parse(Float64, current_number))  # Convert and store the number
-            current_number = ""  # Reset for the next number
-        end
-    end
-
-    # If a number is left at the end of the string
-    if current_number != ""
-        push!(nums, parse(Float64, current_number))
-    end
-
-    return Float64.(nums)
-end

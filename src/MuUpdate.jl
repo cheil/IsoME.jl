@@ -26,23 +26,6 @@ end
 
 
 """
-    plotMuError(outdir, mu, dNe)
-
-Diagnostic for a failed μ-update: `Ne_nsc - Ne_sc` against μ, as `muError.png` and
-`muError.dat`. A function of its own rather than a `do` block inside `root_finding`, which
-would capture - and box - the `mu_error` vector that the bracket search keeps growing.
-"""
-function plotMuError(outdir, mu, dNe)
-    withIsoMEStyle() do
-        plot(mu, dNe, label="Ne_nsc - Ne_sc", title="Ne in normal state minus sc state")
-        savefig(outdir*"muError.png")
-    end
-    savePlotData(outdir*"muError.dat", "#  μ / meV       Ne_nsc - Ne_sc", mu, dNe)
-    return nothing
-end
-
-
-"""
     root_finding(fmu)
 
 Find the root of f(mu) = Ne_nsc(mu) - Ne_sc = 0.
@@ -57,10 +40,8 @@ function root_finding(fmu, outdir, fermi_level; shift = nothing, omega_shift = n
         testMode && return
         (isnothing(shift) || isnothing(omega_shift)) && return
         chi = real.(shift)
-        withIsoMEStyle() do
-            plot(omega_shift, chi, label="χ(ω)", title="Shift channel used in the μ-update", xlabel="ω / meV", ylabel="χ / meV")
-            savefig(outdir*"muError_shift.png")
-        end
+        plot(omega_shift, chi, label="χ(ω)", title="Shift channel used in the μ-update", xlabel="ω / meV", ylabel="χ / meV")
+        savefig(outdir*"muError_shift.png")
         savePlotData(outdir*"muError_shift.dat", "#  ω / meV       χ(ω) / meV", omega_shift, chi)
     end
 
@@ -82,7 +63,12 @@ function root_finding(fmu, outdir, fermi_level; shift = nothing, omega_shift = n
 
         # diagnostics for the error below: not tied to flag_figure, but skipped in test
         # mode, where outdir is never created and savefig would mask the real message
-        ~testMode && plotMuError(outdir, mu_error, Ne_error)
+        if ~testMode
+            p = plot(mu_error, Ne_error, label="Ne_nsc - Ne_sc", title="Ne in normal state minus sc state")
+            #vline(p, [mu0, mu1], label="mu")
+            savefig(outdir*"muError.png")
+            savePlotData(outdir*"muError.dat", "#  μ / meV       Ne_nsc - Ne_sc", mu_error, Ne_error)
+        end
         plotShift()
 
         error("The number of electrons decreases with increasing mu! See muError.png/muError.dat, muError_shift.png (does χ(ω) decay to 0?) and the μ-update section of the Troubleshooting page.")
@@ -114,7 +100,11 @@ function root_finding(fmu, outdir, fermi_level; shift = nothing, omega_shift = n
         end
         iter += 1
         if iter > 50    # 50 * mu_step = 5 eV to either side
-            ~testMode && plotMuError(outdir, mu_error, fmu_error)
+            if ~testMode
+                plot(mu_error, fmu_error, label="Ne_nsc - Ne_sc", title="Ne in normal state minus sc state")
+                savefig(outdir*"muError.png")
+                savePlotData(outdir*"muError.dat", "#  μ / meV       Ne_nsc - Ne_sc", mu_error, fmu_error)
+            end
             plotShift()
 
             mu0error = mu_error[1]

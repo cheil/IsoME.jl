@@ -203,44 +203,32 @@ include("realAxisEliashbergEq.jl")
 include("Acon.jl")
 
 
-### plotting style ###
+### plotting defaults ###
 """
-    ISOME_PLOT_STYLE
+    setPlotDefaults()
 
 Style shared by every figure IsoME writes, plus `show = false`: the solver saves its
 figures to `outdir` and must never open a plot window, which would block a batch run.
-Applied through [`withIsoMEStyle`](@ref), never through a global `default(...)`.
+
+Applied once when the module is loaded rather than from each plotting routine, so that the
+style is defined in a single place and a run does not change the plotting defaults of the
+session while it goes.
 """
-const ISOME_PLOT_STYLE = (
-    show        = false,
-    fontfamily  = "Computer Modern",
-    linewidth   = 2,
-    framestyle  = :box,
-    label       = nothing,
-    grid        = false,
-)
+function setPlotDefaults()
+    default(
+        show        = false,
+        fontfamily  = "Computer Modern",
+        linewidth   = 2,
+        framestyle  = :box,
+        label       = nothing,
+        grid        = false,
+    )
+    return nothing
+end
 
-"""
-    withIsoMEStyle(f)
-
-Run the plotting code `f` with [`ISOME_PLOT_STYLE`](@ref) as the Plots defaults.
-
-The defaults are set for the duration of `f` only and the previous values are put back
-afterwards, so the style stays defined in a single place without changing the plotting
-defaults of the user's session - neither when IsoME is loaded nor during a run. Every
-routine that creates a figure goes through this.
-
-The restore sits in a `finally`: plotting errors are caught further up (see `attempt`) and
-the run continues, so a failed figure must not leave the IsoME style behind in the session.
-"""
-function withIsoMEStyle(f)
-    previous = [k => default(k) for k in keys(ISOME_PLOT_STYLE)]
-    default(; ISOME_PLOT_STYLE...)
-    try
-        return f()
-    finally
-        default(; previous...)
-    end
+function __init__()
+    setPlotDefaults()
+    return nothing
 end
 
 

@@ -871,10 +871,8 @@ function calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
             wc_plot = range(min(100, floor(phonon_cutoff/2)), max(ceil(2*phonon_cutoff), 1e4), 500)
             muc_ME_plot = inp.muc_AD ./ (1 .+ inp.muc_AD .* log.(a2fSupportMax(a2f_omega, a2f) ./ wc_plot))
 
-            withIsoMEStyle() do
-                plot(wc_plot, muc_ME_plot)
-                savefig(inp.outdir*"muc_ME.png")
-            end
+            plot(wc_plot, muc_ME_plot)
+            savefig(inp.outdir*"muc_ME.png")
         end
     end
 end
@@ -923,10 +921,8 @@ function calcMucs(inp, ef, a2f, a2f_omega, phonon_cutoff, log_file)
             wc_plot = range(min(100, floor(phonon_cutoff/2)), max(ceil(2*phonon_cutoff), 1e4), 500)
             muc_ME_plot = inp.muc_AD ./ (1 .+ inp.muc_AD .* log.(a2fSupportMax(a2f_omega, a2f) ./ wc_plot))
 
-            withIsoMEStyle() do
-                plot(wc_plot, muc_ME_plot)
-                savefig(inp.outdir*"muc_ME.png")
-            end
+            plot(wc_plot, muc_ME_plot)
+            savefig(inp.outdir*"muc_ME.png")
         end
     end
 

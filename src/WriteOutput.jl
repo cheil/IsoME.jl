@@ -919,20 +919,12 @@ end
 
 
 
-"""
-    createFigures(inp, matval, Delta0, temps, Tc, log_file)
-
-α²F and Δ(T) figures of a run, drawn in the IsoME style (see [`withIsoMEStyle`](@ref)).
-"""
-createFigures(inp, matval, Delta0, temps, Tc, log_file) =
-    withIsoMEStyle(() -> _createFigures(inp, matval, Delta0, temps, Tc, log_file))
-
-function _createFigures(inp, matval, Delta0, temps, Tc, log_file)
+function createFigures(inp, matval, Delta0, temps, Tc, log_file)
 
     # values
     a2f_omega_fine, a2f_fine = matval
 
-    # print a2F vs. energy
+    # print a2F vs. energy (style set once in setPlotDefaults)
     xlim_max = Int(round(maximum(a2f_omega_fine) / 10 * 1.01, RoundUp) * 10)
     xtick_val = 0:10:xlim_max
     ylim_max = Int(round(maximum(a2f_fine), RoundUp))
@@ -1150,16 +1142,14 @@ function writeSelfEnergyComponent(folder::AbstractString, T::Float64, material::
     end
 
     # ----- plot -----
-    withIsoMEStyle() do
-        if eltype(c.y) <: Complex
-            plot(c.x, real.(c.y), color = :blue, label = "Real", linewidth = 2, xlabel = c.xlabel, ylabel = c.ylabel)
-            plot!(c.x, imag.(c.y), color = :red, label = "Imag", linewidth = 2)
-        else
-            plot(c.x, c.y, color = :blue, label = "", linewidth = 2, xlabel = c.xlabel, ylabel = c.ylabel)
-        end
-        material != "Material" && title!(material)
-        savefig(base * ".png")
+    if eltype(c.y) <: Complex
+        plot(c.x, real.(c.y), color = :blue, label = "Real", linewidth = 2, xlabel = c.xlabel, ylabel = c.ylabel)
+        plot!(c.x, imag.(c.y), color = :red, label = "Imag", linewidth = 2)
+    else
+        plot(c.x, c.y, color = :blue, label = "", linewidth = 2, xlabel = c.xlabel, ylabel = c.ylabel)
     end
+    material != "Material" && title!(material)
+    savefig(base * ".png")
 
     return nothing
 end

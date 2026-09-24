@@ -83,7 +83,7 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; shifti = Float64[
         saveACON(itemp, folder, ws_pade, delta_pade, "pade")
     end    
 
-    # ----- make plots ----- (IsoME style applied through withIsoMEStyle)
+    # ----- make plots ----- (style set once in setPlotDefaults)
 
     # NAC
     #=
@@ -106,13 +106,11 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; shifti = Float64[
         ----------------------------------------------
         =#
 
-        withIsoMEStyle() do
-            plotGap(itemp, ws_pade, delta_pade, folder, inp.material, "pade")
-            if ~all(shifti .== 0)
-                plotShift(itemp, ws_pade, shift_pade, folder, inp.material, "pade")
-            end
-            plotZ(itemp, ws_pade, Z_pade, folder, inp.material, "pade")
+        plotGap(itemp, ws_pade, delta_pade, folder, inp.material, "pade")
+        if ~all(shifti .== 0)
+            plotShift(itemp, ws_pade, shift_pade, folder, inp.material, "pade")
         end
+        plotZ(itemp, ws_pade, Z_pade, folder, inp.material, "pade")
     end
 
     printTee(log_file, "Analytic Continuation finished\n")

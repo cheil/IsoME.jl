@@ -73,7 +73,7 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; shifti = Float64[
         saveACON(itemp, folder, ws_pade, delta_pade, "pade")
     end    
 
-    # ----- make plots ----- (style set once in setPlotDefaults)
+    # ----- make plots ----- (IsoME style applied through withIsoMEStyle)
 
     # NAC
     #=
@@ -96,11 +96,13 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; shifti = Float64[
         ----------------------------------------------
         =#
 
-        plotGap(itemp, ws_pade, delta_pade, folder, inp.material, "pade")
-        if ~all(shifti .== 0)
-            plotShift(itemp, ws_pade, shift_pade, folder, inp.material, "pade")
+        withIsoMEStyle() do
+            plotGap(itemp, ws_pade, delta_pade, folder, inp.material, "pade")
+            if ~all(shifti .== 0)
+                plotShift(itemp, ws_pade, shift_pade, folder, inp.material, "pade")
+            end
+            plotZ(itemp, ws_pade, Z_pade, folder, inp.material, "pade")
         end
-        plotZ(itemp, ws_pade, Z_pade, folder, inp.material, "pade")
     end
 
     printTee(log_file, "Analytic Continuation finished\n")
@@ -291,7 +293,11 @@ function Pade_separate(wsi, nsiw, real_c, gi)
     end
     # pade eval
     eta = 0.001        # broadening parameter (w + im*eta)
-    N_real = 2000       # dimension of array of output
+    # fixed 1 meV step over [-real_c, real_c]. A fixed point count would tie the resolution
+    # to omega_c: 2000 points over the default ±7000 meV are 7 meV apart, too coarse to
+    # resolve a gap of a few meV
+    dw_real = 1.0
+    N_real = round(Int, 2 * real_c / dw_real) + 1
     ws = LinRange(-real_c, real_c, N_real)
     
     A = Array{ComplexF64}(undef, N_real, N+1)

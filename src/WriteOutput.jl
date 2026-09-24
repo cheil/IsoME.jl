@@ -76,12 +76,6 @@ function printIsoME()
     return strIsoME
 end
 
-
-"""
-    printStartMessage(console)
-
-Start message - Eliashberg Solver
-"""
 function get_current_package_version(projectname::String = "IsoME")
     # Start from the parent of the file calling this function
     path = normpath(joinpath(@__DIR__, ".."))  # Go up from `src/` to package root
@@ -97,6 +91,12 @@ function get_current_package_version(projectname::String = "IsoME")
     return "unknown"
 end
 
+
+"""
+    printStartMessage(console)
+
+Start message - Eliashberg Solver
+"""
 function printStartMessage(console::Console, inp, log_file; mode = 0)
 
     strAuthors =  "  Authors: Christoph Heil, Dominik Spath, Eva Kogler\n"
@@ -215,6 +215,20 @@ end
 
 
 """
+    formatTc(Tc, Tc_tol)
+
+"`midpoint` (±`halfwidth`) K" for the bracket `Tc = [T_sc, T_nsc]`, shared by the console
+summary and `Summary.dat`. The digits follow `Tc_tol`: two are plenty for the default 1 K
+bracket, but a refined search must not report its uncertainty as (±0.0).
+"""
+function formatTc(Tc, Tc_tol)
+    nd = max(2, ceil(Int, -log10(max(Tc_tol, 1e-6))) + 1)
+    return string(round((Tc[2] + Tc[1]) / 2, digits=nd)) * " (±" *
+           string(round((Tc[2] - Tc[1]) / 2, digits=nd)) * ") K"
+end
+
+
+"""
     printSummary()
 
 Summarize Tc calculation and print it to the console
@@ -233,10 +247,7 @@ function printSummary(inp, Tc, log_file)
         text = text * "\n - Tc > " * string(Tc[1]) * " K"
     else
         text = text * "\n - " * inp.material * " is a superconductor"
-        # digits follow Tc_tol: two are plenty for the default 1 K bracket, but a refined
-        # search must not report its uncertainty as (±0.0)
-        nd = max(2, ceil(Int, -log10(max(inp.Tc_tol, 1e-6))) + 1)
-        text = text * "\n - Tc = " * string(round((Tc[2]+Tc[1])/2, digits=nd)) * " (±"* string(round((Tc[2]-Tc[1])/2, digits=nd)) *")" * " K"
+        text = text * "\n - Tc = " * formatTc(Tc, inp.Tc_tol)
     end
 
     printstyled("\nSummary:", bold=true)
@@ -882,7 +893,7 @@ function createSummaryFile(inp::arguments, Tc, out_vars, header)
     elseif isnan(Tc[2])
         out = out * "Tc > " * string(Tc[1]) * " K"
     else
-        out = out * "Tc = " * string(round((Tc[2]+Tc[1])/2, digits=2)) * " (±"* string(round((Tc[2]-Tc[1])/2, digits=2)) *")" * " K"
+        out = out * "Tc = " * formatTc(Tc, inp.Tc_tol)
     end
     out = out*"\n"*header*"\n"
     print(outfile, out)
@@ -908,12 +919,20 @@ end
 
 
 
-function createFigures(inp, matval, Delta0, temps, Tc, log_file)
+"""
+    createFigures(inp, matval, Delta0, temps, Tc, log_file)
+
+α²F and Δ(T) figures of a run, drawn in the IsoME style (see [`withIsoMEStyle`](@ref)).
+"""
+createFigures(inp, matval, Delta0, temps, Tc, log_file) =
+    withIsoMEStyle(() -> _createFigures(inp, matval, Delta0, temps, Tc, log_file))
+
+function _createFigures(inp, matval, Delta0, temps, Tc, log_file)
 
     # values
     a2f_omega_fine, a2f_fine = matval
 
-    # print a2F vs. energy (style set once in setPlotDefaults)
+    # print a2F vs. energy
     xlim_max = Int(round(maximum(a2f_omega_fine) / 10 * 1.01, RoundUp) * 10)
     xtick_val = 0:10:xlim_max
     ylim_max = Int(round(maximum(a2f_fine), RoundUp))
@@ -1131,14 +1150,16 @@ function writeSelfEnergyComponent(folder::AbstractString, T::Float64, material::
     end
 
     # ----- plot -----
-    if eltype(c.y) <: Complex
-        plot(c.x, real.(c.y), color = :blue, label = "Real", linewidth = 2, xlabel = c.xlabel, ylabel = c.ylabel)
-        plot!(c.x, imag.(c.y), color = :red, label = "Imag", linewidth = 2)
-    else
-        plot(c.x, c.y, color = :blue, label = "", linewidth = 2, xlabel = c.xlabel, ylabel = c.ylabel)
+    withIsoMEStyle() do
+        if eltype(c.y) <: Complex
+            plot(c.x, real.(c.y), color = :blue, label = "Real", linewidth = 2, xlabel = c.xlabel, ylabel = c.ylabel)
+            plot!(c.x, imag.(c.y), color = :red, label = "Imag", linewidth = 2)
+        else
+            plot(c.x, c.y, color = :blue, label = "", linewidth = 2, xlabel = c.xlabel, ylabel = c.ylabel)
+        end
+        material != "Material" && title!(material)
+        savefig(base * ".png")
     end
-    material != "Material" && title!(material)
-    savefig(base * ".png")
 
     return nothing
 end

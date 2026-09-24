@@ -133,8 +133,8 @@ the iteration loop of every solver, which leaves the result vectors empty on the
 axis and returns `nothing` on the real one. Neither has an "infer this during the run"
 meaning, unlike the `NaN` sentinels of `mu` or `mixing_beta`.
 
-`N_it` additionally has to be at least `min_it`; that pair is checked in [`checkInput!`](@ref),
-which sees the whole struct.
+`N_it` additionally has to exceed `max(min_it, nItFullCoul + 1)`, the iteration after which
+convergence is accepted; that is checked in [`checkInput!`](@ref), which sees the whole struct.
 """
 const _strictlyPositive = (:Tc_tol, :N_it)
 
@@ -203,8 +203,7 @@ end
     end
     println(io, "\nBefore IsoME 2.0, -1 meant \"not set, infer this during the run\". The sentinel")
     println(io, "is now NaN, so a -1 would be used as an actual value here.")
-    println(io, "\nTo have the value inferred, leave the field out (or pass NaN). If you really")
-    println(io, "mean -1, pass -1.0000001 or set the field after construction.")
+    println(io, "\nTo have the value inferred, leave the field out (or pass NaN).")
     throw(ArgumentError(String(take!(io))))
 end
 

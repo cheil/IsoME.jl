@@ -52,4 +52,12 @@ If you use IsoME in your work, please cite
 > Computer Physics Communications **315**, 109720 (2025).
 > [doi:10.1016/j.cpc.2025.109720](https://doi.org/10.1016/j.cpc.2025.109720)
 
-A BibTeX entry is in [`CITATION.bib`](CITATION.bib).
+If you use the real-axis implementation (`RealAxisSolver`), please also cite
+
+> A. Simon, J. Shi, D. Spath, E. Kogler, R. Foster, E. Batson, P. N. Ferreira, M. Sahoo,
+> P. D. Keathley, W. E. Pickett, R. Prasankumar, K. K. Berggren and C. Heil,
+> *Fast Real-Axis Eliashberg Calculations: Full-bandwidth solutions beyond the constant density of states approximation*,
+> arXiv:2603.18199 (2026).
+> [doi:10.48550/arXiv.2603.18199](https://doi.org/10.48550/arXiv.2603.18199)
+
+BibTeX entries for both are in [`CITATION.bib`](CITATION.bib).

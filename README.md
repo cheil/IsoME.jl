@@ -22,14 +22,15 @@ julia> Pkg.add("IsoME")
 
 ## The two solvers
 
-Both solvers take the same `arguments` instance and the same input files.
+Both solvers use the same `arguments` type and input files, but create a **fresh** instance for every run, since a solver overwrites the inferred fields in place.
 
 ```julia
 using IsoME
 
 inp = arguments(a2f_file = "Nb.a2f", outdir = "Nb_run")
+EliashbergSolver(inp)   # Matsubara axis - fast, robust, the choice for Tc searches
 
-EliashbergSolver(inp)   # imaginary (Matsubara) axis - fast, robust, the choice for Tc searches
+inp = arguments(a2f_file = "Nb.a2f", outdir = "Nb_run")
 RealAxisSolver(inp)     # direct real-frequency axis - spectral quantities without analytic continuation
 ```
 

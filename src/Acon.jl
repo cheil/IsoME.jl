@@ -15,6 +15,16 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; shifti = Float64[
 
     real_c = inp.omega_c
 
+    # below sparseSamplingTemp only a subset of the Matsubara frequencies is solved and the
+    # rest is linearly interpolated (see eliashberg_eqn); Padé is sensitive to that noise
+    if itemp < inp.sparseSamplingTemp
+        printWarning("Sparse sampling is active at T = " * string(itemp) * " K (below sparseSamplingTemp = " *
+                     string(inp.sparseSamplingTemp) * " K): only part of the Matsubara frequencies is solved, " *
+                     "the rest is linearly interpolated. The Padé continuation is sensitive to that and may be " *
+                     "unreliable. Lower sparseSamplingTemp below T for a continuation on the full Matsubara grid.",
+                     log_file)
+    end
+
     # g11i, gauxi = calcGF(wsi, deltai, znormi, shifti)
     # lneva = 0
     #=
@@ -232,11 +242,15 @@ end
 
 
 """
-    Pade(wsi, nsiw, real_c, g11i, gauxi)
+    Pade_separate(wsi, nsiw, real_c, gi; dw_real=1.0, eta=0.001, N_max=200) -> g, ws
 
 Calculate analytic continuation of complex function using Pade approximants
+
+The keywords are not inputs of `arguments`: a run always uses the defaults. They are there
+for post-processing, where a saved self-energy (`flag_writeSelfEnergy = 1`) can be continued
+again with a different window, step, broadening or number of Matsubara points.
 """
-function Pade_separate(wsi, nsiw, real_c, gi)
+function Pade_separate(wsi, nsiw, real_c, gi; dw_real::Real=1.0, eta::Real=0.001, N_max::Int=200)
     """
     Calculate analytic continuation of a complex function Pade approximants
 
@@ -246,6 +260,13 @@ function Pade_separate(wsi, nsiw, real_c, gi)
         nsiw:     Number of Matsubara frequencies
         real_c:   Real frequency cutoff [meV]
         gi:       Complex function gi(wsi) to be analytically continued
+
+    --------------------------------------------------------------------
+        Keywords:
+        dw_real:  Step of the real-frequency grid [meV]
+        eta:      Broadening, the continuation is evaluated at ω + iη [meV]
+        N_max:    Maximum number of Matsubara points entering the approximant
+                  (Padé collapses with too many points)
 
     --------------------------------------------------------------------
         Local:
@@ -262,11 +283,7 @@ function Pade_separate(wsi, nsiw, real_c, gi)
     # pade coeff
     # Pade collapses with too many matsubara points:
     #println("Start Pade_seperate")
-    if nsiw > 200
-        N=200
-    else
-        N=nsiw
-    end
+    N = min(nsiw, N_max)
     #N = nsiw
     f = Array{ComplexF64}(undef, N, N)
     a = Array{ComplexF64}(undef, N)
@@ -291,12 +308,9 @@ function Pade_separate(wsi, nsiw, real_c, gi)
     if any(isnan.(ar)) || any(isnan.(ai))
         println("One or more Pade coefficients are NaN")
     end
-    # pade eval
-    eta = 0.001        # broadening parameter (w + im*eta)
-    # fixed 1 meV step over [-real_c, real_c]. A fixed point count would tie the resolution
-    # to omega_c: 2000 points over the default ±7000 meV are 7 meV apart, too coarse to
-    # resolve a gap of a few meV
-    dw_real = 1.0
+    # pade eval: step dw_real over [-real_c, real_c]. A fixed step rather than a fixed point
+    # count, which would tie the resolution to omega_c: 2000 points over the default
+    # ±7000 meV are 7 meV apart, too coarse to resolve a gap of a few meV
     N_real = round(Int, 2 * real_c / dw_real) + 1
     ws = LinRange(-real_c, real_c, N_real)
     

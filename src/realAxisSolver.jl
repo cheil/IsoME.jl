@@ -764,15 +764,15 @@ end
     vDOS_seed_temperature(ML_Tc, T_first) -> T_seed
 
 Temperature of the cDOS run that seeds the vDOS solver: half the ML estimate of Tc, where the
-gap is close to its T = 0 value and the cDOS equations converge reliably, rounded to 0.1 K
-and kept at or above 0.5 K, the floor of the Tc search. It never exceeds `T_first`, the
+gap is close to its T = 0 value and the cDOS equations converge reliably, rounded to whole
+kelvin and kept at or above 0.5 K, the floor of the Tc search. It never exceeds `T_first`, the
 first (and, for given temperatures, lowest) temperature solved: a seed from further down
 carries a larger gap, which is the safe direction - see [`initialize_real_axis_vDOS`](@ref).
 Falls back to `T_first` if the ML estimate is not a positive number.
 """
 function vDOS_seed_temperature(ML_Tc, T_first)
     (isfinite(ML_Tc) && ML_Tc > 0) || return Float64(T_first)
-    return min(max(round(ML_Tc / 2, digits=1), 0.5), Float64(T_first))
+    return min(max(round(ML_Tc / 2), 0.5), Float64(T_first))
 end
 
 

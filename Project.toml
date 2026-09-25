@@ -18,7 +18,7 @@ Trapz = "592b5752-818d-11e9-1e9a-2b8ca4a44cd1"
 
 [compat]
 DelimitedFiles = "1.9"
-Interpolations = "0.15"
+Interpolations = "0.15, 0.16"
 LaTeXStrings = "1.4"
 LinearAlgebra = "1"
 Logging = "1"

@@ -36,7 +36,10 @@ function InputParser!(inp::arguments, log_file; mode::Int64=0)
 
 
     # ------------- Dos and Weep -------------- #
-    if isfile(inp.dos_file) && (inp.cDOS_flag == 0 || (isnan(inp.mu) && isfile(inp.Weep_file)))
+    # The DOS is needed in vDOS, in every W mode - cDOS+W included, which takes N(ε_F), the
+    # Fermi-level index and the φ_c integral from it, whether or not `mu` is set - and in
+    # cDOS+μ when μ is to be computed from a given W file.
+    if isfile(inp.dos_file) && (inp.cDOS_flag == 0 || inp.include_Weep == 1 || (isnan(inp.mu) && isfile(inp.Weep_file)))
 
         # read dos
         dos_en, dos, ef, inp.dos_unit = readIn_Dos(inp.dos_file, inp.ef, inp.spinDos, inp.dos_unit, inp.nheader_dos, inp.nfooter_dos, outdir=inp.outdir, logFile=log_file)
@@ -46,9 +49,9 @@ function InputParser!(inp::arguments, log_file; mode::Int64=0)
         dos, dos_en = discardZeros(dos, dos_en)
 
         ### Interpolation ###
-        # Interpolation Object DoS
-        epsilonItp = range(dos_en[1], dos_en[end], length(dos_en))
-        itpDos = scale(interpolate(dos, BSpline(Linear())), epsilonItp)
+        # Interpolation Object DoS. Gridded on the energies as read, so a non-uniform grid
+        # is interpolated correctly (readIn_Dos guarantees they are strictly increasing)
+        itpDos = linear_interpolation(dos_en, dos)
 
         # encut in meV
         if (-inp.encut < dos_en[1]) || (inp.encut > dos_en[end])
@@ -61,9 +64,9 @@ function InputParser!(inp::arguments, log_file; mode::Int64=0)
             Weep, Wen, inp.efW, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.Wen_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, outdir=inp.outdir, logFile=log_file)
 
             ### Interpolation ###
-            # Interpolation Object Weep
-            epsilonItp = range(Wen[1], Wen[end], length(Wen))       
-            itpWeep = scale(interpolate(Weep, BSpline(Linear())), (epsilonItp, epsilonItp)) 
+            # Interpolation Object Weep, gridded on the W energies as read (non-uniform grids
+            # allowed; readIn_Weep guarantees they are strictly increasing)
+            itpWeep = linear_interpolation((Wen, Wen), Weep)
 
             if mode == 0 
                 # interpolate 
@@ -343,11 +346,13 @@ function checkInput!(inp::arguments; realSolver::Bool=false)
 
     end
 
-    # N_it is the iteration cap, min_it the number of iterations that has to be completed
-    # before convergence is accepted. With N_it < min_it the convergence test can never
-    # fire, so every temperature would run the full N_it iterations and come back Δ = NaN.
-    if inp.N_it < inp.min_it
-        error("N_it = " * string(inp.N_it) * " is smaller than min_it = " * string(inp.min_it) * ". The maximum number of iterations has to be at least the minimum number, otherwise convergence can never be accepted.\n\n")
+    # N_it is the iteration cap. Both solvers accept convergence only once
+    # i_it > max(min_it, nItFullCoul + 1), i.e. after min_it iterations *and* the Coulomb ramp.
+    # With N_it at or below that bound the convergence test can never fire, so every
+    # temperature would run the full N_it iterations and come back Δ = NaN.
+    itAccept = max(inp.min_it, inp.nItFullCoul + 1)
+    if inp.N_it <= itAccept
+        error("N_it = " * string(inp.N_it) * " is too small: convergence is only accepted after more than max(min_it, nItFullCoul + 1) = " * string(itAccept) * " iterations (min_it = " * string(inp.min_it) * ", nItFullCoul = " * string(inp.nItFullCoul) * "). Increase N_it, or lower min_it / nItFullCoul.\n\n")
     end
 
     if inp.cDOS_flag ∉ (0,1)
@@ -564,6 +569,9 @@ function readIn_Dos(dos_file, ef::Float64=NaN, spin=2, unit="", nheader::Int=-1,
     ### Shift energies by ef for cDos ###
     energies = energies .- ef
 
+    ### strictly increasing, as the gridded DOS interpolation requires
+    checkIncreasingGrid(energies, "DOS")
+
     return energies, dos, ef, unit
 end
 
@@ -608,6 +616,11 @@ function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef::Float64=
     else
         Wen = readIn_Wen(Wen_file, Wen_col, nheaderWen, nfooterWen)
     end
+
+    length(Wen) == numWens || error("The W energy grid has " * string(length(Wen)) * " points, but W holds " * string(numWens) * "×" * string(numWens) * " values. Check Wen_col, Weep_col and the Wen-file.\n\n")
+
+    # strictly increasing, as the gridded W interpolation requires
+    checkIncreasingGrid(Wen, "W")
 
     ### Convert ###
     if "meV" == unit    # meV
@@ -797,6 +810,22 @@ function a2fSupportMax(a2f_omega, a2f; strict::Bool=true)
         return NaN
     end
     return maximum(ω)
+end
+
+
+"""
+    checkIncreasingGrid(en, nameGrid)
+
+Check that the energy grid `en` of an input file is strictly increasing.
+
+The DOS and W are interpolated on their grids as read (gridded, so non-uniform grids are
+fine), which needs strictly increasing knots. The grid is not reordered: providing it in
+ascending order is up to the user, and a grid that is not is rejected by name.
+"""
+function checkIncreasingGrid(en::Vector{Float64}, nameGrid::AbstractString)
+    allunique(en) || error("The " * nameGrid * " energy grid contains repeated energies, so it can not be interpolated. Check the file and its column layout.\n\n")
+    issorted(en) || error("The " * nameGrid * " energy grid is not in ascending order. Provide the energies in ascending order.\n\n")
+    return nothing
 end
 
 

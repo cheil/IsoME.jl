@@ -181,7 +181,7 @@ See also [`EliashbergSolver`](@ref), [`RealAxisSolver`](@ref).
     # ω'-chebyshev
     n_cheb::Int64               = 1000      # number of chebyshev points around poles in ω'-integration
     # ε-stepsize
-    depsilon:: Int64            = 10
+    depsilon::Float64           = 10.0
 
 end
 

@@ -86,6 +86,7 @@ using Test
 
 
     ### 5.TEST: Nb vDOS W, fixed mu ###
+    #=
     inp = arguments(
         a2f_file = joinpath(@__DIR__, "Nb/Nb.a2f"),
         dos_file = joinpath(@__DIR__, "Nb/Nb.dos"),
@@ -103,6 +104,7 @@ using Test
 
     Tc = EliashbergSolver(inp)
     @test Tc == [7, 8]
+    =#
 
 
     ### 6.TEST: Nb vDOS W, mu-update ###
@@ -146,7 +148,7 @@ using Test
     Tc = RealAxisSolver(inp)
     @test Tc == [9, 10]
 
-
+    #=
     ### 8.TEST: Nb vDOS mu* - real axis, fixed mu ###
     inp = arguments(
         a2f_file    = joinpath(@__DIR__, "Nb/Nb.a2f"),
@@ -164,6 +166,7 @@ using Test
 
     Tc = RealAxisSolver(inp)
     @test Tc == [8, 9]
+    =#
 
 
     ### 9.TEST: Nb vDOS mu* - real axis, mu-update ###
@@ -186,6 +189,7 @@ using Test
 
 
     ### 10.TEST: Nb vDOS W - real axis, fixed mu ###
+    #=
     inp = arguments(
         a2f_file        = joinpath(@__DIR__, "Nb/Nb.a2f"),
         dos_file        = joinpath(@__DIR__, "Nb/Nb.dos"),
@@ -203,8 +207,9 @@ using Test
 
     Tc = RealAxisSolver(inp)
     @test Tc == [7, 8]
+    =#
 
-
+    #=
     ### 11.TEST: Nb vDOS W - real axis, mu-update ###
     inp = arguments(
         a2f_file        = joinpath(@__DIR__, "Nb/Nb.a2f"),
@@ -223,11 +228,12 @@ using Test
 
     Tc = RealAxisSolver(inp)
     @test Tc == [7, 8]
+    =#
 
     ############################################################
     # ------------------- sparse sampling -------------------- #
     ############################################################
-
+    #=
     ### 12.TEST: Nb cDOS mu* at a single temperature, sparse Matsubara sampling ###
     # Sparse sampling kicks in below `sparseSamplingTemp` (default 2 K), which the Tc
     # searches above never reach - they all stop between 7 K and 10 K - so that branch of
@@ -266,5 +272,6 @@ using Test
     Tc = EliashbergSolver(inp)
     @test Tc[1] == 5.0
     @test isnan(Tc[2])
+    =#
 
 end

@@ -3,7 +3,7 @@ Input parameters are collected in the [composite type](https://docs.julialang.or
 Only the path to the ``\alpha^2F`` file is mandatory. Everything else either has a default or is inferred during the run.
 Fields that are meant to be inferred are left at a sentinel — `NaN` (real-valued fields), `-1` (integer fields such as line counts and column indices) or `""` (strings) — and are overwritten once their value is known.
 Before IsoME 2.0 the real-valued fields used `-1` for this, so passing `-1` to one of them is now rejected with a message pointing at `NaN`.
-`mu`, `muc_AD`, `muc_ME`, `mixing_beta`, `conv_thr`, `minGap`, `N_it` and `min_it` are likewise rejected if given a negative value, both when the struct is built and again at the start of a solve. `Tc_tol` must be strictly positive, and `N_it` strictly positive and at least `min_it`.
+`mu`, `muc_AD`, `muc_ME`, `mixing_beta`, `conv_thr`, `minGap`, `N_it` and `min_it` are likewise rejected if given a negative value, both when the struct is built and again at the start of a solve. `Tc_tol` must be strictly positive, and `N_it` must exceed both `min_it` and `nItFullCoul + 1`, since convergence is only accepted after both have passed.
 Because of this, we recommend creating a fresh `arguments` instance for each call to `EliashbergSolver()` or `RealAxisSolver()` — see [Best practices](@ref).
 
 All energies are handled internally in meV.
@@ -42,7 +42,7 @@ These inputs are shared by both solvers unless noted otherwise.
 | minGap   | Float64 | 0.1  | Lower gap threshold | In meV; the temperature is treated as normal conducting if the gap drops below `minGap` |
 | N_it | Int64 | 5000 | Maximum number of iterations | - |
 | min_it | Int64 | 10 | Minimum number of iterations before convergence is accepted | Used by both solvers; the Coulomb ramp (`nItFullCoul`) must have finished as well |
-| Tc_tol | Float64 | 1.0 | Resolution the ``\mathrm{T}_C`` search is carried to | In K; must be strictly positive. Once the search brackets ``\mathrm{T}_C``, it refines on a lattice of this spacing until the bracket is `Tc_tol` wide, so the reported ``\mathrm{T}_C`` carries an uncertainty of ``\pm`` `Tc_tol`/2. Smaller values cost additional temperatures; ignored when `temps` is given explicitly |
+| Tc_tol | Float64 | 1.0 | Resolution the ``\mathrm{T}_C`` search is carried to | In K; must be strictly positive. Once the search brackets ``\mathrm{T}_C``, it refines on a lattice of this spacing until the bracket is `Tc_tol` wide, so the reported ``\mathrm{T}_C`` carries an uncertainty of ``\pm`` `Tc_tol`/2. Smaller values cost additional temperatures; ignored when `temps` is given explicitly. `Tc_tol` only narrows the bracket: a temperature counts as normal conducting once the gap drops below `minGap` or the iteration fails to converge within `N_it`, so the bracket closes around the temperature where that happens, which lies somewhat below the true ``\mathrm{T}_C``. Refining far below that offset does not make ``\mathrm{T}_C`` more accurate |
 | outdir | String | `joinpath(pwd(), "IsoME")` | Path to the output directory | An existing directory is never written into: a run counter is appended, so repeated runs land in `IsoME_1/`, `IsoME_2/`, and so on |
 | flag_figure | Int64 |  1 | Plot the gap and ``\alpha^2F`` values | 0: no; 1: yes |
 | flag_writeSelfEnergy | Int64 | 0  | Save **and** plot the self-energy components (`.dat` + `.png`) | 0: no; 1: yes. Works for both solvers and all modes; files are written to `outdir/SelfEnergy/`. The first header line of each `.dat` carries the converged chemical potential as `mu_F = … meV` (relative to the ``\varepsilon_F`` of the DOS input), which any ``\varepsilon``-resolved post-processing needs |
@@ -59,7 +59,7 @@ These inputs control the imaginary-axis solver `EliashbergSolver()` and its post
 | sparseSamplingTemp | Float64 | 2.0 | Temperature below which sparse sampling is used | In K |
 | itpBounds | Vector{Float64} | [100.0, 500.0] | Bounds of the DOS interpolation regions around the Fermi level | In meV |
 | itpStepSize | Vector{Int64} | [1, 5, 50] | Step sizes used within the interpolation regions | In meV; one entry more than `itpBounds` |
-| flag_acon | Bool | false | Analytically continue the converged solution to real frequencies and plot it | Padé approximants; imaginary axis only. Written to `outdir/ACON/`; the real-frequency window is `omega_c`. Independent of `flag_writeSelfEnergy` |
+| flag_acon | Bool | false | Analytically continue the converged solution to real frequencies and plot it | Padé approximants; imaginary axis only. Written to `outdir/ACON/`; the real-frequency window is ``\pm`` `omega_c` with a step of 1 meV. Independent of `flag_writeSelfEnergy` |
 
 ## Real-axis inputs
 These inputs control the direct real-axis solver `RealAxisSolver()`, which supports cDOS``+\mu``, vDOS``+\mu`` and vDOS``+W``.
@@ -71,7 +71,7 @@ The cutoff of the ``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` grids �
 |:--------|:---------------|:------------|:------------|:---------|
 | domega | Float64 | 1.0 | Step of the ``Z(\omega)``, ``\Delta(\omega)`` and ``\chi(\omega)`` grids | In meV; also the step of the ``\omega'``-tail **and** of the tabulated kernel |
 | n_cheb | Int64 | 1000 | Chebyshev points per pole in the head region of the ``\omega'``-grid | Resolves the poles of the ``\omega'``-integrand |
-| depsilon | Int64 | 10 | Step of the ``\varepsilon``-grid | In meV; vDOS calculations only |
+| depsilon | Float64 | 10.0 | Step of the ``\varepsilon``-grid | In meV; vDOS calculations only |
 
 The ``\omega``-grid does not start at ``0``: its first point is the smallest multiple of `domega` that is at least ``0.1`` meV, because several integrands behave like ``1/\omega``.
 `domega` is a single step size that all real-axis grids share — the ``\omega``-grids, the ``\omega'``-tail and the kernel tables — so it is the one convergence parameter of the frequency discretization.
@@ -202,6 +202,7 @@ The number of header/footer lines and smearing values should be recognized autom
 ### ``N(\epsilon)``
 For vDOS calculations a DOS file is required.
 The first and second columns of the DOS file are interpreted as the energies and DOS values, respectively. All other columns are ignored. The DOS values are divided by `spinDos` (2 by default) to remove the double counting from spin degeneracy. If this is not desired, set `spinDos` to 1.
+The energy grid does not have to be uniform: the DOS is interpolated linearly on the energies as given. The energies must be in ascending order without repetitions; otherwise the read-in stops with an error.
 
 #### Summary formatting:
 - **header:** Non-numeric rows at the beginning of the document. If the header contains the unit (meV, eV, THz, Ry, Ha), it is extracted automatically; otherwise, set the unit via `dos_unit`. If the header contains only one numeric value, this is interpreted as the Fermi energy. If there are several numerical values, IsoME checks for a keyword (`ef`, `efermi`, ...) indicating the Fermi energy. If extraction fails, adapt the header or set the Fermi energy via `ef`.
@@ -266,6 +267,7 @@ The `Weep_file` is required for ``W`` calculations.
 By default, IsoME assumes that the third column contains the ``W(\varepsilon,\varepsilon')`` values and that the first and second columns contain the corresponding energy-grid coordinates.
 The columns can be changed via `Weep_col` and `Wen_col`.
 If the row and column identifiers are consecutive indices rather than energies, provide an additional `Wen_file` containing the ``W`` energy-grid points.
+As for the DOS, the ``W`` energy grid does not have to be uniform; ``W`` is interpolated bilinearly on the grid as given, which must be in ascending order without repetitions.
 #### Summary formatting:
 - **header:** Non-numeric rows at the beginning of the document. If the header contains the unit (meV, eV, THz, Ry, Ha), it is extracted automatically; otherwise, set the unit via `Weep_unit`. If the header contains only one numeric value, it is interpreted as the Fermi energy. If there are several numerical values, IsoME checks for a keyword (`ef`, `efermi`, ...) indicating the Fermi energy. If extraction fails, adapt the header or set the Fermi energy via `efW`.
 - **footer:** Non-numeric rows at the end of the document.

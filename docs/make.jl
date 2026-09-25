@@ -1,15 +1,10 @@
-using Documenter, DocumenterCitations, IsoME   
+using Documenter, IsoME
 
 DocMeta.setdocmeta!(
     IsoME,
     :DocTestSetup,
     :(using IsoME),
     recursive = true,
-)
-
-bib = CitationBibliography(
-    joinpath(@__DIR__, "src", "refs.bib"),
-    style = :authoryear,
 )
 
 makedocs(
@@ -29,7 +24,6 @@ makedocs(
     ],
     warnonly = false,
     doctest = true,
-    plugins = [bib],
     checkdocs=:exports,
 )
 

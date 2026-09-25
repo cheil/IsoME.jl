@@ -141,10 +141,6 @@ function run_realAxis(inp::arguments, log_file)
         end
 
 
-        """
-        ---------------- ToDo -------------
-        plot different figures, e.g. real and imag of Delta
-        """
         ### figures
         if inp.flag_figure == 1
             attempt(inp, log_file, "Error while plotting. Skipping plots.") do
@@ -178,6 +174,9 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
         # initial guess, Machine learning Tc
         itemp = maximum([1.0, round(ML_Tc)])
 
+        # vDOS: temperature of the one cDOS run that seeds the first vDOS solve
+        T_seed = vDOS_seed_temperature(ML_Tc, itemp)
+
         # expansion of a + b*log(c-x) at x = 0, a=Delta(T2), b=1, c=Delta(T1)
         m(x, p) = p[1] + log(p[3]) .- p[2] * x ./ p[3] .- p[2] * x .^ 2 / (2 * p[3]^2) .- p[2] * x .^ 3 / (3 * p[3]^3) .- p[2] * x .^ 4 / (4 * p[3]^4) .- p[2] * x .^ 5 / (5 * p[3]^5)
         inp.temps = Vector{Float64}()
@@ -193,11 +192,11 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
 
             # solve Eliashberg equations
             if inp.cDOS_flag == 0
-                # first temperature: seed from the cDOS solution. Bound here rather than in a
-                # separate block, so that `state` is a RealAxisState and not a Union with
-                # nothing - the solver below declares ::RealAxisState
+                # first temperature: seed from the cDOS solution at T_seed. Bound here rather
+                # than in a separate block, so that `state` is a RealAxisState and not a Union
+                # with nothing - the solver below declares ::RealAxisState
                 state = isnothing(realAxisState) ?
-                        initialize_real_axis_vDOS(itemp, inp, console.cDOS, matval, realAxisParameter, log_file) :
+                        initialize_real_axis_vDOS(itemp, T_seed, inp, console, matval, realAxisParameter, log_file) :
                         realAxisState
                 data, realAxisState = solve_realAxis_vDOS(itemp, inp, console.vDOS, matval, realAxisParameter, state, log_file)
             elseif inp.cDOS_flag == 1
@@ -352,6 +351,10 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
         end
 
     else    # given temperatures
+        # vDOS: temperature of the one cDOS run that seeds the first vDOS solve (temps is
+        # sorted, so temps[1] is the lowest temperature solved)
+        T_seed = vDOS_seed_temperature(ML_Tc, inp.temps[1])
+
         for iT in 1:nT
             itemp = inp.temps[iT]
 
@@ -362,10 +365,11 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
 
             # solve Eliashberg equations
             if inp.cDOS_flag == 0
-                # first temperature (realAxisState still unset): seed from the cDOS solution.
-                # Bound here so that `state` is a RealAxisState and not a Union with nothing
+                # first temperature (realAxisState still unset): seed from the cDOS solution
+                # at T_seed. Bound here so that `state` is a RealAxisState and not a Union with
+                # nothing
                 state = isnothing(realAxisState) ?
-                        initialize_real_axis_vDOS(itemp, inp, console.cDOS, matval, realAxisParameter, log_file) :
+                        initialize_real_axis_vDOS(itemp, T_seed, inp, console, matval, realAxisParameter, log_file) :
                         realAxisState
                 data, realAxisState = solve_realAxis_vDOS(itemp, inp, console.vDOS, matval, realAxisParameter, state, log_file)
             elseif inp.cDOS_flag == 1
@@ -511,13 +515,7 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
             print_real_axis_gap_too_small(itemp, minGap, console, log_file)
             data[2] = NaN
 
-            # initial guess vDOS
-            if  vDOS_initial_guess
-                state.Z = Z_new
-                state.delta = delta_new
-                state.phi_ph = delta_new .* Z_new
-            end
-
+            # as vDOS initial guess, a failed run is discarded by initialize_real_axis_vDOS
             return data, state
         end
 
@@ -527,14 +525,7 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
                         print_real_axis_not_converged(inp, console, log_file)
             data[2] = NaN
 
-            # initial guess vDOS; a NaN state must not be handed on - the vDOS solver
-            # would never recover from it, so leave the last finite guess in place.
-            if vDOS_initial_guess && !nan_state
-                state.Z = Z_new
-                state.delta = delta_new
-                state.phi_ph = delta_new .* Z_new
-            end
-
+            # as vDOS initial guess, a failed run is discarded by initialize_real_axis_vDOS
             return data, state
         end
     end
@@ -770,13 +761,52 @@ end
 
 
 """
-    initialize_real_axis_vDOS(itemp, inp, console, realAxisParameter, log_file)
+    vDOS_seed_temperature(ML_Tc, T_first) -> T_seed
 
-Perform a cDOS calculation as initial guess for vDOS.
+Temperature of the cDOS run that seeds the vDOS solver: half the ML estimate of Tc, where the
+gap is close to its T = 0 value and the cDOS equations converge reliably, rounded to whole
+kelvin and kept at or above 0.5 K, the floor of the Tc search. It never exceeds `T_first`, the
+first (and, for given temperatures, lowest) temperature solved: a seed from further down
+carries a larger gap, which is the safe direction - see [`initialize_real_axis_vDOS`](@ref).
+Falls back to `T_first` if the ML estimate is not a positive number.
 """
-function initialize_real_axis_vDOS(itemp, inp, console, matval, realAxisParameter, log_file)
-    _, state = solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log_file; vDOS_initial_guess=true)
-    return state
+function vDOS_seed_temperature(ML_Tc, T_first)
+    (isfinite(ML_Tc) && ML_Tc > 0) || return Float64(T_first)
+    return min(max(round(ML_Tc / 2), 0.5), Float64(T_first))
+end
+
+
+"""
+    initialize_real_axis_vDOS(itemp, T_seed, inp, console, matval, realAxisParameter, log_file)
+
+Initial state of the vDOS solver at its first temperature `itemp`: the cDOS+μ solution at
+`T_seed` (see [`vDOS_seed_temperature`](@ref)).
+
+The seed is taken at or below `itemp` on purpose. Δ = 0 is always a fixed point of the
+equations, so a seed with a large gap decays to zero if `itemp` lies above Tc, and the
+verdict is still correct - whereas a seed whose gap is already close to zero may not grow
+past `minGap` within `min_it` iterations below Tc, and the temperature would wrongly count as
+normal conducting. The ω-grid does not depend on temperature, so the state carries over
+unchanged; only the kernel has to be rebuilt at `T_seed`, unless it equals `itemp`.
+
+A single attempt: if the cDOS run does not converge (gap below `minGap`, no convergence
+within `N_it`, or NaN), the vDOS solver starts from the BCS state of
+[`initial_real_axis_state`](@ref) instead.
+"""
+function initialize_real_axis_vDOS(itemp, T_seed, inp, console, matval, realAxisParameter, log_file)
+    BCS_gap = matval[9]
+
+    seedParameter = T_seed == itemp ? realAxisParameter :
+                    precompute(1 / (kb * T_seed), inp, matval, console, log_file)
+
+    data, state = solve_realAxis_cDOS(T_seed, inp, console.cDOS, matval, seedParameter, log_file;
+                                      vDOS_initial_guess=true)
+    isnan(data[2]) || return state
+
+    printWarning("The cDOS initial guess at T = " * string(T_seed) * " K did not converge. " *
+                 "Starting the vDOS calculation from the BCS gap (" * string(round(BCS_gap, digits=3)) *
+                 " meV) instead.", log_file)
+    return initial_real_axis_state(inp, realAxisParameter, BCS_gap)
 end
 
 

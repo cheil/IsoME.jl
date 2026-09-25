@@ -135,7 +135,7 @@ The mixing is linear with an iteration-dependent factor — it starts at ``1``, 
 A fixed factor can be enforced through `mixing_beta`.
 The Coulomb contribution is ramped up over the first `nItFullCoul` iterations, which stabilizes the early iterations.
 
-vDOS calculations are never started from scratch: the first temperature is seeded with a cDOS solution at the same temperature, and every subsequent temperature starts from the converged solution of the previous one.
+vDOS calculations are never started from scratch: the first temperature is seeded with a cDOS solution at ``\min(\mathrm{T}_C^{ML}/2,~T_1)``, where ``\mathrm{T}_C^{ML}`` is the machine-learning estimate printed with the Allen-Dynes table and ``T_1`` the first temperature solved (never below 0.5 K). Seeding below the target temperature is deliberate: the seed then carries a larger gap, which decays to zero if the temperature lies above ``\mathrm{T}_C``, whereas a seed with an almost vanishing gap may not grow past `minGap` in time below it. This cDOS run is attempted once; if it does not converge, the vDOS calculation starts from the BCS gap instead. Every subsequent temperature starts from the last converged solution.
 ``\mathrm{T}_C``-search mode uses the same bisection-and-fit strategy as the imaginary-axis solver, so ``\mathrm{T}_C`` ends up bracketed by the highest temperature whose gap edge stays above `minGap` and the lowest one without a solution.
 Temperatures are stepped in whole kelvin, so the result is a 1 K bracket ``[T_{sc}, T_{nsc}]`` rather than a single number.
 

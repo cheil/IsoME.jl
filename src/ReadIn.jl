@@ -386,7 +386,7 @@ end
 
 Optionally rescale α²F to a better density of states at the Fermi level.
 
-If `inp.a2f_Nef` is set (not `NaN`), α²F is multiplied by `a2f_Nef / N(ε_F)`, where `a2f_Nef` is the
+If `inp.a2f_Nef` is set (not `NaN`), α²F is multiplied by `N(ε_F) / a2f_Nef`, where `a2f_Nef` is the
 N(ε_F) that the α²F calculation used and `N(ε_F)` is taken from the DOS file, so that α²F and the
 electronic normalization used in the Eliashberg equations share the *same* N(ε_F). 
 
@@ -413,7 +413,7 @@ function rescale_a2F(a2f, inp, dosef, log_file)
         return a2f
     end
 
-    factor = inp.a2f_Nef / Nef
+    factor = Nef / inp.a2f_Nef                             # α²F ∝ N(ε_F): swap a2f_Nef for the DOS-file value
     printTee(log_file, "\nα²F rescaled to N(ε_F) from the DOS file: a2f_Nef = " * string(round(inp.a2f_Nef, sigdigits=5)) *
                        ", N_dos(ε_F) = " * string(round(Nef, sigdigits=5)) *
                        ", factor = " * string(round(factor, sigdigits=5)) * "\n")

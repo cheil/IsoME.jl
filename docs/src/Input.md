@@ -183,7 +183,7 @@ The number of header/footer lines and smearing values should be recognized autom
     > Density of states at the Fermi level, ``N(\varepsilon_F)``, that was used when the
     > ``\alpha^2F``-file was computed. Optional; leave at `NaN` to disable.
     >
-    > When set, ``\alpha^2F`` is rescaled by ``a2f\_Nef / N(\varepsilon_F)``, where
+    > When set, ``\alpha^2F`` is rescaled by ``N(\varepsilon_F) / a2f\_Nef``, where
     > ``N(\varepsilon_F)`` is read from the DOS file. This puts ``\alpha^2F`` and the electronic
     > normalization used in the Eliashberg equations on the same ``N(\varepsilon_F)``, and it is
     > applied once during read-in so that every downstream quantity (``\mu^*``, the Allen-Dynes

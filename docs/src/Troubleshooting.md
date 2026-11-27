@@ -73,13 +73,39 @@ formats, and the [FAQ](@ref) for the assumed column layout.
 | `Unknown mode! …` | `cDOS_flag` / `include_Weep` combination is not a supported mode | Check both flags against the modes in the [Input](@ref) page. |
 | `Couldn't write into <outdir>! …` | `outdir` is not writable, or the path is invalid | Fix the path or the permissions. Missing parent directories are created automatically. |
 | `Could not determine the unit of the <file>-file. …` | The unit in the file header was not recognized | Units are case-sensitive; supported are **meV, eV, THz, Ry, Ha**. Set it manually via the matching `*_unit` flag (`a2f_unit`, `dos_unit`, `Weep_unit`, `Wen_unit`). See [FAQ Q1](@ref "FAQ"). |
-| `Error while reading the fermi energy from the <file>-file.` | The header line for the Fermi energy could not be parsed | Set it manually via `ef` / `efW`, or check the file header. |
+| `<field> = "…" is not supported. …` / `Unknown unit "…" …` | A `*_unit` input is not one of the supported units (e.g. `"mev"`) | Units are case-sensitive: use meV, eV, THz, Ry or Ha. |
+| `Found '<keyword>' in the header of the <file>-file, but no number after it.` | A Fermi-energy keyword without a value | Set it manually via `ef` / `efW`, or check the file header. |
+| `The Weep-file holds … W values, which is not a square number …` | ``W(\varepsilon,\varepsilon')`` is not given on a full N×N grid | Check the file, `Weep_col` and the header/footer lines. |
 | `Could not extract the Fermi energy from the <file>-file.` | Parsing ran but matched no Fermi-energy value | Same as above. |
 | `The first column of the <file>-file holds no numeric entry …` | Header/footer auto-detection found no numbers in the first column | Check the column layout of the file, or set the header/footer size manually via `nheader_*` / `nfooter_*`. |
 | `α²F stays below 1e-2 over the whole frequency range …` | The selected ``\alpha^2F`` column is (almost) zero everywhere | Check the ``\alpha^2F`` file and the selected smearing column `ind_smear`; the unit conversion may also have scaled the values away. |
 | `The a2F frequency grid does not reach 2·domega = …` | `domega` is larger than half the highest frequency of the ``\alpha^2F`` grid | Reduce `domega`, or check that the ``\alpha^2F`` file and its unit are read correctly. |
 | `The density of states is zero over the whole energy range.` | The column read as the DOS contains only zeros | Check `dos_file`, its column layout and `spinDos`. |
 | `a2f_Nef must be positive (got …).` | `a2f_Nef` was set to a non-positive value | Pass the ``N(\varepsilon_F)`` used for the ``\alpha^2F`` calculation, or leave it at `NaN` to disable the rescaling. |
+| `typEl = … meV is invalid …` | `typEl` ≤ 0 | Give it in meV, or leave it unset to use `ef` / `efW`. |
+| `mixing_beta = … is invalid …` | Not ``0 < \beta \le 1`` | Use a value in that range, or leave it unset for the default schedule. |
+| `temps … ` (empty, `-1` combined with other values, or not positive and finite) | Invalid temperature list | Use `[-1]` for the ``\mathrm{T}_C`` search, or positive temperatures in K. |
+| `Invalid mu_flag value. …` / `Invalid spinDos value. …` | `mu_flag` ∉ {0, 1} / `spinDos` ∉ {1, 2} | Use one of the allowed values. |
+
+The following warnings are printed during read-in; the run continues:
+
+| Warning | Meaning |
+|---------|---------|
+| `No Fermi-energy keyword in the header of the …-file.` | No keyword (`efermi`, `ef`, `fermi`, `e_fermi`) found; the only number in the header is used. Check it, or set `ef` / `efW`. |
+| `Weep_file is given, but μ can not be computed from it …` | In μ* mode, ``\mu`` can not be computed from ``W`` because the DOS, ``W`` or energy file is missing. The default ``\mu^*`` is used. |
+| `itpBounds = … is not sorted …` | `itpBounds` is sorted; `itpStepSize` keeps its order. |
+| `Allen-Dynes formula not applicable …` | ``\lambda < \mu^*(1+0.62\lambda)``: the AD and ML estimates are 0 K, and the solver starts from a gap of 10·`minGap`. Usually weak coupling or a too-large ``\mu^*``; check ``\alpha^2F`` and its unit. |
+
+## Failed temperatures
+
+| Warning | Meaning |
+|---------|---------|
+| `Convergence not achieved within … iterations at T = … K.` | `N_it` was reached. |
+| `Self energy became NaN at T = … K.` | The iteration diverged. |
+
+In both cases the temperature is treated as normal conducting, and the summary ends with `Note: N temperature(s) ended without convergence`.
+Higher temperatures are not computed. This usually points at the input: try a different `mixing_beta`, check `muc_ME`, the units and the input files.
+A `Padé continuation at T = … K is not finite …` warning means only the ACON output at that temperature is unreliable.
 
 ### Errors from `arguments()` itself
 
@@ -94,7 +120,7 @@ come from there:
   converted to the declared type. All offending fields are reported at once, each with its expected
   type and a hint (e.g. *pass a vector, e.g. temps = [10.0]*).
 - *invalid input to `arguments`*, reporting a negative value — `mu`, `muc_AD`, `muc_ME`,
-  `mixing_beta`, `conv_thr`, `minGap`, `N_it` and `min_it` have no meaning below zero and are
+  `mixing_beta`, `conv_thr`, `minGap`, `Tc_tol`, `N_it` and `min_it` have no meaning below zero and are
   rejected here, and again at the start of a solve in case the field was assigned afterwards.
 - *outdated input value* — an explicit `-1` on `mu`, `muc_AD`, `muc_ME`, `ef`, `efW`, `typEl` or
   `mixing_beta`. Before IsoME 2.0 these used `-1` as the "not set" sentinel; it is now `NaN`, so a
@@ -201,11 +227,11 @@ warnings flag a fallback in that conversion — the run continues with the subst
 
 | Warning | Meaning | React by |
 |---------|---------|----------|
-| `Unable to calculate μ* from μ without a typical electron energy!` | ``\mu \to \mu^*_{AD}`` needs a typical electronic energy, but none was available | Set `typEl` (or `ef` / `efW`). Otherwise `μ*_AD = 0.12` is used. |
-| `Couldn't calculate a reasonable μ*_ME from μ*_AD.` | The derived ``\mu^*_{ME}`` fell outside a physical range | Check `muc_ME.png`; set ``\mu^*`` manually or change the Matsubara cutoff. `μ*_ME = min(3·μ*_AD, 0.8)` is used. |
-| `Matsubara cutoff would lead to μ*_ME > 4*μ.` | The requested cutoff drives ``\mu^*_{ME}`` above ``4\mu`` | A smaller cutoff is used for the μ → ``\mu^*_{ME}`` conversion only; `omega_c` itself is unchanged and the solver still runs at it. Check `muc_ME.png` and the typical electronic energy `typEl`. |
+| `Unable to calculate μ* from μ without a positive typical electron energy!` | ``\mu \to \mu^*_{AD}`` needs a positive typical electronic energy, but none was available | Set `typEl` (or `ef` / `efW`). Otherwise `μ*_AD = 0.12` is used. |
+| `Couldn't calculate a reasonable μ*_ME from μ*_AD.` | The derived ``\mu^*_{ME}`` fell outside a physical range | Check `muc_ME.png`; set ``\mu^*`` manually or change the frequency cutoff `omega_c`. `μ*_ME = min(3·μ*_AD, 0.8)` is used. |
+| `The frequency cutoff omega_c would lead to μ*_ME > 4*μ.` | The requested cutoff drives ``\mu^*_{ME}`` above ``4\mu`` | A smaller cutoff is used for the μ → ``\mu^*_{ME}`` conversion only; `omega_c` itself is unchanged and the solver still runs at it. Check `muc_ME.png` and the typical electronic energy `typEl`. |
 
-`muc_ME.png` shows ``\mu^*_{ME}`` as a function of the Matsubara cutoff, which is the quickest way to
+`muc_ME.png` shows ``\mu^*_{ME}`` as a function of the frequency cutoff, which is the quickest way to
 judge whether the substituted value is sensible.
 
 One **fatal** error comes from the same conversion:

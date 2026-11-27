@@ -573,10 +573,10 @@ function plotZ(itemp, ws, Z, folder, material, mode= "neva")
     end
     xlabel!(L"\omega ~ \mathrm{(meV)}")
     ylabel!(L"Z(\omega) ~ \mathrm{(1)}")
-    savefig(folder* "/Z"*mode*"_T" * string(itemp) * ".png")
+    savefig(folder* "/Z_"*mode*"_T" * string(itemp) * ".png")
 
     savePlotData(
-        folder * "/Z" * mode * "_T" * string(itemp) * ".dat",
+        folder * "/Z_" * mode * "_T" * string(itemp) * ".dat",
         "#  ω / meV       Re(Z(ω)) / 1       Im(Z(ω)) / 1",
         ws, real(Z), imag(Z)
     )
@@ -621,7 +621,7 @@ Save the analytically continued real-frequency quantities (spectral functions + 
 function saveACON(itemp, folder, ws, delta, A11, A12, mode="neva")
 
     # ACON
-    open(folder*"ACON_"*mode*"_"*string(itemp)*"K.dat", "a") do io
+    open(folder * "ACON_" * mode * "_T" * string(itemp) * ".dat", "w") do io
         write(io, "#  ω / meV       A11(ω) / 1       A12(ω) / 1        Δ(ω) / meV\n")
         writedlm(io, zip(ws, A11, A12, delta), '\t')
     end
@@ -637,7 +637,7 @@ Save the analytically continued real-frequency gap
 function saveACON(itemp, folder, ws, delta, mode="neva")
 
     # ACON
-    open(folder*"ACON_"*mode*"_"*string(itemp)*"K.dat", "a") do io
+    open(folder * "ACON_" * mode * "_T" * string(itemp) * ".dat", "w") do io
         write(io, "#  ω / meV          Δ(ω) / meV\n")
         writedlm(io, zip(ws, delta), '\t')
     end

@@ -252,7 +252,9 @@ temperatures that ended without convergence (see [`printFailedTemperature`](@ref
 function printSummary(inp, Tc, log_file; nFailed=0)
 
     text = ""
-    if Tc[2] <= 0.5
+    if all(isnan, Tc)
+        text = text * "\n - Couldn't find Tc"
+    elseif Tc[2] <= 0.5
         text = text * "\n - " * inp.material * " is not a superconductor above T = 0.5 K"
     elseif isnan(Tc[1])
         text = text * "\n - Couldn't find a superconducting gap in the specified area"
@@ -913,35 +915,32 @@ function createSummaryFile(inp::arguments, Tc, out_vars, header)
     end
     outfile = open(inp.outdir*name, "w")
 
-    ### header
+    ### Tc line
     out = "# "
-    if isnan(Tc[1])
+    if all(isnan, Tc)
+        out = out * "Tc not found"
+    elseif isnan(Tc[1])
         out = out * "Tc < " * string(Tc[2]) *" K"
     elseif isnan(Tc[2])
         out = out * "Tc > " * string(Tc[1]) * " K"
     else
         out = out * "Tc = " * formatTc(Tc, inp.Tc_tol)
     end
-    out = out*"\n"*header*"\n"
-    print(outfile, out)
+    println(outfile, out)
 
-    close(outfile)
-      
-    # save header & gap
-    #writedlm(outfile, round.(out_vars, digits=4), '\t')
-    spacingsHeader = findall("   ", header)
-    open(inp.outdir*name, "a") do io
-        for row in eachrow(out_vars)
-            startCol = 0
-            for (val, spacing) in zip(row, spacingsHeader)
-                space = spacing[end] - startCol
-                @printf(io, "%-*.3f", space, val)       # could be changed to print whole row at once + less digits after comma for T 
-                startCol = spacing[end]+1
-            end
-            println(io)
-        end
+    ### table: each column as wide as its widest entry. Widths are counted with textwidth,
+    ### not in bytes, since the column names hold multi-byte characters (Δ, χ, ϵ, μ)
+    names = split(strip(replace(header, r"^#" => "")), r"\s{2,}")
+    cells = [@sprintf("%.3f", v) for v in out_vars]
+    widths = [maximum(textwidth, vcat(names[j], cells[:, j])) + 3 for j in eachindex(names)]
+    pad(s, w) = s * " "^(w - textwidth(s))
+
+    println(outfile, "# " * join(pad.(names, widths)))
+    for i in axes(cells, 1)
+        println(outfile, "  " * join(pad.(cells[i, :], widths)))
     end
 
+    close(outfile)
 end
 
 
@@ -1038,17 +1037,18 @@ function createFigures(inp, matval, Delta0, temps, Tc, log_file)
                 # plot if negative curvature
                 negCurv = all(DeltaSecDer(temps_fit).<0)
                 aboveTc = TcFit > Tc[1]
-                if negCurv && aboveTc #&& (TcFit < Tc[2] || isnan(Tc[2])) && TcFit < 1e3 # plot only if TcFit is reasonable ??
+                # checked before anything is drawn or a limit is changed, so a rejected fit
+                # leaves neither a curve nor a stretched axis behind
+                belowMax = TcFit + 1 <= 1e3
+                if negCurv && aboveTc && belowMax
                     plot!(temps_fit, Delta_fit, linestyle=:dash, linewidth=1, color=:gray, z_order=:back)
-            
+
                     # adjust limits
                     xlim_max = maximum([xlim_max, TcFit+1])
                     ylim_max = maximum([ylim_max, Delta0Fit+1])
-            
+
                     if xlim_max <= 10
                         xtick_val = 0:1:xlim_max
-                    elseif xlim_max > 1e3
-                        error("TcFit unreasonable")
                     elseif xlim_max <= 20
                         xtick_val = 0:2:xlim_max
                     else
@@ -1060,6 +1060,7 @@ function createFigures(inp, matval, Delta0, temps, Tc, log_file)
                     negCurv || push!(reason, "the curvature of Δ(T) is not negative over the whole fit range")
                     aboveTc || push!(reason, "the fitted Tc ($(round(TcFit, digits=2)) K) does not exceed the "*
                                              "lower bound of the Tc interval ($(round(Tc[1], digits=2)) K)")
+                    belowMax || push!(reason, "the fitted Tc ($(round(TcFit, digits=2)) K) is unreasonably large")
                     printWarning("Not plotting the Δ(T) fit because "*join(reason, " and ")*
                                  ". The calculated gap values are shown without a fit curve.", log_file)
                 end

@@ -2,8 +2,12 @@
 
 [![Build Status](https://github.com/cheil/IsoME.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/cheil/IsoME.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Docs](https://img.shields.io/badge/docs-stable-blue.svg)](https://cheil.github.io/IsoME.jl/)
+[![Julia](https://img.shields.io/badge/Julia-%E2%89%A51.10-9558B2?logo=julia)](https://julialang.org)
+[![PkgEval](https://perf.julialang.org/badges/pkgeval/IsoME.svg)](https://perf.julialang.org/?tab=eco-pkgeval&pkg=IsoME)
 
-This Julia codes solves the isotropic Migdal-Eliashberg equations, either within the constant DOS approximation, the full-bandwidth (variable DOS) implementation or with the full static coulomb interaction $W(\epsilon, \epsilon')$.
+
+
+This Julia code solves the isotropic Migdal-Eliashberg equations, either within the constant DOS approximation, the full-bandwidth (variable DOS) implementation or with the full static coulomb interaction $W(\epsilon, \epsilon')$.
 
 In all cases a file containing the Eliashberg spectral function $\alpha^2F$ has to be provided.
 For the variable DOS calculation the electronic DOS $N(\varepsilon)$ and the respective value of the Fermi level is needed as well.

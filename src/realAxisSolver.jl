@@ -237,6 +237,9 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
 
                 print("Couldn't find a Tc! \n")
 
+                # report the bracket reached so far instead of [NaN, NaN]
+                sc = .~isnan.(Delta0)
+                Tc = [any(sc) ? maximum(inp.temps[sc]) : NaN, all(sc) ? NaN : minimum(inp.temps[.~sc])]
                 break
             end
 

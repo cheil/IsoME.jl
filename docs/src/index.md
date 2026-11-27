@@ -11,7 +11,7 @@ For more advanced calculations, input files containing the electronic density of
 A fourth combination, the static Coulomb interaction ``W(\varepsilon,\varepsilon')`` together with the constant-DOS approximation, is also implemented on the imaginary axis.
 However, this variant is not recommended, as it requires the same input data as the vDOS``+W`` approach while being less rigorous and offering no notable computational advantage.
 
-Alongside the Eliashberg results, estimates from the Allen-Dynes-McMillan formula and from its machine-learning-corrected variant are always reported, and the self-energy components ``\Delta, Z, \chi, \phi`` can be saved at each temperature.
+Alongside the Eliashberg results, estimates from the Allen-Dynes-McMillan formula and from its machine-learning-corrected variant are always reported (as 0 K, with a warning, if the formula is not applicable, i.e. ``\lambda < \mu^*(1+0.62\lambda)``), and the self-energy components ``\Delta, Z, \chi, \phi`` can be saved at each temperature.
 
 ## The two solvers
 Imaginary-axis calculations are started with [`EliashbergSolver()`](@ref "Matsubara Solver"), which is based on the [IsoME](https://doi.org/10.1016/j.cpc.2025.109720) paper.

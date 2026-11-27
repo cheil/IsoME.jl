@@ -426,6 +426,13 @@ function checkInput!(inp::arguments; realSolver::Bool=false)
         error("Invalid spinDos value. Use 2 if the DOS file holds the DOS of both spins (it is divided by 2), or 1 if it is already per spin.\n\n")
     end
 
+    # units set by hand: checked here, so that a typo ("mev") is not reported as a bad file header
+    for (field, unit) in (("a2f_unit", inp.a2f_unit), ("dos_unit", inp.dos_unit), ("Weep_unit", inp.Weep_unit), ("Wen_unit", inp.Wen_unit))
+        if !isempty(unit) && unit ∉ ("meV", "eV", "THz", "Ry", "Ha")
+            error(field * " = \"" * unit * "\" is not supported. Use one of meV, eV, THz, Ry, Ha (case sensitive).\n\n")
+        end
+    end
+
     # the ε-grid pieces are built between consecutive bounds, which have to be ascending
     if !issorted(inp.itpBounds)
         @warn "itpBounds = $(inp.itpBounds) is not sorted; sorting it to $(sort(inp.itpBounds)). The step sizes itpStepSize keep their order."
@@ -562,7 +569,7 @@ function readIn_a2f(a2f_file, indSmear::Int=-1, unit="", nheader::Int=-1, nfoote
     elseif "Ha" == unit     # Hartree
         omega_raw = omega_raw .* Ry2meV * 2
     else
-        error("Could not determine the unit of the a2F-file. Set it manually via a2f_unit or check the file header (supported units: meV, eV, THz, Ry, Ha).")
+        error("Unknown unit \"" * unit * "\" for the a2F-file. Set a2f_unit to one of meV, eV, THz, Ry, Ha (case sensitive), or check the file header.\n\n")
     end
 
     ### a2f for one smearing ###
@@ -632,7 +639,7 @@ function readIn_Dos(dos_file, ef::Float64=NaN, spin=2, unit="", nheader::Int=-1,
         energies = energies .* (Ry2meV * 2)
         dos = dos ./ (Ry2meV * 2)
     else
-        error("Could not determine the unit of the DOS-file. Set it manually via dos_unit or check the file header (supported units: meV, eV, THz, Ry, Ha).")
+        error("Unknown unit \"" * unit * "\" for the DOS-file. Set dos_unit to one of meV, eV, THz, Ry, Ha (case sensitive), or check the file header.\n\n")
     end
 
     ### Shift energies by ef for cDos ###
@@ -669,7 +676,9 @@ function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef::Float64=
     Weep = Float64.(Weep_data[nheader+1:end-nfooter, Weep_col])::Vector{Float64}
 
     # reshape to matrix (Matrix, not a lazy Transpose, so matval carries a concrete Matrix{Float64})
-    numWens = Int(sqrt(size(Weep, 1)))
+    numWens = isqrt(length(Weep))
+    numWens^2 == length(Weep) || error("The Weep-file holds " * string(length(Weep)) * " W values, which is not a square number: " *
+        "W(ε,ε′) has to be given on a full N×N grid. Check the file, Weep_col and the header/footer lines (nheader_Weep, nfooter_Weep).\n\n")
     Weep = Matrix(transpose(reshape(Weep, numWens, numWens)))
 
     # remove outliers from Weep 
@@ -743,8 +752,20 @@ function unitToMeV(unit, nameFile)
     unit == "THz" && return THz2meV
     unit == "Ry"  && return Ry2meV
     unit == "Ha"  && return 2 * Ry2meV
-    error("Could not determine the unit of the " * nameFile * "-file. Set it manually via " * nameFile * "_unit or check the file header (supported units: meV, eV, THz, Ry, Ha).")
+    error("Unknown unit \"" * string(unit) * "\" for the " * nameFile * "-file. Set " * unitField(nameFile) *
+          " to one of meV, eV, THz, Ry, Ha (case sensitive), or check the file header.\n\n")
 end
+
+
+"""
+    unitField(nameFile) -> String
+
+Name of the input field that sets the unit of the `nameFile`-file, for error messages.
+"""
+unitField(nameFile) = nameFile == "a2F"  ? "a2f_unit"  :
+                      nameFile == "Dos"  ? "dos_unit"  :
+                      nameFile == "Weep" ? "Weep_unit" :
+                      nameFile == "Wen"  ? "Wen_unit"  : "the corresponding *_unit input"
 
 
 # Fermi energy
@@ -760,72 +781,50 @@ which number it took, since any lone number (a band count, a grid size) would ma
 """
 function extractFermiEnergy(header, unit, nameFile=nothing; outdir="./", logFile=nothing)
 
+    field = nameFile == "Weep" ? "efW" : "ef"
     ef = NaN
     guessed = false     # true: no keyword, ef is a guess - warned about below
-    efRaw = NaN         # ef in the unit of the file, for that warning
-    try
-        # every branch asserts ::Float64: the header cells are Any, and without it `ef`
-        # stays untyped and drags the unit conversion below down with it
-        nameFermi = ["efermi", "ef", "fermi", "e_fermi"]
 
-        for name in nameFermi
-            # first cell holding the keyword, then the first number at or after it
-            idx = findfirst(x -> isa(x, AbstractString) && lowercase(x) == name, header)
-            isnothing(idx) && continue
+    # every branch asserts ::Float64: the header cells are Any, and without it `ef`
+    # stays untyped and drags the unit conversion below down with it
+    for name in ("efermi", "ef", "fermi", "e_fermi")
+        # first cell holding the keyword, then the first number at or after it
+        idx = findfirst(x -> isa(x, AbstractString) && lowercase(x) == name, header)
+        isnothing(idx) && continue
 
-            row, col = Tuple(idx)
-            idxNum = findfirst(x -> isa(x, Number), @view header[row, col:end])
-            isnothing(idxNum) && error("Found '" * name * "' in the header of the " * nameFile * "-file but no number after it.")
+        row, col = Tuple(idx)
+        idxNum = findfirst(x -> isa(x, Real), @view header[row, col:end])
+        isnothing(idxNum) && error("Found '" * name * "' in the header of the " * nameFile * "-file, but no number after it. " *
+                                   "Set the Fermi energy manually via " * field * " or check the file header.\n\n")
 
-            ef = Float64(header[row, col+idxNum-1]::Number)::Float64
-            break
-        end
-
-        if isnan(ef)
-            logNums = isa.(header, Number)
-            # the cells are Any, so `header .== "="` is not inferred as a Bool mask and drags
-            # the sum and every indexing operation below it to Any. Broadcasting a predicate
-            # that provably returns Bool keeps the mask - and everything indexed by it - a
-            # BitMatrix. It also survives a single-column header, where the mask is empty.
-            isEqualSign(x)::Bool = x isa AbstractString && x == "="
-            maskEq = @view(logNums[:, 2:end]) .& isEqualSign.(@view header[:, 1:end-1])
-            if sum(logNums) == 1
-                ef = Float64(only(header[logNums])::Number)::Float64
-                guessed = true
-            elseif sum(maskEq) == 1
-                ef = Float64(only(@view(header[:, 2:end])[maskEq])::Number)::Float64
-                guessed = true
-            end
-        end
-        efRaw = ef
-
-        ### Convert ###
-        if "meV" == unit # meV
-            ef = ef
-        elseif "eV" == unit     # eV
-            ef = ef .* 1000
-        elseif "THz" == unit    # THz
-            ef = ef .* THz2meV
-        elseif "Ry" == unit      # Ry
-            ef = ef .* Ry2meV
-        elseif "Ha" == unit     # Hartree
-            ef = ef .* (Ry2meV * 2)
-        else
-            error("Could not determine the unit of the " * nameFile * "-file. Set it manually via " * nameFile * "_unit or check the file header (supported units: meV, eV, THz, Ry, Ha).")
-        end
-
-    catch ex
-        ex isa InterruptException && rethrow(ex)
-        text = "Error while reading the fermi energy from the " * nameFile * "-file."
-        text *= "\nConsider setting the fermi-energy manually (ef or efW) or check the header of the " * nameFile * "-file\n\n"
-        error(text)
+        ef = Float64(header[row, col+idxNum-1]::Real)::Float64
+        break
     end
 
-    # extraction ran without throwing but matched nothing -> ef still NaN
-    isnan(ef) && error("Could not extract the Fermi energy from the " * nameFile * "-file.\nSet it manually (ef or efW) or check the file header.\n\n")
+    if isnan(ef)
+        logNums = isa.(header, Real)
+        # the cells are Any, so `header .== "="` is not inferred as a Bool mask and drags
+        # the sum and every indexing operation below it to Any. Broadcasting a predicate
+        # that provably returns Bool keeps the mask - and everything indexed by it - a
+        # BitMatrix. It also survives a single-column header, where the mask is empty.
+        isEqualSign(x)::Bool = x isa AbstractString && x == "="
+        maskEq = @view(logNums[:, 2:end]) .& isEqualSign.(@view header[:, 1:end-1])
+        if sum(logNums) == 1
+            ef = Float64(only(header[logNums])::Real)::Float64
+            guessed = true
+        elseif sum(maskEq) == 1
+            ef = Float64(only(@view(header[:, 2:end])[maskEq])::Real)::Float64
+            guessed = true
+        end
+    end
+
+    # nothing matched
+    isnan(ef) && error("Could not extract the Fermi energy from the " * nameFile * "-file.\nSet it manually (" * field * ") or check the file header.\n\n")
+
+    efRaw = ef          # in the unit of the file, for the warning below
+    ef = ef * unitToMeV(unit, nameFile)
 
     if guessed
-        field = nameFile == "Weep" ? "efW" : "ef"
         text = "No Fermi-energy keyword in the header of the " * nameFile * "-file.\n" *
                "Using the only number in the header, " * string(efRaw) * " " * unit *
                ", as Fermi energy. Set " * field * " to override."
@@ -862,9 +861,7 @@ function getUnit(header, nameFile=nothing)
 
     # No prompt here: the solver is routinely run non-interactively (batch queue, CI,
     # notebook), where reading from stdin blocks forever or consumes unrelated input.
-    field = nameFile == "a2F"  ? "a2f_unit"  :
-            nameFile == "Dos"  ? "dos_unit"  :
-            nameFile == "Weep" ? "Weep_unit" : "the corresponding *_unit input"
+    field = unitField(nameFile)
     error("Could not determine the unit of the " * string(nameFile) * "-file from its header.\n" *
           "Set it manually via " * field * " (supported units: meV, eV, THz, Ry, Ha), " *
           "or add the unit to the file header.\n\n")
@@ -966,7 +963,7 @@ function calcMucME(inp, a2f, a2f_omega, phonon_cutoff, log_file)
 
         text = "Couldn't calculate a reasonable μ*_ME from μ*_AD."
         text *= "\nUsing μ*_ME = minimum(3*μ*_AD, 0.8) instead."
-        text *= "\nCheck muc_ME.png and consider setting μ* manually or changing the Matsubara cutoff!"
+        text *= "\nCheck muc_ME.png and consider setting μ* manually or changing the frequency cutoff omega_c!"
         text *= "\nSee the μ* conversion section of the Troubleshooting page and the pseudopotential section of the Input documentation."
         printWarning(text, log_file)
 
@@ -1013,7 +1010,7 @@ function calcMucs(inp, ef, a2f, a2f_omega, phonon_cutoff, log_file)
     if phonon_cutoff > ef * exp(3 / (4 * inp.mu))
         phonon_cutoff = ef * exp(3 / (4 * inp.mu))
 
-        text = "Matsubara cutoff would lead to μ*_ME > 4*μ."
+        text = "The frequency cutoff omega_c would lead to μ*_ME > 4*μ."
         text *= "\nA smaller cutoff has been used for the μ → μ*_ME conversion; omega_c itself is unchanged,"
         text *= "\nso the solver still runs at omega_c = " * string(inp.omega_c) * " meV."
         text *= "\nCheck muc_ME.png and the typical electronic energy typEl!"

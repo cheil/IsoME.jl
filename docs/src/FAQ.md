@@ -13,7 +13,7 @@ These sentinel values indicate that either a default value is used or that the i
 E.g. if the Fermi energy (`ef`) is unspecified (`NaN`), its value will be extracted from the header of the dos-file and the `NaN` will be replaced by the actual value.
 
 Note that `-1` is a sentinel for integer fields only. Before IsoME 2.0 the real-valued fields used it as well, so an explicit `-1` on `mu`, `muc_AD`, `muc_ME`, `ef`, `efW`, `typEl` or `mixing_beta` is now rejected with a message pointing at `NaN`.
-The same check rejects negative values for `mu`, `muc_AD`, `muc_ME`, `mixing_beta`, `conv_thr`, `minGap`, `N_it` and `min_it`.
+The same check rejects negative values for `mu`, `muc_AD`, `muc_ME`, `mixing_beta`, `conv_thr`, `minGap`, `Tc_tol`, `N_it` and `min_it`.
 See [Errors from `arguments()` itself](@ref) on the [Troubleshooting](@ref) page for the messages `arguments()` can produce.
 
 ## Q4: Why is the code unable to read my input files?

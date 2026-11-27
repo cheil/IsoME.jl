@@ -89,7 +89,8 @@ It reacts far more sensitively to these than the imaginary-axis solver does to i
 
 - **Check the log of a finished run:**
 A run that ends without an error is not automatically a converged one.
-Search `log.txt` for `Convergence not achieved within` — a temperature that ran out of `N_it` iterations is reported there and its gap should not be trusted.
+If the summary ends with `Note: N temperature(s) ended without convergence`, search `log.txt` for `Convergence not achieved within` or `Self energy became NaN`.
+Such a temperature is treated as normal conducting, which may shift the ``\mathrm{T}_C`` bracket; check `muc_ME`, the mixing and the units of the input.
 It is also worth scanning the error column of the iteration tables: it should fall steadily, and an order parameter that oscillates between positive and negative values signals too aggressive mixing (see the [FAQ](@ref)).
 
 

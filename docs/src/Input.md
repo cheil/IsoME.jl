@@ -30,7 +30,7 @@ These inputs are shared by both solvers unless noted otherwise.
 | mu      | Float64 |   NaN  | ``\mu=N(\varepsilon_F)W(\varepsilon_F,\varepsilon_F)`` | Measure of the Coulomb strength; `NaN`: inferred |
 | muc_AD  | Float64 |  NaN | Morel-Anderson pseudopotential for Allen-Dynes estimates, ``\mu^*_{AD}`` | `NaN`: the default convention described below is used |
 | muc_ME  | Float64 | NaN | Morel-Anderson pseudopotential for Migdal-Eliashberg calculations, ``\mu^*_{ME}`` | `NaN`: inferred from `muc_AD`, `mu` or ``W`` when possible |
-| typEl | Float64 |  NaN | Typical electronic energy scale | In meV; used to calculate ``\mu^*`` from ``\mu`` |
+| typEl | Float64 |  NaN | Typical electronic energy scale | In meV, must be positive; used to calculate ``\mu^*`` from ``\mu``. `NaN`: `ef` or `efW` is used if positive |
 | ef        | Float64 |  NaN | Fermi energy of the DOS | In meV; `NaN`: extracted from the DOS-file header |
 | efW       | Float64 |  NaN | Fermi energy of the ``W`` grid | In meV; `NaN`: extracted from the ``W``-file header |
 | omega_c | Float64 | 7000.0 | Frequency cutoff ``\omega_c`` | In meV; the Matsubara cutoff on the imaginary axis and the ``\omega``-grid cutoff on the real axis |
@@ -40,7 +40,7 @@ These inputs are shared by both solvers unless noted otherwise.
 | nItFullCoul | Int64 |  10    | Number of iterations used to ramp up the Coulomb contribution | Helps stabilize the initial iterations |
 | conv_thr | Float64 | ``10^{-4}`` | Convergence threshold | Applied to the gap update |
 | minGap   | Float64 | 0.1  | Lower gap threshold | In meV; the temperature is treated as normal conducting if the gap drops below `minGap` |
-| N_it | Int64 | 5000 | Maximum number of iterations | - |
+| N_it | Int64 | 5000 | Maximum number of iterations | Raised to at least `max(min_it, nItFullCoul + 1) + 1`. A temperature that reaches `N_it` counts as normal conducting, with a warning |
 | min_it | Int64 | 10 | Minimum number of iterations before convergence is accepted | Used by both solvers; the Coulomb ramp (`nItFullCoul`) must have finished as well |
 | Tc_tol | Float64 | 1.0 | Resolution the ``\mathrm{T}_C`` search is carried to | In K; must be strictly positive. Once the search brackets ``\mathrm{T}_C``, it refines on a lattice of this spacing until the bracket is `Tc_tol` wide, so the reported ``\mathrm{T}_C`` carries an uncertainty of ``\pm`` `Tc_tol`/2. Smaller values cost additional temperatures; ignored when `temps` is given explicitly. `Tc_tol` only narrows the bracket: a temperature counts as normal conducting once the gap drops below `minGap` or the iteration fails to converge within `N_it`, so the bracket closes around the temperature where that happens, which lies somewhat below the true ``\mathrm{T}_C``. Refining far below that offset does not make ``\mathrm{T}_C`` more accurate |
 | outdir | String | `joinpath(pwd(), "IsoME")` | Path to the output directory | An existing directory is never written into: a run counter is appended, so repeated runs land in `IsoME_1/`, `IsoME_2/`, and so on |
@@ -93,7 +93,7 @@ By default, the ``\mu`` and ``\mu^*`` values are unset (`NaN`), which means that
 \mu^*_{ME}= \frac{\mu^*_{AD}}{(1 + \mu^*_{AD} \ln(\frac{\omega_{ph}}{\omega_c}))}~.
 ```
 If ``\mu`` or one of the ``\mu^*`` values is set, the remaining ``\mu^*`` values are calculated from it. However, no user input is overwritten.
-Furthermore, if neither ``\mu`` nor ``\mu^*`` is specified but a `Weep_file` is given, ``\mu`` is calculated from ``W``.
+Furthermore, if neither ``\mu`` nor ``\mu^*`` is specified but a `Weep_file` is given, ``\mu`` is calculated from ``W``. This needs a valid `dos_file` otherwise a warning is printed and the default is used.
 
 
 ### Interpolation of the energy grid
@@ -205,7 +205,7 @@ The first and second columns of the DOS file are interpreted as the energies and
 The energy grid does not have to be uniform: the DOS is interpolated linearly on the energies as given. The energies must be in ascending order without repetitions; otherwise the read-in stops with an error.
 
 #### Summary formatting:
-- **header:** Non-numeric rows at the beginning of the document. If the header contains the unit (meV, eV, THz, Ry, Ha), it is extracted automatically; otherwise, set the unit via `dos_unit`. If the header contains only one numeric value, this is interpreted as the Fermi energy. If there are several numerical values, IsoME checks for a keyword (`ef`, `efermi`, ...) indicating the Fermi energy. If extraction fails, adapt the header or set the Fermi energy via `ef`.
+- **header:** Non-numeric rows at the beginning of the document. If the header contains the unit (meV, eV, THz, Ry, Ha), it is extracted automatically; otherwise, set the unit via `dos_unit`. The Fermi energy is taken from the number after a keyword (`efermi`, `ef`, `fermi`, `e_fermi`). Without a keyword, the only number in the header is used, with a warning. If extraction fails, adapt the header or set the Fermi energy via `ef`.
 - **footer:** Non-numeric rows at the end of the document.
 - **first column:** energies
 - **second column:** dos values
@@ -269,7 +269,7 @@ The columns can be changed via `Weep_col` and `Wen_col`.
 If the row and column identifiers are consecutive indices rather than energies, provide an additional `Wen_file` containing the ``W`` energy-grid points.
 As for the DOS, the ``W`` energy grid does not have to be uniform; ``W`` is interpolated bilinearly on the grid as given, which must be in ascending order without repetitions.
 #### Summary formatting:
-- **header:** Non-numeric rows at the beginning of the document. If the header contains the unit (meV, eV, THz, Ry, Ha), it is extracted automatically; otherwise, set the unit via `Weep_unit`. If the header contains only one numeric value, it is interpreted as the Fermi energy. If there are several numerical values, IsoME checks for a keyword (`ef`, `efermi`, ...) indicating the Fermi energy. If extraction fails, adapt the header or set the Fermi energy via `efW`.
+- **header:** Non-numeric rows at the beginning of the document. If the header contains the unit (meV, eV, THz, Ry, Ha), it is extracted automatically; otherwise, set the unit via `Weep_unit`. The Fermi energy is read as for the DOS file (keyword first). If extraction fails, adapt the header or set the Fermi energy via `efW`.
 - **footer:** Non-numeric rows at the end of the document.
 - **columns:** energy-grid points are assumed to be in the first and second columns, and the first column is used by default (`Wen_col` = 1). The ``W`` values are assumed to be in the third column by default (`Weep_col` = 3).
 

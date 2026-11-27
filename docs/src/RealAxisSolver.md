@@ -16,7 +16,7 @@ For each temperature the solver goes through three steps:
    - performs the ``\varepsilon``-integration, which reduces the ``(\omega',\varepsilon)``-integrand to a pure function of ``\omega'``,
    - performs the ``\omega'``-integration against the kernel, giving the new ``Z``, ``\phi`` and ``\chi``,
    - mixes the new and old solutions and checks convergence.
-3. **Termination**. A temperature counts as converged once the relative change of the gap, ``\sum_\omega |\Delta^{i}-\Delta^{i-1}| / \sum_\omega |\Delta^{i}|``, drops below `conv_thr` and at least `min_it` iterations — and one more than `nItFullCoul` — have passed. If the gap falls below `minGap`, the temperature is counted as normal conducting, which is what brackets ``\mathrm{T}_C`` in ``\mathrm{T}_C``-search mode.
+3. **Termination**. A temperature counts as converged once the relative change of the gap, ``\sum_\omega |\Delta^{i}-\Delta^{i-1}| / \sum_\omega |\Delta^{i}|``, drops below `conv_thr`, the gap is at least `minGap`, and at least `min_it` iterations — and one more than `nItFullCoul` — have passed. If the gap falls below `minGap`, the temperature is counted as normal conducting, which is what brackets ``\mathrm{T}_C`` in ``\mathrm{T}_C``-search mode. A temperature that reaches `N_it` or becomes `NaN` is treated as normal conducting as well, with a warning and a note in the summary.
 
 Throughout the loop the primary variables are ``Z``, ``\chi`` and the order parameter ``\phi``; the gap is derived as ``\Delta = \phi/Z`` after mixing.
 This matters in the vDOS``+W`` case, where ``\phi`` is split into a phononic part ``\phi_{ph}(\omega)`` and an energy-dependent Coulomb part ``\phi_c(\varepsilon)``, and the gap follows as ``\Delta(\omega) = [\phi_{ph}(\omega)+\phi_c(\varepsilon_F)]/Z(\omega)``.
@@ -135,9 +135,9 @@ The mixing is linear with an iteration-dependent factor — it starts at ``1``, 
 A fixed factor can be enforced through `mixing_beta`.
 The Coulomb contribution is ramped up over the first `nItFullCoul` iterations, which stabilizes the early iterations.
 
-vDOS calculations are never started from scratch: the first temperature is seeded with a cDOS solution at ``\min(\mathrm{T}_C^{ML}/2,~T_1)``, where ``\mathrm{T}_C^{ML}`` is the machine-learning estimate printed with the Allen-Dynes table and ``T_1`` the first temperature solved (never below 0.5 K). Seeding below the target temperature is deliberate: the seed then carries a larger gap, which decays to zero if the temperature lies above ``\mathrm{T}_C``, whereas a seed with an almost vanishing gap may not grow past `minGap` in time below it. This cDOS run is attempted once; if it does not converge, the vDOS calculation starts from the BCS gap instead. Every subsequent temperature starts from the last converged solution.
+vDOS calculations are never started from scratch: the first temperature is seeded with a cDOS solution at ``\min(\mathrm{T}_C^{ML}/2,~T_1)``, where ``\mathrm{T}_C^{ML}`` is the machine-learning estimate printed with the Allen-Dynes table and ``T_1`` the first temperature solved (never below 0.5 K). Seeding below the target temperature is deliberate: the seed then carries a larger gap, which decays to zero if the temperature lies above ``\mathrm{T}_C``, whereas a seed with an almost vanishing gap may not grow past `minGap` in time below it. The seed always uses ``\mu^* = 0.12`` and a convergence threshold of at least ``10^{-3}``, since it only has to provide a starting point. This cDOS run is attempted once; if it does not converge, the vDOS calculation starts from the BCS gap instead. Every subsequent temperature starts from the last converged solution.
 ``\mathrm{T}_C``-search mode uses the same bisection-and-fit strategy as the imaginary-axis solver, so ``\mathrm{T}_C`` ends up bracketed by the highest temperature whose gap edge stays above `minGap` and the lowest one without a solution.
-Temperatures are stepped in whole kelvin, so the result is a 1 K bracket ``[T_{sc}, T_{nsc}]`` rather than a single number.
+The result is a bracket ``[T_{sc}, T_{nsc}]`` of width `Tc_tol` rather than a single number.
 
 ## Relevant input parameters
 | Parameter | Role |
@@ -149,8 +149,9 @@ Temperatures are stepped in whole kelvin, so the result is a 1 K bracket ``[T_{s
 | `mu_flag` | Whether the chemical potential is updated (vDOS only) |
 | `mixing_beta` | Fixes the linear mixing factor instead of the default schedule |
 | `nItFullCoul` | Iterations over which the Coulomb contribution is ramped up |
-| `conv_thr`, `min_it` | Convergence threshold and minimum number of iterations |
+| `conv_thr`, `min_it`, `N_it` | Convergence threshold, minimum and maximum number of iterations |
 | `minGap` | Gap below which a temperature counts as normal conducting |
+| `Tc_tol` | Width of the final ``\mathrm{T}_C`` bracket |
 
 See [Input](@ref) for defaults and types, and the [FAQ](@ref) for the practical consequences of these choices.
 

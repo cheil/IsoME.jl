@@ -71,15 +71,19 @@ This almost always points at the DOS input file rather than at the solver.
 The mixing is linear with an iteration-dependent factor: it starts at ``1``, decreases by ``0.05`` per iteration and settles at ``0.6`` from the ninth iteration on, unless `mixing_beta` fixes it.
 The Coulomb contribution is ramped up over the first `nItFullCoul` iterations, which prevents the instability that arises when the Coulomb part of the order parameter exceeds the phononic part early in the iteration (see the [FAQ](@ref)).
 
-Convergence is measured by the relative change of the gap, ``\sum_n |\Delta_n^{i} - \Delta_n^{i-1}| / \sum_n |\Delta_n^{i}|`` (at ``\varepsilon_F`` in the ``W`` approximations), and is accepted once it drops below `conv_thr` and at least `min_it` iterations — and one more than `nItFullCoul` — have passed.
+Convergence is measured by the relative change of the gap, ``\sum_n |\Delta_n^{i} - \Delta_n^{i-1}| / \sum_n |\Delta_n^{i}|`` (at ``\varepsilon_F`` in the ``W`` approximations), and is accepted once it drops below `conv_thr`, the gap is at least `minGap`, and at least `min_it` iterations — and one more than `nItFullCoul` — have passed.
 A temperature is considered normal conducting when ``\Delta(i\omega_0)`` falls below `minGap`, which is what brackets ``\mathrm{T}_C`` in ``\mathrm{T}_C``-search mode: the search starts from a machine-learning estimate, uses a single fit of ``\Delta(T)`` to jump close to the transition, and brackets it by bisection from there.
-Temperatures are stepped in whole kelvin, so the result is a 1 K bracket ``[T_{sc}, T_{nsc}]`` rather than a single number.
+The result is a bracket ``[T_{sc}, T_{nsc}]`` of width `Tc_tol` rather than a single number.
+
+A temperature that does not converge within `N_it` iterations, or whose self-energy becomes `NaN`, is also treated as normal conducting.
+This is reported as a warning (`Convergence not achieved within … iterations at T = … K.` or `Self energy became NaN at T = … K.`), and the summary ends with `Note: N temperature(s) ended without convergence`.
 
 ## Analytic continuation
 With `flag_acon = true` the converged imaginary-axis solution is continued to real frequencies with Padé approximants.
 ``\Delta``, ``Z`` and ``\chi`` are continued separately (which is more stable than continuing the Green's function directly), and the resulting real-frequency gap, renormalization and — in vDOS — shift are plotted and written to `outdir/ACON/`, one file per self-energy component and temperature.
 The real-frequency window of the continuation is set by `omega_c`, the same cutoff that fixes the number of Matsubara frequencies.
 Padé is sensitive to the number of input frequencies and to noise in the converged solution: at most 200 Matsubara points are used, since the approximants collapse when fed more.
+If the continuation is not finite at a temperature, a warning is printed and that output is not reliable.
 If the continued quantities look unphysical, the direct [Real Axis Solver](@ref) is the more reliable route.
 
 ## Relevant input parameters
@@ -92,8 +96,9 @@ If the continued quantities look unphysical, the direct [Real Axis Solver](@ref)
 | `mu_flag` | Whether the chemical potential is updated (vDOS only) |
 | `mixing_beta` | Fixes the linear mixing factor instead of the default schedule |
 | `nItFullCoul` | Iterations over which the Coulomb contribution is ramped up |
-| `conv_thr`, `min_it` | Convergence threshold and minimum number of iterations |
+| `conv_thr`, `min_it`, `N_it` | Convergence threshold, minimum and maximum number of iterations |
 | `minGap` | Gap below which a temperature counts as normal conducting |
+| `Tc_tol` | Width of the final ``\mathrm{T}_C`` bracket |
 | `flag_acon` | Analytic continuation of the converged solution |
 
 See [Input](@ref) for defaults and types, and [Best practices](@ref) for guidance on convergence tests.

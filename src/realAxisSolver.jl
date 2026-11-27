@@ -106,13 +106,13 @@ function run_realAxis(inp::arguments, log_file)
     printFlagsAsText(inp, matval, log_file, mode="realFreq")
 
     ########### start loop over temperatures ##########
-    Tc, temps, Znorm0, Delta0, Shift0, EfMu = stage("while solving the Eliashberg equations") do
+    Tc, temps, Znorm0, Delta0, Shift0, EfMu, nFailed = stage("while solving the Eliashberg equations") do
         findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
     end
 
     ### write Tc to console
     attempt(inp, log_file, "Error while printing the summary.") do
-        printSummary(inp, Tc, log_file)
+        printSummary(inp, Tc, log_file; nFailed=nFailed)
     end
 
     ### Outputs ###
@@ -167,6 +167,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
     Znorm0 = Vector{ComplexF64}()
     EfMu = Vector{Float64}()
     Tc = [NaN, NaN]
+    nFailed = 0     # temperatures that ended without convergence (N_it reached or NaN)
 
     realAxisState = nothing
 
@@ -198,9 +199,11 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
                 state = isnothing(realAxisState) ?
                         initialize_real_axis_vDOS(itemp, T_seed, inp, console, matval, realAxisParameter, log_file) :
                         realAxisState
-                data, realAxisState = solve_realAxis_vDOS(itemp, inp, console.vDOS, matval, realAxisParameter, state, log_file)
+                data, realAxisState, failed = solve_realAxis_vDOS(itemp, inp, console.vDOS, matval, realAxisParameter, state, log_file)
+                nFailed += failed
             elseif inp.cDOS_flag == 1
-                data, realAxisState = solve_realAxis_cDOS(itemp, inp, console.cDOS, matval, realAxisParameter, log_file)
+                data, realAxisState, failed = solve_realAxis_cDOS(itemp, inp, console.cDOS, matval, realAxisParameter, log_file)
+                nFailed += failed
             else
                 # checkInput! rejects anything else, so this is only reached if `inp` was
                 # modified afterwards - without it `data` would be undefined below
@@ -304,6 +307,8 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
                 p0 = convert(Vector{Float64}, [maximum(realDelta0), 1, minimum(realDelta0)])
                 try
                     fit = curve_fit(m, inp.temps[nnanDelta], realDelta0, p0)
+                    # an unconverged fit takes the same fallback as one that throws
+                    fit.converged || error("Δ(T) fit did not converge")
                     par = fit.param
 
                     # find root
@@ -371,9 +376,11 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
                 state = isnothing(realAxisState) ?
                         initialize_real_axis_vDOS(itemp, T_seed, inp, console, matval, realAxisParameter, log_file) :
                         realAxisState
-                data, realAxisState = solve_realAxis_vDOS(itemp, inp, console.vDOS, matval, realAxisParameter, state, log_file)
+                data, realAxisState, failed = solve_realAxis_vDOS(itemp, inp, console.vDOS, matval, realAxisParameter, state, log_file)
+                nFailed += failed
             elseif inp.cDOS_flag == 1
-                data, realAxisState = solve_realAxis_cDOS(itemp, inp, console.cDOS, matval, realAxisParameter, log_file)
+                data, realAxisState, failed = solve_realAxis_cDOS(itemp, inp, console.cDOS, matval, realAxisParameter, log_file)
+                nFailed += failed
             else
                 # checkInput! rejects anything else, so this is only reached if `inp` was
                 # modified afterwards - without it `data` would be undefined below
@@ -410,7 +417,7 @@ function findTc_RealAxis(inp, console, matval, ML_Tc, log_file)
 
     printTextCentered("Stopping now!", console.partingLine, file=log_file, bold=true)
 
-    return Tc, inp.temps, Znorm0, Delta0, Shift0, EfMu
+    return Tc, inp.temps, Znorm0, Delta0, Shift0, EfMu, nFailed
 
 end
 
@@ -424,18 +431,12 @@ When `vDOS_initial_guess=true`, the cDOS solution is returned in a `RealAxisStat
 with zero χ so it can seed the vDOS solver.
 """
 function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log_file; vDOS_initial_guess::Bool=false)
-    (; omega_c, N_it, conv_thr, minGap, nItFullCoul, min_it) = inp
+    (; N_it, conv_thr, minGap, nItFullCoul, min_it) = inp
     (w_static, _) = realAxisParameter
-    (_, _, _, _, Weep, dosef, idx_ef, _, BCS_gap) = matval
-    # When used as vDOS+W initializer, muc_ME is unset (nothing). Derive it from W(εF,εF)·N(εF)
-    # using the Morel-Anderson formula, consistent with calcMucs() in ReadIn.jl.
-    muc_ME = if vDOS_initial_guess && isnan(inp.muc_ME) && inp.include_Weep == 1
-        typEl = !isnan(inp.typEl) ? inp.typEl : inp.efW
-        mu = Weep[idx_ef, idx_ef] * dosef
-        mu / (1 + mu * log(typEl / omega_c))
-    else
-        Float64(inp.muc_ME)
-    end
+    BCS_gap = matval[9]
+    # As the cDOS seed of the vDOS solver, a fixed μ* = 0.12: the seed only has to provide a
+    # reasonable starting gap, and in W mode μ*_ME is not even defined
+    muc_ME = vDOS_initial_guess ? 0.12 : Float64(inp.muc_ME)
 
     # smaller threshold for initial guess calculation
     conv_thr = vDOS_initial_guess ? max(1e-3, conv_thr) : conv_thr
@@ -467,8 +468,6 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
     for i_it in 1:N_it
         delta_prev = copy(delta_new)
         Z_prev = copy(Z_new)
-        # abs() once here: mixing_beta comes straight from the input, so a negative value
-        # has to be folded away before it is used as a mixing weight
         beta_mix = mixing_parameter(inp, i_it)
 
         pole = gap0
@@ -499,7 +498,8 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
         nan_state = any(isnan, outputVec)
         print_real_axis_iteration(outputVec, console, log_file)
 
-        if abs(convergence) < conv_thr && i_it > maximum([min_it, nItFullCoul + 1])
+        # a gap below minGap is never "converged" - it falls through to the minGap check
+        if abs(convergence) < conv_thr && real(data[2]) >= minGap && i_it > maximum([min_it, nItFullCoul + 1])
             print_real_axis_converged(itemp, console, log_file)
 
             state.Z = Z_new
@@ -508,7 +508,7 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
             if !vDOS_initial_guess
                 save_real_axis_cDOS_outputs(itemp, inp, state, w_static, log_file)
             end
-            return data, state
+            return data, state, false
         end
 
         if real(data[2]) < minGap && i_it > maximum([min_it, nItFullCoul + 1])
@@ -516,17 +516,16 @@ function solve_realAxis_cDOS(itemp, inp, console, matval, realAxisParameter, log
             data[2] = NaN
 
             # as vDOS initial guess, a failed run is discarded by initialize_real_axis_vDOS
-            return data, state
+            return data, state, false
         end
 
-        # max iter 
+        # max iter
         if i_it == N_it || nan_state
-            nan_state ? print_real_axis_nan(itemp, console, log_file) :
-                        print_real_axis_not_converged(inp, console, log_file)
+            print_real_axis_failed(itemp, inp, nan_state, console, log_file; seed=vDOS_initial_guess)
             data[2] = NaN
 
             # as vDOS initial guess, a failed run is discarded by initialize_real_axis_vDOS
-            return data, state
+            return data, state, true
         end
     end
 end
@@ -610,8 +609,6 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         chi_prev = copy(chi_new)
         phi_ph_prev = copy(phi_ph_new)
         phi_c_prev = copy(phi_c_new)
-        # abs() once here: mixing_beta comes straight from the input, so a negative value
-        # has to be folded away before it is used as a mixing weight
         beta_mix = mixing_parameter(inp, i_it)
 
         # locate the ω'-integrand poles (vDOS+W: from the modified S/P quantities)
@@ -667,7 +664,8 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
         nan_state = any(isnan, outputVec)
         print_real_axis_iteration(outputVec, console, log_file)
 
-        if abs(convergence) < conv_thr && i_it > maximum([min_it, nItFullCoul + 1])
+        # a gap below minGap is never "converged" - it falls through to the minGap check
+        if abs(convergence) < conv_thr && real(data[2]) >= minGap && i_it > maximum([min_it, nItFullCoul + 1])
             print_real_axis_converged(itemp, console, log_file)
 
             if inp.flag_writeSelfEnergy == 1
@@ -691,23 +689,22 @@ function solve_realAxis_vDOS(itemp, inp, console, matval, realAxisParameter, sta
             state.phi_ph = phi_ph_new
             state.phi_c = phi_c_new
             state.fermi_level = fermi_level
-            return data, state
+            return data, state, false
         end
 
         if real(data[2]) < minGap && i_it > maximum([min_it, nItFullCoul + 1])
             print_real_axis_gap_too_small(itemp, minGap, console, log_file)
             data[2] = NaN
-            return data, state
+            return data, state, false
         end
 
         # A NaN anywhere in the console row abandons this temperature - see the cDOS loop.
         # `state` is deliberately left untouched, so the next temperature restarts from the
         # last converged self-energy rather than from the NaN one.
         if i_it == N_it || nan_state
-            nan_state ? print_real_axis_nan(itemp, console, log_file) :
-                        print_real_axis_not_converged(inp, console, log_file)
+            print_real_axis_failed(itemp, inp, nan_state, console, log_file)
             data[2] = NaN
-            return data, state
+            return data, state, true
         end
     end
 end
@@ -733,17 +730,15 @@ end
 """
     mixing_parameter(inp, i_it)
 
-linear mixing factor of eliashberg solutions
-
-abs() here: mixing_beta comes straight from the input, so a negative value has to be
-folded away before it is used as a mixing weight
+linear mixing factor of eliashberg solutions: `mixing_beta` if set (checkInput! guarantees
+0 < mixing_beta ≤ 1), otherwise the schedule max(0.6, 1 - 0.05(i_it - 1))
 """
 function mixing_parameter(inp, i_it)
     if isnan(inp.mixing_beta)
         return maximum([0.6, 1.0 - 0.05 * (i_it - 1)])
     end
 
-    return abs(inp.mixing_beta)
+    return inp.mixing_beta
 end
 
 
@@ -799,8 +794,8 @@ function initialize_real_axis_vDOS(itemp, T_seed, inp, console, matval, realAxis
     seedParameter = T_seed == itemp ? realAxisParameter :
                     precompute(1 / (kb * T_seed), inp, matval, console, log_file)
 
-    data, state = solve_realAxis_cDOS(T_seed, inp, console.cDOS, matval, seedParameter, log_file;
-                                      vDOS_initial_guess=true)
+    data, state, _ = solve_realAxis_cDOS(T_seed, inp, console.cDOS, matval, seedParameter, log_file;
+                                         vDOS_initial_guess=true)
     isnan(data[2]) || return state
 
     printWarning("The cDOS initial guess at T = " * string(T_seed) * " K did not converge. " *
@@ -857,32 +852,25 @@ end
 
 
 """
-    print_real_axis_nan(itemp, console, log_file)
+    print_real_axis_failed(itemp, inp, nan_state, console, log_file; seed=false)
 
-self energy turned NaN, temperature abandoned
+The temperature ended without convergence (`N_it` reached, or the self energy turned NaN).
+A regular temperature gets the [`printFailedTemperature`](@ref) warning, as it now counts as
+normal conducting. The cDOS seed of the vDOS solver (`seed = true`) does not:
+`initialize_real_axis_vDOS` warns about it on its own and falls back to the BCS gap.
 """
-function print_real_axis_nan(itemp, console, log_file)
+function print_real_axis_failed(itemp, inp, nan_state, console, log_file; seed=false)
     println(replace(console.Hline, "." => " "))
-    printstyled("\nSelf energy became NaN at T = " * string(itemp) * " K!\n\n"; bold=true)
-
     println(log_file, replace(console.Hline, "." => " "))
-    printstyled(log_file, "\nSelf energy became NaN at T = " * string(itemp) * " K!\n\n"; bold=true)
-end
 
-
-"""
-     print_real_axis_not_converged(inp, console, log_file)
-
-print max iterations exceeded
-"""
-function print_real_axis_not_converged(inp, console, log_file)
-    println(replace(console.Hline, "." => " "))
-    printstyled("\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"; bold=true)
-    println("\n")
-
-    println(log_file, replace(console.Hline, "." => " "))
-    printstyled(log_file, "\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"; bold=true)
-    println(log_file, "\n")
+    if seed
+        msg = nan_state ? "\nSelf energy became NaN at T = " * string(itemp) * " K!\n\n" :
+                          "\nConvergence not achieved within " * string(inp.N_it) * " iterations\n\n"
+        printstyled(msg; bold=true)
+        printstyled(log_file, msg; bold=true)
+    else
+        printFailedTemperature(itemp, inp.N_it, nan_state, log_file)
+    end
 end
 
 """

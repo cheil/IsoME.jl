@@ -134,6 +134,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
 
     ##### Start iterations #####
     err_delta = 0
+    failed = false      # true if this temperature ended without convergence (N_it or NaN)
     # declared here so that the `return data` after the loop is reachable for the compiler.
     # Assigned in every iteration below; if it were local to the loop, solve_eliashberg
     # would return Union{Nothing, Vector{Float64}} and every data[...] in findTc would be
@@ -255,8 +256,8 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
 
 
         ##### check convergence & termination criterion #####
-        # both solvers honour min_it; the Coulomb ramp still has to have finished
-        if err_delta < inp.conv_thr && i_it > maximum([min_it, inp.nItFullCoul+1])
+        # a gap below minGap is never "converged" - it falls through to the minGap check
+        if err_delta < inp.conv_thr && data[2] >= inp.minGap && i_it > maximum([min_it, inp.nItFullCoul+1])
             println(replace(table.Hline, "." => " "))
             printstyled("\nConvergence achieved for T = " * string(itemp) * " K\n"; bold=false)
 
@@ -325,25 +326,13 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
             break
         end
 
-        # max number iterations reached, or the self energy turned NaN. Every component is
-        # built from sums over the whole Matsubara grid, so a single NaN entry contaminates
-        # all of them within one iteration and iterating on is pointless. Both cases return
-        # Δ = NaN, which makes the Tc search continue at a lower temperature.
+        # max number iterations reached, or the self energy turned NaN.
         if i_it == inp.N_it || nan_state
-            msg = nan_state ?
-                  "\nSelf energy became NaN at T = " * string(itemp) * " K, skipping this temperature!\n" :
-                  "\nConvergence not achieved within " * string(inp.N_it) * " iterations\n"
-
             println(replace(table.Hline, "." => " "))
-            printstyled(msg; bold=true)
-            println("\n")
-
-            # log file
             println(log_file, replace(table.Hline, "." => " "))
-            printstyled(log_file, msg; bold=true)
-            println(log_file, "\n")
+            printFailedTemperature(itemp, inp.N_it, nan_state, log_file)
 
-
+            failed = true
             data[2] = NaN
             break
         end
@@ -351,7 +340,7 @@ function solve_eliashberg(itemp, inp, console, matval, log_file)
 
     end
 
-    return data
+    return data, failed
 end
 
  
@@ -368,6 +357,7 @@ function findTc(inp, console, matval, ML_Tc, log_file)
     Znorm0 = Vector{Float64}()
     EfMu = Vector{Float64}()
     Tc = [NaN, NaN]
+    nFailed = 0     # temperatures that ended without convergence (N_it reached or NaN)
 
 
     if inp.temps == [-1]    # Tc search mode
@@ -384,7 +374,8 @@ function findTc(inp, console, matval, ML_Tc, log_file)
             inp.temps = push!(inp.temps, itemp)
 
             # solve Eliashberg equations
-            data = solve_eliashberg(itemp, inp, console, matval, log_file)
+            data, failed = solve_eliashberg(itemp, inp, console, matval, log_file)
+            nFailed += failed
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
@@ -488,6 +479,8 @@ function findTc(inp, console, matval, ML_Tc, log_file)
                 p0 = convert(Vector{Float64}, [maximum(Delta0[nnanDelta]), 1, minimum(Delta0[nnanDelta])])
                 try
                     fit = curve_fit(m, inp.temps[nnanDelta], Delta0[nnanDelta], p0)
+                    # an unconverged fit takes the same fallback as one that throws
+                    fit.converged || error("Δ(T) fit did not converge")
                     par = fit.param
 
                     # find root
@@ -539,7 +532,8 @@ function findTc(inp, console, matval, ML_Tc, log_file)
             itemp = inp.temps[iT]
 
             # solve Eliashberg equations
-            data = solve_eliashberg(itemp, inp, console, matval, log_file)
+            data, failed = solve_eliashberg(itemp, inp, console, matval, log_file)
+            nFailed += failed
             if inp.cDOS_flag == 0
                 Znorm0 = push!(Znorm0, data[1])
                 Delta0 = push!(Delta0, data[2])
@@ -571,7 +565,7 @@ function findTc(inp, console, matval, ML_Tc, log_file)
 
     printTextCentered("Stopping now!", console.partingLine, file = log_file, bold = true)
 
-    return Tc, inp.temps, Znorm0, Delta0, Shift0, EfMu
+    return Tc, inp.temps, Znorm0, Delta0, Shift0, EfMu, nFailed
 
 end
 
@@ -667,13 +661,13 @@ function run_matsubara(inp::arguments, log_file)
     printFlagsAsText(inp, matval, log_file)
 
     ########### start loop over temperatures ##########
-    Tc, temps, Znorm0, Delta0, Shift0, EfMu = stage("while solving the Eliashberg equations") do
+    Tc, temps, Znorm0, Delta0, Shift0, EfMu, nFailed = stage("while solving the Eliashberg equations") do
         findTc(inp, console, matval, ML_Tc, log_file)
     end
 
     ### write Tc to console
     attempt(inp, log_file, "Error while printing the summary.") do
-        printSummary(inp, Tc, log_file)
+        printSummary(inp, Tc, log_file; nFailed=nFailed)
     end
 
     ### Outputs ###

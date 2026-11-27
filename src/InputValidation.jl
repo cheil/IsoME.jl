@@ -134,7 +134,8 @@ axis and returns `nothing` on the real one. Neither has an "infer this during th
 meaning, unlike the `NaN` sentinels of `mu` or `mixing_beta`.
 
 `N_it` additionally has to exceed `max(min_it, nItFullCoul + 1)`, the iteration after which
-convergence is accepted; that is checked in [`checkInput!`](@ref), which sees the whole struct.
+convergence is accepted; [`checkInput!`](@ref), which sees the whole struct, raises a smaller
+value to `max(min_it, nItFullCoul + 1) + 1`.
 """
 const _strictlyPositive = (:Tc_tol, :N_it)
 

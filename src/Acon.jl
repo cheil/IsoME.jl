@@ -64,6 +64,16 @@ function acon(inp, itemp, wsi, nsiw, deltai, znormi, log_file; shifti = Float64[
         if ~all(shifti .== 0)
             shift_pade, ws_pade = Pade_separate(wsi, nsiw, real_c, shifti)
         end
+
+        # A NaN or Inf anywhere in the continued fraction (a vanishing coefficient, an
+        # overflow of the approximants) ends up in the continued function. The result is
+        # still written, so the failure can be inspected, but the user has to be told.
+        failed = [name for (name, g) in (("Δ", delta_pade), ("Z", Z_pade), ("χ", shift_pade))
+                  if !all(isfinite, g)]
+        if !isempty(failed)
+            printWarning("Padé continuation at T = " * string(itemp) * " K is not finite for " *
+                         join(failed, ", ") * ".\nThe ACON output at this temperature is not reliable.", log_file)
+        end
     end
 
     ### save outputs ###
@@ -300,12 +310,7 @@ function Pade_separate(wsi, nsiw, real_c, gi; dw_real::Real=1.0, eta::Real=0.001
         #println("a=",a[p])
     end
     #println("Finished a's")
-    # Check whether a[p] is NaN
-    ar = real.(a)
-    ai = imag.(a)
-    if any(isnan.(ar)) || any(isnan.(ai))
-        println("One or more Pade coefficients are NaN")
-    end
+    # non-finite coefficients show up in g; acon() checks it and warns
     # pade eval: step dw_real over [-real_c, real_c]. A fixed step rather than a fixed point
     # count, which would tie the resolution to omega_c: 2000 points over the default
     # ±7000 meV are 7 meV apart, too coarse to resolve a gap of a few meV
@@ -328,15 +333,6 @@ function Pade_separate(wsi, nsiw, real_c, gi; dw_real::Real=1.0, eta::Real=0.001
     # println("final A=",A[1:10,N-50])
     # println("final B=",B[:,N])
     #println("Finished A,B")
-
-    # Check whether A nad B is NaN
-    Ar = real.(A)
-    Ai = imag.(A)
-    Br = real.(B)
-    Bi = imag.(B)
-    if any(isnan.(Ar)) || any(isnan.(Ai)) || any(isnan.(Br)) || any(isnan.(Bi))
-        println("One or more Pade approximants is NaN")
-    end
 
     g = A[:,N+1]./B[:,N+1] # elementwise for vectors of ws, otherwise scalar
     #println("Finished g")

@@ -1,8 +1,22 @@
 """
+    mcmillan_applicable(lambda, mu_star)
+
+Whether the McMillan exponent -1.04(1+λ) / (λ - μ*(1+0.62λ)) is negative. Otherwise
+(λ ≲ μ*) it turns positive and the formula returns an arbitrarily large Tc instead of
+predicting no superconductivity.
+"""
+mcmillan_applicable(lambda, mu_star) = lambda - mu_star * (1 + 0.62 * lambda) > 0
+
+
+"""
     calc_AD_Tc(omega, a2f, mu_star)
 
-Calculate superconducting properties from Allen-Dynes McMillan formula using the energy in meV, 
-the Eliashberg spectral funciton in 1/meV and the Anderson pseudopotential
+Calculate superconducting properties from Allen-Dynes McMillan formula using the energy in meV,
+the Eliashberg spectral funciton in 1/meV and the Anderson pseudopotential.
+
+Outside the range of the McMillan formula (see [`mcmillan_applicable`](@ref)) Tc_AD, Tc_ML
+and the gap are 0. If the ML correction factor has no finite, positive value (its pole near
+λ ≈ 1), Tc_ML falls back to Tc_AD.
 """
 function calc_AD_Tc(omega, a2f, mu_star)
 
@@ -17,7 +31,9 @@ function calc_AD_Tc(omega, a2f, mu_star)
     omega_log  = 2/lambda * trapz(omega, integrand)
     omega_log  = exp(omega_log)
 
-    Tc = omega_log/1.2 * exp( -(1.04*(1+lambda))/(lambda - mu_star - 0.62*lambda*mu_star) ); # Tc in meV
+    # McMillan predicts no superconductivity for λ ≲ μ*: the exponent would turn positive
+    Tc = mcmillan_applicable(lambda, mu_star) ?
+         omega_log/1.2 * exp( -(1.04*(1+lambda))/(lambda - mu_star - 0.62*lambda*mu_star) ) : 0.0 # Tc in meV
 
     # omega_1    =   2/lambda*trapz(omega,a2f)
     omega_2    = ( 2/lambda*trapz(omega,a2f.*omega) )^(1/2)
@@ -34,6 +50,9 @@ function calc_AD_Tc(omega, a2f, mu_star)
     fom = 1.92 * ( (lambda + omega_log./omega_2 - mu_star.^(1/3) ) ./ (sqrt(lambda) .* exp(omega_log./omega_2) ) ) - 0.08
     fmu = 1.00 + 6.86 .* exp(-lambda./mu_star) ./ (1.0/lambda - mu_star - omega_log./omega_2)
     Tc_ML = fom*fmu*Tc; # Tc in meV
+    if !isfinite(fmu) || fmu < 0 || !isfinite(Tc_ML)
+        Tc_ML = Tc_AD   # pole of the ML correction factor
+    end
 
     data = [Tc_ML, Tc_AD, gap0, lambda, omega_log]
 

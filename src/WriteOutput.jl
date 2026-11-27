@@ -229,11 +229,27 @@ end
 
 
 """
-    printSummary()
+    printFailedTemperature(itemp, N_it, nan_state, log_file)
 
-Summarize Tc calculation and print it to the console
+Warn that the solver gave up at `itemp`, either because `N_it` was reached or because the
+self energy turned NaN. The temperature is treated as normal conducting, like one whose gap
+fell below `minGap`. Goes to the console and the log file.
 """
-function printSummary(inp, Tc, log_file)
+function printFailedTemperature(itemp, N_it, nan_state, log_file)
+    cause = nan_state ? "Self energy became NaN" :
+                        "Convergence not achieved within " * string(N_it) * " iterations"
+    printWarning(cause * " at T = " * string(itemp) * " K.\n" *
+                 "T = " * string(itemp) * " K is treated as normal conducting", log_file)
+end
+
+
+"""
+    printSummary(inp, Tc, log_file; nFailed=0)
+
+Summarize Tc calculation and print it to the console. `nFailed` is the number of
+temperatures that ended without convergence (see [`printFailedTemperature`](@ref)).
+"""
+function printSummary(inp, Tc, log_file; nFailed=0)
 
     text = ""
     if Tc[2] <= 0.5
@@ -248,6 +264,11 @@ function printSummary(inp, Tc, log_file)
     else
         text = text * "\n - " * inp.material * " is a superconductor"
         text = text * "\n - Tc = " * formatTc(Tc, inp.Tc_tol)
+    end
+
+    if nFailed > 0
+        text = text * "\n - Note: " * string(nFailed) *
+               (nFailed == 1 ? " temperature ended" : " temperatures ended") * " without convergence"
     end
 
     printstyled("\nSummary:", bold=true)
@@ -545,6 +566,12 @@ function printFlagsAsText(inp, matval, log_file; mode ="Matsubara")
     omega_ph_max = a2fSupportMax(a2f_omega, a2f; strict=false)
     if !isnan(omega_ph_max)
         text *= " - Typical phonon frequency: "*string(round(omega_ph_max, digits=3))*" meV\n"
+    end
+
+    # typical electronic energy of the μ → μ* conversion: typEl, or the ef / efW it fell
+    # back to. NaN when μ* needed no conversion - then omitted like the line above
+    if !isnan(inp.typEl)
+        text *= " - Typical electronic energy: "*string(round(inp.typEl, digits=3))*" meV\n"
     end
 
     # cDos

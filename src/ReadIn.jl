@@ -36,8 +36,7 @@ function InputParser!(inp::arguments, log_file; mode::Int64=0)
 
 
     # ------------- Dos and Weep -------------- #
-    # The DOS is needed in vDOS, in every W mode - cDOS+W included, which takes N(ε_F), the
-    # Fermi-level index and the φ_c integral from it, whether or not `mu` is set - and in
+    # The DOS is needed in vDOS, in every W mode and in
     # cDOS+μ when μ is to be computed from a given W file.
     if isfile(inp.dos_file) && (inp.cDOS_flag == 0 || inp.include_Weep == 1 || (isnan(inp.mu) && isfile(inp.Weep_file)))
 
@@ -61,7 +60,7 @@ function InputParser!(inp::arguments, log_file; mode::Int64=0)
 
         if inp.include_Weep == 1 || ((isfile(inp.Weep_file) && (isempty(inp.Wen_file) || isfile(inp.Wen_file))) && isnan(inp.mu))
             # read Weep + energy grid points
-            Weep, Wen, inp.efW, inp.Weep_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.Wen_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, outdir=inp.outdir, logFile=log_file)
+            Weep, Wen, inp.efW, inp.Weep_unit, inp.Wen_unit = readIn_Weep(inp.Weep_file, inp.Wen_file, inp.Weep_col, inp.Wen_col, inp.efW, inp.Weep_unit, inp.nheader_Weep, inp.nfooter_Weep, inp.nheader_Wen, inp.nfooter_Wen, unitWen=inp.Wen_unit, outdir=inp.outdir, logFile=log_file)
 
             ### Interpolation ###
             # Interpolation Object Weep, gridded on the W energies as read (non-uniform grids
@@ -140,17 +139,20 @@ function InputParser!(inp::arguments, log_file; mode::Int64=0)
         if !isnan(inp.typEl)
             calcMucs(inp, inp.typEl, a2f, a2f_omega, phonon_cutoff, log_file)
 
-        elseif ~(isnan(ef) || ef == 0)
-            inp.typEl = ef
+        # fall back to the Fermi energy inp.ef, not the local ef: a user-set ef counts even when no DOS file was read
+        elseif inp.ef > 0
+            inp.typEl = inp.ef
             calcMucs(inp, inp.typEl, a2f, a2f_omega, phonon_cutoff, log_file)
 
-        elseif ~(isnan(inp.efW) || inp.efW == 0)
+        elseif inp.efW > 0
             inp.typEl = inp.efW
             calcMucs(inp, inp.typEl, a2f, a2f_omega, phonon_cutoff, log_file)
 
         else
-            text = "Unable to calculate μ* from μ without a typical electron energy!"
-            text *= "\nConsider setting typEl, ef or efW manually."
+            text = "Unable to calculate μ* from μ without a positive typical electron energy!"
+            isnan(inp.ef)  || (text *= "\nef = "  * string(round(inp.ef,  digits=3)) * " meV can not be used.")
+            isnan(inp.efW) || (text *= "\nefW = " * string(round(inp.efW, digits=3)) * " meV can not be used.")
+            text *= "\nConsider setting typEl manually."
             text *= "\nUsing μ*_AD = 0.12 instead."
             text *= "\nSee the pseudopotential section of the Input documentation for the μ → μ* relation."
             printWarning(text, log_file)
@@ -177,8 +179,22 @@ function InputParser!(inp::arguments, log_file; mode::Int64=0)
     # print Allen-Dynes
     printADtable(console, ML_Tc, AD_Tc, BCS_gap, lambda, omega_log, log_file)
 
-    # material specific values
-    matval = (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, BCS_gap)
+    # The Allen-Dynes gap is only the starting guess of the solvers (the table above keeps the
+    # actual value). Floor it: Δ = 0 solves the Eliashberg equations trivially, so a start
+    # near zero tends to stay there and every temperature would come out normal conducting.
+    gap_init = max(BCS_gap, 10 * inp.minGap)
+
+    if !mcmillan_applicable(lambda, inp.muc_AD)
+        start = inp.temps == [-1] ?
+                "The Tc search starts at " * string(max(1.0, round(ML_Tc))) * " K with an initial gap of " :
+                "The solver starts from an initial gap of "
+        printWarning("Allen-Dynes formula not applicable (λ = " * string(round(lambda, digits=2)) *
+                     " < μ*(1+0.62λ) = " * string(round(inp.muc_AD * (1 + 0.62 * lambda), digits=2)) * ").\n" *
+                     start * string(round(gap_init, digits=2)) * " meV", log_file)
+    end
+
+    # material specific values (last entry: initial gap of the solvers)
+    matval = (a2f_omega, a2f, dos_en, dos, Weep, dosef, idx_ef, ndos, gap_init)
 
     return console, matval, ML_Tc
 end
@@ -346,21 +362,74 @@ function checkInput!(inp::arguments; realSolver::Bool=false)
 
     end
 
+    # μ* mode with μ unset: a given Weep_file is meant for μ = N(ε_F)·W(ε_F,ε_F). Say so if
+    # that can not work - InputParser! would skip it and fall back to μ*_AD = 0.12 silently
+    if inp.include_Weep == 0 && isnan(inp.mu) && !isempty(inp.Weep_file)
+        missingFile = !isfile(inp.Weep_file) ? inp.Weep_file :
+                      (!isempty(inp.Wen_file) && !isfile(inp.Wen_file)) ? inp.Wen_file : ""
+        if !isempty(missingFile)
+            @warn "Weep_file is given, but μ can not be computed from it: " * missingFile * " does not exist"
+        elseif !isfile(inp.dos_file)
+            @warn "Weep_file is given, but μ can not be computed from it without a valid dos-file"
+        end
+    end
+
     # N_it is the iteration cap. Both solvers accept convergence only once
     # i_it > max(min_it, nItFullCoul + 1), i.e. after min_it iterations *and* the Coulomb ramp.
     # With N_it at or below that bound the convergence test can never fire, so every
-    # temperature would run the full N_it iterations and come back Δ = NaN.
+    # temperature would run the full N_it iterations and come back Δ = NaN. Raise it
+    # (silently) to the smallest cap at which convergence can be accepted.
     itAccept = max(inp.min_it, inp.nItFullCoul + 1)
     if inp.N_it <= itAccept
-        error("N_it = " * string(inp.N_it) * " is too small: convergence is only accepted after more than max(min_it, nItFullCoul + 1) = " * string(itAccept) * " iterations (min_it = " * string(inp.min_it) * ", nItFullCoul = " * string(inp.nItFullCoul) * "). Increase N_it, or lower min_it / nItFullCoul.\n\n")
+        inp.N_it = itAccept + 1
+    end
+
+    # typEl enters μ* = μ / (1 + μ·ln(typEl/ω)): zero gives μ* = 0 and a negative value a
+    # DomainError. NaN (unset) is fine - ef or efW is used instead, if positive
+    if inp.typEl <= 0
+        error("typEl = " * string(inp.typEl) * " meV is invalid: the typical electronic energy must be positive (in meV). " *
+              "Leave it unset to use the Fermi energy ef or efW instead.\n\n")
+    end
+
+    # mixing_beta is the weight of the new solution: 0 never updates it (and reports the
+    # initial guess as converged), above 1 overshoots. NaN (unset) is the mixing schedule
+    if !isnan(inp.mixing_beta) && !(0 < inp.mixing_beta <= 1)
+        error("mixing_beta = " * string(inp.mixing_beta) * " is invalid: it has to satisfy 0 < mixing_beta ≤ 1. " *
+              "Leave it unset to use the default mixing schedule.\n\n")
+    end
+
+    # temperatures: [-1] is the Tc search, anything else a list of positive temperatures in K
+    if isempty(inp.temps)
+        error("temps is empty. Give the temperatures in K, or leave temps unset ([-1]) for the Tc search.\n\n")
+    elseif inp.temps != [-1]
+        if -1 in inp.temps
+            error("temps = " * string(inp.temps) * ": -1 starts the Tc search and can not be combined with other temperatures. " *
+                  "Use temps = [-1] for the Tc search, or give only positive temperatures.\n\n")
+        elseif !all(T -> isfinite(T) && T > 0, inp.temps)
+            error("temps = " * string(inp.temps) * " is invalid: all temperatures have to be positive and finite (in K).\n\n")
+        end
     end
 
     if inp.cDOS_flag ∉ (0,1)
         error("Invalid cDOS_flag value. Use 0 for a variable density of states (vDOS) or 1 for a constant density of states (cDOS).")
     end
 
-    if inp.include_Weep ∉ (0, 1) 
+    if inp.include_Weep ∉ (0, 1)
         error("Invalid include_Weep value. Use 0 for the μ approximation or 1 for the W(ε, ε′) interaction.")
+    end
+
+    if inp.mu_flag ∉ (0, 1)
+        error("Invalid mu_flag value. Use 0 for a fixed chemical potential or 1 for the μ-update.\n\n")
+    end
+
+    if inp.spinDos ∉ (1, 2)
+        error("Invalid spinDos value. Use 2 if the DOS file holds the DOS of both spins (it is divided by 2), or 1 if it is already per spin.\n\n")
+    end
+
+    # the ε-grid pieces are built between consecutive bounds, which have to be ascending
+    if !issorted(inp.itpBounds)
+        @warn "itpBounds = $(inp.itpBounds) is not sorted; sorting it to $(sort(inp.itpBounds)). The step sizes itpStepSize keep their order."
+        inp.itpBounds = sort(inp.itpBounds)
     end
 
     if realSolver && inp.include_Weep == 1 && inp.cDOS_flag == 1
@@ -577,12 +646,17 @@ end
 
 
 """
-    readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=NaN, unit = "", nheader=-1, nfooter=-1,  nheaderWen=-1, nfooterWen=-1; outdir = "./", logFile = nothing)
+    readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef=NaN, unit = "", nheader=-1, nfooter=-1,  nheaderWen=-1, nfooterWen=-1; unitWen = "", outdir = "./", logFile = nothing)
+        -> Weep, Wen, ef, unit, unitWen
 
 Read in Weep file containing the sreened coulomb interaction.
 Weep data must be in column 3
+
+`unit` is the unit of W (`Weep_unit`, else the Weep-file header). `unitWen` is the unit of
+the energy grid (`Wen_unit`); if it is empty, it is read from the header of the Wen-file,
+and otherwise - or without a Wen-file - the energies are taken to be in the unit of W.
 """
-function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef::Float64=NaN, unit="", nheader::Int=-1, nfooter::Int=-1, nheaderWen::Int=-1, nfooterWen::Int=-1; outdir="./", logFile=nothing)
+function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef::Float64=NaN, unit="", nheader::Int=-1, nfooter::Int=-1, nheaderWen::Int=-1, nfooterWen::Int=-1; unitWen="", outdir="./", logFile=nothing)
 
     ### Read in Weep file ###
     Weep_data = readdlm(Weep_file, Any)::Matrix{Any}
@@ -614,8 +688,11 @@ function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef::Float64=
         #Wen = Float64.(Weep_data[nheader+1:numWens+nheader, Wen_col])
         Wen = unique(Float64.(Weep_data[nheader+1:end-nfooter, Wen_col])::Vector{Float64})
     else
-        Wen = readIn_Wen(Wen_file, Wen_col, nheaderWen, nfooterWen)
+        Wen, headerWen = readIn_Wen(Wen_file, Wen_col, nheaderWen, nfooterWen)
+        (~isempty(unitWen)) || (unitWen = findUnit(join(headerWen, " ")))
     end
+    # no unit of its own: the energy grid is in the unit of W
+    (~isempty(unitWen)) || (unitWen = unit)
 
     length(Wen) == numWens || error("The W energy grid has " * string(length(Wen)) * " points, but W holds " * string(numWens) * "×" * string(numWens) * " values. Check Wen_col, Weep_col and the Wen-file.\n\n")
 
@@ -623,37 +700,21 @@ function readIn_Weep(Weep_file, Wen_file="", Weep_col=3, Wen_col=1, ef::Float64=
     checkIncreasingGrid(Wen, "W")
 
     ### Convert ###
-    if "meV" == unit    # meV
-        Weep = Weep
-        Wen = Wen
-    elseif "eV" == unit     # eV
-        Weep = Weep .* 1000
-        Wen = Wen .* 1000
-    elseif "Ry" == unit      # Ry
-        Weep = Weep .* Ry2meV
-        Wen = Wen .* Ry2meV
-    elseif "Ha" == unit     # Hartree
-        Weep = Weep .* Ry2meV * 2
-        Wen = Wen .* Ry2meV * 2
-    elseif unit == "THz"
-        Weep = Weep .* THz2meV
-        Wen = Wen .* THz2meV
-    else
-        error("Could not determine the unit of the Weep-file. Set it manually via Weep_unit or check the file header (supported units: meV, eV, THz, Ry, Ha).")
-    end
+    Weep = Weep .* unitToMeV(unit, "Weep")
+    Wen  = Wen .* unitToMeV(unitWen, "Wen")
 
     # shift by ef
     Wen = Wen .- ef
 
-    return Weep, Wen, ef, unit
+    return Weep, Wen, ef, unit, unitWen
 
 end
 
 """
-    readIn_Wen(Wen_file, Wen_col, nheader=nothing, nfooter=nothing)
+    readIn_Wen(Wen_file, Wen_col, nheader=-1, nfooter=-1) -> Wen, header
 
 Read in Wen
-Energy grid for Weep
+Energy grid for Weep, unconverted, together with the file header (for its unit)
 """
 function readIn_Wen(Wen_file, Wen_col, nheader::Int=-1, nfooter::Int=-1)
     ### Read in Weep file ###
@@ -663,10 +724,26 @@ function readIn_Wen(Wen_file, Wen_col, nheader::Int=-1, nfooter::Int=-1)
     nheader, nfooter = autoHeaderFooter(Wen_data, nheader, nfooter, "Wen")
 
     ### Remove header & footer
+    header = Wen_data[1:nheader, :]
     Wen = Float64.(Wen_data[nheader+1:end-nfooter, Wen_col])::Vector{Float64}
 
-    return Wen
+    return Wen, header
 
+end
+
+
+"""
+    unitToMeV(unit, nameFile) -> Float64
+
+Factor that converts an energy in `unit` (meV, eV, THz, Ry, Ha) to meV.
+"""
+function unitToMeV(unit, nameFile)
+    unit == "meV" && return 1.0
+    unit == "eV"  && return 1000.0
+    unit == "THz" && return THz2meV
+    unit == "Ry"  && return Ry2meV
+    unit == "Ha"  && return 2 * Ry2meV
+    error("Could not determine the unit of the " * nameFile * "-file. Set it manually via " * nameFile * "_unit or check the file header (supported units: meV, eV, THz, Ry, Ha).")
 end
 
 
@@ -674,42 +751,53 @@ end
 """
     extractFermiEnergy(header, unit, nameFile=nothing)
 
-Extract the fermi energy from the header of the input files
+Extract the fermi energy from the header of the input files.
+
+The header is searched for a keyword first (`efermi`, `ef`, `fermi`, `e_fermi`, any case),
+and the first number at or after it is taken. Only without a keyword does it fall back to
+guessing - the only number in the header, or the only number after an `=` - and then warns
+which number it took, since any lone number (a band count, a grid size) would match.
 """
 function extractFermiEnergy(header, unit, nameFile=nothing; outdir="./", logFile=nothing)
 
     ef = NaN
+    guessed = false     # true: no keyword, ef is a guess - warned about below
+    efRaw = NaN         # ef in the unit of the file, for that warning
     try
         # every branch asserts ::Float64: the header cells are Any, and without it `ef`
         # stays untyped and drags the unit conversion below down with it
-        logNums = isa.(header, Number)
-        # the cells are Any, so `header .== "="` is not inferred as a Bool mask and drags
-        # the sum and every indexing operation below it to Any. Broadcasting a predicate
-        # that provably returns Bool keeps the mask - and everything indexed by it - a
-        # BitMatrix. It also survives a single-column header, where the mask is empty and
-        # `sum` of an empty Matrix{Any} would throw before the keyword search is reached.
-        isEqualSign(x)::Bool = x isa AbstractString && x == "="
-        maskEq = @view(logNums[:, 2:end]) .& isEqualSign.(@view header[:, 1:end-1])
-        if sum(logNums) == 1
-            ef = Float64(only(header[logNums])::Number)::Float64
-        elseif sum(maskEq) == 1
-            ef = Float64(only(@view(header[:, 2:end])[maskEq])::Number)::Float64
-        else
-            nameFermi = ["efermi", "ef", "fermi", "e_fermi"]
+        nameFermi = ["efermi", "ef", "fermi", "e_fermi"]
 
-            for name in nameFermi
-                # first cell holding the keyword, then the first number at or after it
-                idx = findfirst(x -> isa(x, AbstractString) && lowercase(x) == name, header)
-                isnothing(idx) && continue
+        for name in nameFermi
+            # first cell holding the keyword, then the first number at or after it
+            idx = findfirst(x -> isa(x, AbstractString) && lowercase(x) == name, header)
+            isnothing(idx) && continue
 
-                row, col = Tuple(idx)
-                idxNum = findfirst(x -> isa(x, Number), @view header[row, col:end])
-                isnothing(idxNum) && error("Found '" * name * "' in the header of the " * nameFile * "-file but no number after it.")
+            row, col = Tuple(idx)
+            idxNum = findfirst(x -> isa(x, Number), @view header[row, col:end])
+            isnothing(idxNum) && error("Found '" * name * "' in the header of the " * nameFile * "-file but no number after it.")
 
-                ef = Float64(header[row, col+idxNum-1]::Number)::Float64
-                break
+            ef = Float64(header[row, col+idxNum-1]::Number)::Float64
+            break
+        end
+
+        if isnan(ef)
+            logNums = isa.(header, Number)
+            # the cells are Any, so `header .== "="` is not inferred as a Bool mask and drags
+            # the sum and every indexing operation below it to Any. Broadcasting a predicate
+            # that provably returns Bool keeps the mask - and everything indexed by it - a
+            # BitMatrix. It also survives a single-column header, where the mask is empty.
+            isEqualSign(x)::Bool = x isa AbstractString && x == "="
+            maskEq = @view(logNums[:, 2:end]) .& isEqualSign.(@view header[:, 1:end-1])
+            if sum(logNums) == 1
+                ef = Float64(only(header[logNums])::Number)::Float64
+                guessed = true
+            elseif sum(maskEq) == 1
+                ef = Float64(only(@view(header[:, 2:end])[maskEq])::Number)::Float64
+                guessed = true
             end
         end
+        efRaw = ef
 
         ### Convert ###
         if "meV" == unit # meV
@@ -736,11 +824,32 @@ function extractFermiEnergy(header, unit, nameFile=nothing; outdir="./", logFile
     # extraction ran without throwing but matched nothing -> ef still NaN
     isnan(ef) && error("Could not extract the Fermi energy from the " * nameFile * "-file.\nSet it manually (ef or efW) or check the file header.\n\n")
 
+    if guessed
+        field = nameFile == "Weep" ? "efW" : "ef"
+        text = "No Fermi-energy keyword in the header of the " * nameFile * "-file.\n" *
+               "Using the only number in the header, " * string(efRaw) * " " * unit *
+               ", as Fermi energy. Set " * field * " to override."
+        isnothing(logFile) ? (@warn text) : printWarning(text, logFile)
+    end
+
     return ef::Float64
 end
 
 
 # Convert units
+"""
+    findUnit(header) -> String
+
+First supported unit (meV, eV, THz, Ry, Ha) that occurs in `header`, or `""` if none does.
+"""
+function findUnit(header)
+    for unit in ("meV", "eV", "THz", "Ry", "Ha")
+        occursin(unit, header) && return unit
+    end
+    return ""
+end
+
+
 """
     getUnit(header, nameFile=nothing)
 
@@ -748,12 +857,8 @@ Read the units from the header of the input files
 """
 function getUnit(header, nameFile=nothing)
 
-    units = ["meV", "eV", "THz", "Ry", "Ha"]
-    for unit in units
-        if occursin(unit, header)
-            return unit
-        end
-    end
+    unit = findUnit(header)
+    isempty(unit) || return unit
 
     # No prompt here: the solver is routinely run non-interactively (batch queue, CI,
     # notebook), where reading from stdin blocks forever or consumes unrelated input.

@@ -177,8 +177,10 @@ function eliashberg_eqn(itemp::Number, nsiw::Int64, wsi::Vector{Float64}, ind_ma
         znormi_sparse = znormi[ind_mat_freq]
         phiphi_sparse = phiphi[ind_mat_freq]
 
-        znormi_itp = interpolate((wsi[ind_mat_freq],), znormi_sparse, Gridded(Linear()))
-        phiphi_itp = interpolate((wsi[ind_mat_freq],), phiphi_sparse, Gridded(Linear()))
+        # same as the other modes: linear extrapolation, in case the sampling points do not
+        # reach the first Matsubara frequency (a plain Gridded interpolation would throw)
+        znormi_itp = linear_interpolation(wsi[ind_mat_freq], znormi_sparse, extrapolation_bc=Line())
+        phiphi_itp = linear_interpolation(wsi[ind_mat_freq], phiphi_sparse, extrapolation_bc=Line())
 
         znormi = znormi_itp[wsi[1:nsiw]]
         phiphi = phiphi_itp[wsi[1:nsiw]]

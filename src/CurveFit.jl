@@ -132,9 +132,11 @@ function curve_fit(model::F, xdata, ydata, p0::AbstractVector;
         end
 
         if !stepTaken
-            # no damping value gave a decrease: we sit at a stationary point of
-            # the residual sum, which is convergence, not failure
-            converged = true
+            # no damping value gave a decrease. After at least one accepted step (or
+            # with a residual that is already ~0) we sit at a stationary point of the
+            # residual sum, which is convergence. In the very first iteration, though,
+            # nothing moved: p0 comes back untouched, which is a failure, not a fit.
+            converged = it > 1 || S < ftol
             break
         end
         converged && break

@@ -3,7 +3,7 @@ Input parameters are collected in the [composite type](https://docs.julialang.or
 Only the path to the ``\alpha^2F`` file is mandatory. Everything else either has a default or is inferred during the run.
 Fields that are meant to be inferred are left at a sentinel — `NaN` (real-valued fields), `-1` (integer fields such as line counts and column indices) or `""` (strings) — and are overwritten once their value is known.
 Before IsoME 2.0 the real-valued fields used `-1` for this, so passing `-1` to one of them is now rejected with a message pointing at `NaN`.
-`mu`, `muc_AD`, `muc_ME`, `mixing_beta`, `conv_thr`, `minGap`, `N_it` and `min_it` are likewise rejected if given a negative value, both when the struct is built and again at the start of a solve. `Tc_tol` must be strictly positive, and `N_it` must exceed both `min_it` and `nItFullCoul + 1`, since convergence is only accepted after both have passed.
+`mu`, `muc_AD`, `muc_ME`, `mixing_beta`, `conv_thr`, `minGap`, `N_it` and `min_it` are likewise rejected if given a negative value, both when the struct is built and again at the start of a solve. `Tc_tol` must be strictly positive. Convergence is only accepted after both `min_it` and `nItFullCoul + 1` iterations have passed, so a smaller `N_it` is raised to `max(min_it, nItFullCoul + 1) + 1`.
 Because of this, we recommend creating a fresh `arguments` instance for each call to `EliashbergSolver()` or `RealAxisSolver()` — see [Best practices](@ref).
 
 All energies are handled internally in meV.
@@ -19,7 +19,7 @@ These inputs are shared by both solvers unless noted otherwise.
 
 | Name    |      Type      |   Default   | Description | Comment  |
 |:--------|:---------------|:------------|:------------|:---------|
-| temps   | Vector{Float64} |  [-1.0] | Temperatures considered in the calculation | `[-1.0]`: search for ``\mathrm{T}_C``; otherwise solve at the specified temperatures |
+| temps   | Vector{Float64} |  [-1.0] | Temperatures considered in the calculation | `[-1.0]`: search for ``\mathrm{T}_C``; otherwise solve at the specified temperatures (positive, in K; `-1` can not be combined with other values) |
 | a2f_file    | String   |  -  | Path to the ``\alpha^2F`` file | The only mandatory input |
 | ind_smear   | Int64 |  -1 | Smearing column used from the ``\alpha^2F`` file | `-1`: the middle column is used |
 | cDOS_flag | Int64 |  1   | Selects constant or variable DOS mode | 0: variable DOS; 1: constant DOS |
@@ -36,7 +36,7 @@ These inputs are shared by both solvers unless noted otherwise.
 | omega_c | Float64 | 7000.0 | Frequency cutoff ``\omega_c`` | In meV; the Matsubara cutoff on the imaginary axis and the ``\omega``-grid cutoff on the real axis |
 | encut  | Float64 |  2000.0  | Symmetric energy cutoff of the ``\varepsilon``-grid | In meV; the grid spans ``\pm`` `encut` and bounds every ``\varepsilon``-integration, including ``\chi`` and the charge neutrality condition. In vDOS runs it is clamped to `omega_c`, on the imaginary and the real axis alike |
 | mu_flag    | Int64 | 1   | Update the chemical potential in vDOS calculations | 0: no; 1: yes, recommended |
-| mixing_beta | Float64 | NaN | Linear mixing factor | `NaN`: use the default iteration-dependent schedule. Both solvers mix linearly |
+| mixing_beta | Float64 | NaN | Linear mixing factor | `NaN`: use the default iteration-dependent schedule; otherwise ``0 < \beta \le 1``. Both solvers mix linearly |
 | nItFullCoul | Int64 |  10    | Number of iterations used to ramp up the Coulomb contribution | Helps stabilize the initial iterations |
 | conv_thr | Float64 | ``10^{-4}`` | Convergence threshold | Applied to the gap update |
 | minGap   | Float64 | 0.1  | Lower gap threshold | In meV; the temperature is treated as normal conducting if the gap drops below `minGap` |
@@ -57,7 +57,7 @@ These inputs control the imaginary-axis solver `EliashbergSolver()` and its post
 | Name    |      Type      |   Default   | Description | Comment  |
 |:--------|:---------------|:------------|:------------|:---------|
 | sparseSamplingTemp | Float64 | 2.0 | Temperature below which sparse sampling is used | In K |
-| itpBounds | Vector{Float64} | [100.0, 500.0] | Bounds of the DOS interpolation regions around the Fermi level | In meV |
+| itpBounds | Vector{Float64} | [100.0, 500.0] | Bounds of the DOS interpolation regions around the Fermi level | In meV; sorted ascending (with a warning) if given unsorted |
 | itpStepSize | Vector{Int64} | [1, 5, 50] | Step sizes used within the interpolation regions | In meV; one entry more than `itpBounds` |
 | flag_acon | Bool | false | Analytically continue the converged solution to real frequencies and plot it | Padé approximants; imaginary axis only. Written to `outdir/ACON/`; the real-frequency window is ``\pm`` `omega_c` with a step of 1 meV. Independent of `flag_writeSelfEnergy` |
 
@@ -85,7 +85,7 @@ It is connected to the pseudopotentials via:
 \mu^*_{AD}=\frac{\mu}{1+\mu \ln\left(\frac{\varepsilon_{el}}{\omega_{ph}}\right)}
 ```
 where ``\omega_{ph}`` is a characteristic cutoff frequency for the phonon-induced interaction and ``\varepsilon_{el}`` is a characteristic electronic energy scale.
-The typical electronic energy can be specified explicitly through `typEl`; otherwise, the Fermi energy (`ef` or `efW`) will be used.
+The typical electronic energy can be specified explicitly through `typEl` (in meV); otherwise, the Fermi energy (`ef` or `efW`) will be used if it is positive. The value that entered the conversion is printed as *Typical electronic energy* in the console and log.
 For the characteristic phonon cutoff, AD uses the largest frequency at which ``\alpha^2F`` rises above ``10^{-2}`` (not the largest frequency in the file), while ME uses the frequency cutoff `omega_c`, which is shared by both solvers.
 
 By default, the ``\mu`` and ``\mu^*`` values are unset (`NaN`), which means that `muc_AD` = 0.12 is used. This also fixes `muc_ME` through
@@ -275,7 +275,7 @@ As for the DOS, the ``W`` energy grid does not have to be uniform; ``W`` is inte
 
 
 If the `Weep_file` does not contain the energies, an additional `Wen_file` can be specified.
-- **header:** Non-numeric rows at the beginning of the document. It is assumed that the header contains the unit. If not, the unit has to be specified via `Wen_unit`.
+- **header:** Non-numeric rows at the beginning of the document. The unit is read from the header, or can be specified via `Wen_unit`. If neither gives one, the energies are taken to be in the unit of ``W``.
 - **footer:** Non-numeric rows at the end of the document.
 - **first column:** energy grid points ``\epsilon`` of ``W(\epsilon, \epsilon')``. The column containing the energies can be changed via `Wen_col`.
 
@@ -283,7 +283,7 @@ If the `Weep_file` does not contain the energies, an additional `Wen_file` can b
 |     Name     |  Type  |  Default  |          Description          |                Comment              |
 |--------------|--------|:---------:|---------------------------|-----------------------------------------|
 | Weep_unit    | String |     ""    | Unit of ``W``             | Extracted from the header of `Weep_file` if not set <br> Currently supported: meV, eV, THz, Ry, Ha |
-| Wen_unit     | String |     ""    | Unit of the ``W`` energies    | Extracted from the header of `Wen_file` if not set <br> Currently supported: meV, eV, THz, Ry, Ha |
+| Wen_unit     | String |     ""    | Unit of the ``W`` energies    | Extracted from the header of `Wen_file` if not set, otherwise the unit of ``W`` (also without a `Wen_file`) <br> Currently supported: meV, eV, THz, Ry, Ha |
 | Weep_col     | Int64  |     3     | Column containing the ``W`` values in `Weep_file` | |
 | Wen_col      | Int64  |     1     | Column containing the ``W`` energy grid in `Weep_file` or `Wen_file` | |
 | nheader_Weep | Int64  |    -1     | Number of header lines in `Weep_file` | Auto-recognition if unset |

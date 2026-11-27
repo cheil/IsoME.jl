@@ -1,5 +1,26 @@
 # Changelog
 
+## v2.0.1
+
+### Changed
+
+- A temperature that reaches `N_it` or becomes `NaN` is reported with a warning, treated as
+  normal conducting, and counted in a note in the summary. Convergence also requires a gap
+  of at least `minGap`.
+- `Summary.dat` columns are aligned by display width, so they no longer drift with Δ, χ and μ
+  in the header or merge at T ≥ 1000 K.
+- ACON files are overwritten on a rerun instead of appended to, and are named consistently:
+  `Z_pade_T….dat` (was `Zpade_T…`), `ACON_pade_T….dat` (was `ACON_pade_….K.dat`).
+
+### Fixed
+
+- Allen-Dynes/ML estimates no longer blow up for λ < μ*(1+0.62λ): they are reported as 0 K
+  with a warning, and the solver starts from a gap of 10·`minGap`.
+- The cDOS seed of the real-axis vDOS solver always uses μ* = 0.12.
+- The Δ(T) figure no longer keeps a rejected fit curve or a stretched axis.
+- When the Tc search stops at its 500-temperature limit, the bracket reached so far is
+  reported instead of `Tc < NaN K`.
+
 ## v2.0.0
 
 ### Breaking changes
@@ -34,16 +55,6 @@ message.
 - `mu`, `muc_AD`, `muc_ME`, `mixing_beta`, `conv_thr`, `minGap`, `Tc_tol`, `N_it` and `min_it` are
   rejected when negative, at construction and again at the start of a solve. `NaN` is
   unaffected, so leaving a field out to have it inferred still works.
-- Further input checks: `typEl` > 0, `0 < mixing_beta ≤ 1`, valid `temps`, `mu_flag` ∈ {0, 1},
-  `spinDos` ∈ {1, 2}. Unsorted `itpBounds` are sorted with a warning. A too small `N_it` is
-  raised to `max(min_it, nItFullCoul + 1) + 1`.
-- A temperature that reaches `N_it` or becomes `NaN` is reported with a warning, treated as
-  normal conducting, and counted in a note in the summary. Convergence also requires a gap
-  of at least `minGap`.
-- The Fermi energy is read from a header keyword first; a keyword-free header is only
-  guessed from, with a warning.
-- A positive `ef` (or `efW`) is used as typical electronic energy when `typEl` is unset; the
-  value used is printed in the log.
 
 ### Added
 
@@ -57,14 +68,6 @@ message.
 - **`Tc_tol`**: the resolution the Tc search is carried to, in K. The default `1.0` is the
   previous behaviour. 
 - A docstring for `arguments`, listing every input group (`?arguments`).
-
-### Fixed
-
-- Allen-Dynes/ML estimates no longer blow up for λ < μ*(1+0.62λ): they are reported as 0 K
-  with a warning, and the solver starts from a gap of 10·`minGap`.
-- `Wen_unit` is now used for the W energy grid (from the `Wen_file` header, else the unit of W).
-- `curve_fit` no longer reports convergence when no step was taken.
-- The cDOS seed of the real-axis vDOS solver always uses μ* = 0.12.
 
 ## v1.0.5 and earlier
 
